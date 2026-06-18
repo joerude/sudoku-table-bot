@@ -1,0 +1,21 @@
+# Build artifacts
+/bin/
+sudoku-bot
+*.exe
+
+# Local data & secrets
+/data/
+*.db
+*.db-wal
+*.db-shm
+.env
+
+# Go
+*.test
+*.out
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store

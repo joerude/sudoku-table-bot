@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    container_name: sudoku-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/sudoku.db
+      TZ: Asia/Almaty
+    volumes:
+      - ./data:/data
