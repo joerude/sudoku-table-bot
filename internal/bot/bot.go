@@ -35,9 +35,10 @@ func New(token string, pollTimeout time.Duration, st *storage.Store) (*Bot, erro
 	return b, nil
 }
 
-// Start launches the reminder loop and begins polling (blocking).
+// Start launches the reminder loop, resumes game watchers, and begins polling.
 func (b *Bot) Start() {
 	go b.runReminders()
+	b.resumeWatches()
 	log.Println("bot started")
 	b.tb.Start()
 }
@@ -46,6 +47,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/start", b.onHelp)
 	b.tb.Handle("/help", b.onHelp)
 	b.tb.Handle("/join", b.onJoin)
+	b.tb.Handle("/setnick", b.onSetNick)
 	b.tb.Handle("/players", b.onPlayers)
 
 	b.tb.Handle("/newgame", b.onNewGame)

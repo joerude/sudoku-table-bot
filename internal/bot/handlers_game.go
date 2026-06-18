@@ -89,6 +89,7 @@ func (b *Bot) onNewGame(c tele.Context) error {
 	if err := b.st.SetUsdokuCode(gameID, code); err != nil {
 		log.Printf("onNewGame.setcode: %v", err)
 	}
+	go b.watchGame(gameID, chatID, code) // auto-record when the game finishes
 	return c.Send(newGameWithCodeText(difficulty, mode, code), recordKeyboard(gameID))
 }
 
@@ -250,35 +251,50 @@ func (b *Bot) onDelete(c tele.Context) error {
 	return c.Edit("🗑 Игра удалена. Таблица пересчитана.")
 }
 
-// finalize assigns points, shows the result, and rolls the season if the
-// target was reached. Always edits the callback's message.
-func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
+// scoreAndCheck assigns points to a game's picks, then rolls the season if the
+// target was reached. Returns the result text and (if any) a season-end message.
+// It does no Telegram I/O, so both the manual and auto-record paths can use it.
+func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err error) {
 	season, err := b.st.SeasonByID(game.SeasonID)
 	if err != nil {
-		return b.fail(c, "finalize.season", err)
+		return "", "", err
 	}
 	if err := b.st.FinalizeGame(game.ID, season.PointsTable); err != nil {
-		return b.fail(c, "finalize.finalize", err)
+		return "", "", err
 	}
 	rows, err := b.st.GameResults(game.ID)
 	if err != nil {
-		return b.fail(c, "finalize.results", err)
+		return "", "", err
 	}
-	if err := c.Edit(resultText(rows), resultKeyboard(game.ID)); err != nil {
-		log.Printf("finalize.edit: %v", err)
-	}
+	result = resultText(rows)
 
 	standings, err := b.st.Standings(game.ChatID, season.ID)
 	if err != nil {
-		return b.fail(c, "finalize.standings", err)
+		return "", "", err
 	}
 	if len(standings) > 0 && standings[0].Points >= season.Target {
 		newSeason, err := b.st.CloseSeason(season, standings[0].PlayerID)
 		if err != nil {
-			return b.fail(c, "finalize.close", err)
+			return "", "", err
 		}
-		return c.Send(seasonEndText(season.Number, standings[0].Name, standings[0].Points,
-			newSeason.Target, newSeason.Number))
+		seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
+			newSeason.Target, newSeason.Number)
+	}
+	return result, seasonEnd, nil
+}
+
+// finalize scores the game and edits the callback's message with the result,
+// rolling the season if needed.
+func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
+	result, seasonEnd, err := b.scoreAndCheck(game)
+	if err != nil {
+		return b.fail(c, "finalize", err)
+	}
+	if err := c.Edit(result, resultKeyboard(game.ID)); err != nil {
+		log.Printf("finalize.edit: %v", err)
+	}
+	if seasonEnd != "" {
+		return c.Send(seasonEnd)
 	}
 	return nil
 }

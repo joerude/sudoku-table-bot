@@ -9,12 +9,13 @@ CREATE TABLE IF NOT EXISTS chats (
 );
 
 CREATE TABLE IF NOT EXISTS players (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id    INTEGER NOT NULL,
-    tg_id      INTEGER,                       -- Telegram user id (nullable)
-    name       TEXT    NOT NULL,
-    active     INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER NOT NULL,
+    tg_id       INTEGER,                       -- Telegram user id (nullable)
+    name        TEXT    NOT NULL,
+    usdoku_nick TEXT,                          -- nickname used on usdoku (for auto-record)
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(chat_id, tg_id)
 );
 

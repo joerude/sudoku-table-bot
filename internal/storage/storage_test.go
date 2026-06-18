@@ -68,6 +68,33 @@ func TestGameFlowAndStandings(t *testing.T) {
 	}
 }
 
+func TestNickMapping(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-300)
+	st.EnsureChat(chat, 1)
+	p, _, _ := st.RegisterPlayer(chat, 1, "Zhoomart")
+
+	// Unknown nick before set.
+	if got, _ := st.PlayerByNick(chat, "zhoo"); got != nil {
+		t.Errorf("expected no match before SetNick")
+	}
+	if err := st.SetNick(p.ID, "Zhoo"); err != nil {
+		t.Fatal(err)
+	}
+	// Case-insensitive match.
+	got, err := st.PlayerByNick(chat, "zhoo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.ID != p.ID {
+		t.Errorf("expected to match player by nick (case-insensitive), got %+v", got)
+	}
+	// Different chat must not match.
+	if other, _ := st.PlayerByNick(-999, "Zhoo"); other != nil {
+		t.Errorf("nick must be scoped to chat")
+	}
+}
+
 func TestSeasonRollover(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-200)

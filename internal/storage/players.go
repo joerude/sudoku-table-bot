@@ -61,6 +61,29 @@ func (s *Store) PlayerByTg(chatID, tgID int64) (*Player, error) {
 	return &p, nil
 }
 
+// SetNick stores a player's usdoku nickname (used for auto-record matching).
+func (s *Store) SetNick(playerID int64, nick string) error {
+	_, err := s.db.Exec(`UPDATE players SET usdoku_nick=? WHERE id=?`, nick, playerID)
+	return err
+}
+
+// PlayerByNick finds an active player by usdoku nickname (case-insensitive).
+func (s *Store) PlayerByNick(chatID int64, nick string) (*Player, error) {
+	var p Player
+	err := s.db.QueryRow(
+		`SELECT id, chat_id, tg_id, name FROM players
+		 WHERE chat_id=? AND active=1 AND usdoku_nick IS NOT NULL
+		   AND lower(usdoku_nick)=lower(?)`, chatID, nick).
+		Scan(&p.ID, &p.ChatID, &p.TgID, &p.Name)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // ListPlayers returns active players of a chat, ordered by name.
 func (s *Store) ListPlayers(chatID int64) ([]Player, error) {
 	rows, err := s.db.Query(

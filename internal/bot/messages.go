@@ -13,6 +13,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт игр в судоку 
 
 <b>Игроки</b>
 /join [имя] — зарегистрироваться
+/setnick &lt;ник&gt; — твой ник на usdoku (для авто-учёта)
 /players — список игроков
 
 <b>Игра</b>
@@ -63,8 +64,31 @@ func newGameWithCodeText(difficulty, mode, code string) string {
 		"🧩 <b>Игра создана</b> · %s · %s\n\n"+
 			"Заходите и играйте:\n%s/%s\n"+
 			"Код: <b>%s</b>\n\n"+
-			"Когда доиграете — жми «📝 Записать результат».",
+			"🤖 Результат подтянется автоматически, когда доиграете "+
+			"(у кого задан /setnick). Или жми «📝 Записать результат».",
 		titleCase(difficulty), titleCase(mode), "https://www.usdoku.com", code, code)
+}
+
+// autoResultHeader prefixes an auto-captured result.
+func autoResultHeader() string {
+	return "🤖 <b>Результат подтянут с usdoku</b>\n"
+}
+
+// autoMappingText is shown when the bot can't fully map usdoku nicknames to players.
+func autoMappingText(orderNicks, unknown []string) string {
+	var b strings.Builder
+	b.WriteString("🤖 <b>Игра на usdoku завершена</b>\nПорядок финиша:\n")
+	for i, n := range orderNicks {
+		b.WriteString(fmt.Sprintf("%s %s\n", medal(i+1), esc(n)))
+	}
+	if len(unknown) > 0 {
+		b.WriteString(fmt.Sprintf(
+			"\nНе узнал ники: <b>%s</b>\nПусть эти игроки сделают /setnick &lt;ник&gt;, "+
+				"либо запишите вручную:", esc(strings.Join(unknown, ", "))))
+	} else {
+		b.WriteString("\nНужно минимум 2 знакомых игрока. Запишите вручную:")
+	}
+	return b.String()
 }
 
 // pickerText shows the current finish order while recording.
@@ -91,21 +115,18 @@ func resultText(rows []storage.ResultRow) string {
 	return b.String()
 }
 
-// standingsText renders the season leaderboard as a monospace table.
+// standingsText renders the season leaderboard as a medal list.
 func standingsText(se *storage.Season, rows []storage.Standing) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b> · до %d очков\n", se.Number, se.Target))
+	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b> · до %d очков\n\n", se.Number, se.Target))
 	if len(rows) == 0 {
-		b.WriteString("\nПока нет игроков. /join")
+		b.WriteString("Пока нет игроков. /join")
 		return b.String()
 	}
-	b.WriteString("<pre>")
-	b.WriteString(fmt.Sprintf("%-2s %-10s %4s %3s %3s\n", "#", "Игрок", "Очк", "W", "Игр"))
 	for i, r := range rows {
-		b.WriteString(fmt.Sprintf("%-2d %-10s %4d %3d %3d\n",
-			i+1, escPre(trunc(r.Name, 10)), r.Points, r.Wins, r.Games))
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d игр)</i>\n",
+			medal(i+1), esc(r.Name), r.Points, r.Wins, r.Games))
 	}
-	b.WriteString("</pre>")
 	return b.String()
 }
 
@@ -166,19 +187,6 @@ func titleCase(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-func trunc(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n-1]) + "…"
-}
-
-// escPre escapes only what matters inside a <pre> block.
-func escPre(s string) string {
-	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
 func formatTable(t []int) string {

@@ -43,6 +43,31 @@ func (b *Bot) onJoin(c tele.Context) error {
 	return c.Send(fmt.Sprintf("👌 Имя обновлено: <b>%s</b>", esc(name)))
 }
 
+func (b *Bot) onSetNick(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onSetNick.ensure", err)
+	}
+	if c.Sender() == nil {
+		return c.Send("Не удалось определить пользователя.")
+	}
+	player, err := b.st.PlayerByTg(c.Chat().ID, c.Sender().ID)
+	if err != nil {
+		return b.fail(c, "onSetNick.player", err)
+	}
+	if player == nil {
+		return c.Send("Сначала зарегистрируйся: /join")
+	}
+	nick := strings.TrimSpace(c.Message().Payload)
+	if nick == "" {
+		return c.Send("Укажи свой ник из usdoku: /setnick МойНик")
+	}
+	if err := b.st.SetNick(player.ID, nick); err != nil {
+		return b.fail(c, "onSetNick.set", err)
+	}
+	return c.Send(fmt.Sprintf(
+		"✅ usdoku-ник: <b>%s</b>. Теперь результаты будут подтягиваться автоматически.", esc(nick)))
+}
+
 func (b *Bot) onPlayers(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onPlayers.ensure", err)

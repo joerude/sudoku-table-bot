@@ -38,7 +38,18 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	migrate(db)
 	return &Store{db: db}, nil
+}
+
+// migrate applies best-effort, idempotent column additions for databases created
+// by older schema versions. "duplicate column" errors are expected and ignored.
+func migrate(db *sql.DB) {
+	for _, stmt := range []string{
+		`ALTER TABLE players ADD COLUMN usdoku_nick TEXT`,
+	} {
+		_, _ = db.Exec(stmt)
+	}
 }
 
 // Close closes the database.

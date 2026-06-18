@@ -62,6 +62,34 @@ func (s *Store) GameByID(id int64) (*Game, error) {
 	return &g, nil
 }
 
+// WatchableGame is a pending game that has a usdoku code to poll for results.
+type WatchableGame struct {
+	ID     int64
+	ChatID int64
+	Code   string
+}
+
+// PendingGamesWithCode lists pending games that carry a usdoku code, so polling
+// can be resumed after a restart.
+func (s *Store) PendingGamesWithCode() ([]WatchableGame, error) {
+	rows, err := s.db.Query(
+		`SELECT id, chat_id, usdoku_code FROM games
+		 WHERE status='pending' AND usdoku_code IS NOT NULL AND usdoku_code <> ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WatchableGame
+	for rows.Next() {
+		var g WatchableGame
+		if err := rows.Scan(&g.ID, &g.ChatID, &g.Code); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
 // PickedPlayerIDs returns player ids already recorded for a game, in finish order.
 func (s *Store) PickedPlayerIDs(gameID int64) ([]int64, error) {
 	rows, err := s.db.Query(
