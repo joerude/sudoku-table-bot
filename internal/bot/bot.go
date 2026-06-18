@@ -10,12 +10,14 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
+	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
 // Bot is the running Telegram bot.
 type Bot struct {
 	tb *tele.Bot
 	st *storage.Store
+	ud *usdoku.Client
 }
 
 // New constructs a Bot using long-polling.
@@ -28,7 +30,7 @@ func New(token string, pollTimeout time.Duration, st *storage.Store) (*Bot, erro
 	if err != nil {
 		return nil, err
 	}
-	b := &Bot{tb: tb, st: st}
+	b := &Bot{tb: tb, st: st, ud: usdoku.New()}
 	b.routes()
 	return b, nil
 }

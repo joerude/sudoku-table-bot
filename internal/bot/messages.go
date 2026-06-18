@@ -57,6 +57,16 @@ func newGameText(difficulty, mode string) string {
 		titleCase(difficulty), titleCase(mode), usdokuCreateURL, titleCase(difficulty), titleCase(mode))
 }
 
+// newGameWithCodeText is posted when the bot created a real usdoku game.
+func newGameWithCodeText(difficulty, mode, code string) string {
+	return fmt.Sprintf(
+		"🧩 <b>Игра создана</b> · %s · %s\n\n"+
+			"Заходите и играйте:\n%s/%s\n"+
+			"Код: <b>%s</b>\n\n"+
+			"Когда доиграете — жми «📝 Записать результат».",
+		titleCase(difficulty), titleCase(mode), "https://www.usdoku.com", code, code)
+}
+
 // pickerText shows the current finish order while recording.
 func pickerText(picked []storage.ResultRow) string {
 	if len(picked) == 0 {

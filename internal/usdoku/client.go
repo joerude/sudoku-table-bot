@@ -118,24 +118,33 @@ func (g *GameInfo) FinishOrder() []Player {
 	return done
 }
 
-// Finished reports whether the game looks over: a terminal status, a successor
-// game, or every player having completed.
+// terminalStatuses are usdoku statuses that mean a game is over. Observed live
+// statuses include "pending" (created, not started) and "running"; the exact
+// terminal string is not documented, so we match a small known set and also
+// fall back to heuristics below.
+var terminalStatuses = map[string]bool{
+	"finished": true, "completed": true, "ended": true, "done": true, "over": true,
+}
+
+// Finished reports whether the game looks over. A "pending" or "running" game is
+// NOT finished unless a successor exists or every player has completed.
 func (g *GameInfo) Finished() bool {
-	if g.Info.Status != "" && g.Info.Status != "running" {
+	if terminalStatuses[g.Info.Status] {
 		return true
 	}
 	if g.Info.SupersededBy != "" {
 		return true
 	}
-	if len(g.Players) == 0 {
-		return false
-	}
-	for _, p := range g.Players {
-		if p.CompletedAt == nil {
-			return false
+	// A running game where every (joined) player has finished.
+	if g.Info.Status == "running" && len(g.Players) > 0 {
+		for _, p := range g.Players {
+			if p.CompletedAt == nil {
+				return false
+			}
 		}
+		return true
 	}
-	return true
+	return false
 }
 
 func (c *Client) post(ctx context.Context, path string, body, out any) error {

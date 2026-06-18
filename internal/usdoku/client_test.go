@@ -74,6 +74,7 @@ func TestFinishedByStatusAndSuperseded(t *testing.T) {
 		info Info
 		want bool
 	}{
+		{"pending", Info{Status: "pending"}, false}, // freshly created, not over
 		{"running", Info{Status: "running"}, false},
 		{"finished status", Info{Status: "finished"}, true},
 		{"superseded", Info{Status: "running", SupersededBy: "RAIJ"}, true},

@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"context"
 	"log"
 	"strings"
+	"time"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -50,7 +52,20 @@ func (b *Bot) onNewGame(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onNewGame.create", err)
 	}
-	return c.Send(newGameText(difficulty, mode), recordKeyboard(gameID))
+
+	// Try to create a real game on usdoku; fall back to a plain link if the API
+	// is unreachable or changed shape.
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	code, err := b.ud.Create(ctx, difficulty, mode, "private")
+	if err != nil {
+		log.Printf("usdoku create: %v", err)
+		return c.Send(newGameText(difficulty, mode), recordKeyboard(gameID))
+	}
+	if err := b.st.SetUsdokuCode(gameID, code); err != nil {
+		log.Printf("onNewGame.setcode: %v", err)
+	}
+	return c.Send(newGameWithCodeText(difficulty, mode, code), recordKeyboard(gameID))
 }
 
 func (b *Bot) onResult(c tele.Context) error {
