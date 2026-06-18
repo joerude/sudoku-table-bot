@@ -89,7 +89,9 @@ func botCommands() []tele.Command {
 		{Text: "join", Description: "зарегистрироваться"},
 		{Text: "setnick", Description: "ник на usdoku (для авто-учёта)"},
 		{Text: "players", Description: "список игроков"},
+		{Text: "removeplayer", Description: "убрать игрока"},
 		{Text: "newgame", Description: "новая игра + ссылка"},
+		{Text: "export", Description: "выгрузить CSV (игры + очки)"},
 		{Text: "result", Description: "записать результат вручную"},
 		{Text: "status", Description: "таблица сезона"},
 		{Text: "season", Description: "инфо о сезоне"},
@@ -106,6 +108,8 @@ func (b *Bot) routes() {
 	b.tb.Handle("/join", b.onJoin)
 	b.tb.Handle("/setnick", b.onSetNick)
 	b.tb.Handle("/players", b.onPlayers)
+	b.tb.Handle("/removeplayer", b.onRemovePlayer)
+	b.tb.Handle("/export", b.onExport)
 
 	b.tb.Handle("/newgame", b.onNewGame)
 	b.tb.Handle("/result", b.onResult)
@@ -139,13 +143,24 @@ func (b *Bot) routes() {
 func (b *Bot) ensure(c tele.Context) (*storage.Season, error) {
 	chatID := c.Chat().ID
 	adminID := int64(0)
-	if c.Sender() != nil {
-		adminID = c.Sender().ID
+	if u := realSender(c); u != nil {
+		adminID = u.ID
 	}
 	if err := b.st.EnsureChat(chatID, adminID); err != nil {
 		return nil, err
 	}
 	return b.st.ActiveSeason(chatID)
+}
+
+// realSender returns the human who sent the update, or nil for bot/anonymous
+// senders. Anonymous group admins arrive as @GroupAnonymousBot (name "Group"),
+// which must not be registered as a player.
+func realSender(c tele.Context) *tele.User {
+	u := c.Sender()
+	if u == nil || u.IsBot {
+		return nil
+	}
+	return u
 }
 
 // fail logs an error and shows a generic message to the user.

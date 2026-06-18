@@ -45,9 +45,9 @@ func (b *Bot) onJoin(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onJoin.ensure", err)
 	}
-	sender := c.Sender()
+	sender := realSender(c)
 	if sender == nil {
-		return c.Send("Не удалось определить пользователя.")
+		return c.Send(anonMsg)
 	}
 	name := strings.TrimSpace(c.Message().Payload)
 	if name == "" {
@@ -74,10 +74,11 @@ func (b *Bot) onSetNick(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onSetNick.ensure", err)
 	}
-	if c.Sender() == nil {
-		return c.Send("Не удалось определить пользователя.")
+	sender := realSender(c)
+	if sender == nil {
+		return c.Send(anonMsg)
 	}
-	player, err := b.st.PlayerByTg(c.Chat().ID, c.Sender().ID)
+	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
 	if err != nil {
 		return b.fail(c, "onSetNick.player", err)
 	}
@@ -93,6 +94,24 @@ func (b *Bot) onSetNick(c tele.Context) error {
 	}
 	return c.Send(fmt.Sprintf(
 		"✅ usdoku-ник: <b>%s</b>. Теперь результаты будут подтягиваться автоматически.", esc(nick)))
+}
+
+func (b *Bot) onRemovePlayer(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onRemovePlayer.ensure", err)
+	}
+	name := strings.TrimSpace(c.Message().Payload)
+	if name == "" {
+		return c.Send("Кого убрать? Напиши: /removeplayer Имя\n(смотри /players)")
+	}
+	n, err := b.st.RemovePlayer(c.Chat().ID, name)
+	if err != nil {
+		return b.fail(c, "onRemovePlayer.remove", err)
+	}
+	if n == 0 {
+		return c.Send("Не нашёл игрока: <b>" + esc(name) + "</b>. Проверь /players.")
+	}
+	return c.Send("🗑 Игрок убран: <b>" + esc(name) + "</b> (его прошлые игры сохранены).")
 }
 
 func (b *Bot) onPlayers(c tele.Context) error {

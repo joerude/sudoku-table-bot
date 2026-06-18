@@ -64,34 +64,46 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	}
 }
 
-// autoRecord maps usdoku finishers (by nickname) to registered players and
-// records the result. If any finisher is unknown or fewer than two map, it asks
-// for help instead of guessing.
+// autoRecord maps usdoku players (by nickname) to registered players and records
+// the finish order. It records only when the field was genuinely contested: at
+// least two known players joined and every joined nick is recognised. A
+// did-not-finish is fine — that player simply isn't in the finish order and
+// scores 0. Otherwise it asks for a manual entry instead of guessing.
 func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
-	order := info.FinishOrder()
-	var ids []int64
-	var nicks, unknown []string
-	for _, p := range order {
-		nicks = append(nicks, p.Name)
+	to := tele.ChatID(game.ChatID)
+
+	// Map everyone who joined; collect unknown nicks.
+	mappedJoined := 0
+	var unknown []string
+	for _, p := range info.Players {
 		pl, err := b.st.PlayerByNick(game.ChatID, p.Name)
 		if err != nil {
 			log.Printf("autoRecord.nick: %v", err)
 		}
 		if pl != nil {
-			ids = append(ids, pl.ID)
+			mappedJoined++
 		} else {
 			unknown = append(unknown, p.Name)
 		}
 	}
 
-	to := tele.ChatID(game.ChatID)
-	if len(unknown) > 0 || len(ids) < minPlayers {
-		log.Printf("🤖 game %d finished, nicks=%v unknown=%v → asking for manual map",
-			game.ID, nicks, unknown)
-		_, _ = b.tb.Send(to, autoMappingText(nicks, unknown), recordKeyboard(game.ID))
+	// Finishers in order; map the known ones to player ids.
+	var ids []int64
+	var finisherNicks []string
+	for _, p := range info.FinishOrder() {
+		finisherNicks = append(finisherNicks, p.Name)
+		if pl, _ := b.st.PlayerByNick(game.ChatID, p.Name); pl != nil {
+			ids = append(ids, pl.ID)
+		}
+	}
+
+	if len(unknown) > 0 || mappedJoined < minPlayers || len(ids) == 0 {
+		log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
+			game.ID, finisherNicks, unknown, mappedJoined)
+		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown), recordKeyboard(game.ID))
 		return
 	}
-	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, nicks)
+	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
 
 	for _, id := range ids {
 		if err := b.st.AddPick(game.ID, id); err != nil {

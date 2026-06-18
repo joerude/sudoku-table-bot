@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,6 +12,65 @@ import (
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
+
+// onExport sends the current season's games + points as a CSV document,
+// mirroring the old Google Sheet (a points column per player).
+func (b *Bot) onExport(c tele.Context) error {
+	season, err := b.ensure(c)
+	if err != nil {
+		return b.fail(c, "onExport.ensure", err)
+	}
+	chatID := c.Chat().ID
+	players, err := b.st.ListPlayers(chatID)
+	if err != nil {
+		return b.fail(c, "onExport.players", err)
+	}
+	games, err := b.st.ExportGames(chatID, season.ID)
+	if err != nil {
+		return b.fail(c, "onExport.games", err)
+	}
+	if len(games) == 0 {
+		return c.Send("В этом сезоне ещё нет сыгранных игр для экспорта.")
+	}
+
+	var buf bytes.Buffer
+	buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM so Excel reads Cyrillic correctly
+	w := csv.NewWriter(&buf)
+
+	header := []string{"date", "difficulty", "mode", "code"}
+	for _, p := range players {
+		header = append(header, p.Name)
+	}
+	_ = w.Write(header)
+
+	totals := make([]int, len(players))
+	for _, g := range games {
+		row := []string{g.Date, g.Difficulty, g.Mode, g.Code}
+		for i, p := range players {
+			pts := g.Points[p.ID]
+			totals[i] += pts
+			row = append(row, strconv.Itoa(pts))
+		}
+		_ = w.Write(row)
+	}
+	total := []string{"ИТОГО", "", "", ""}
+	for _, t := range totals {
+		total = append(total, strconv.Itoa(t))
+	}
+	_ = w.Write(total)
+
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return b.fail(c, "onExport.csv", err)
+	}
+
+	doc := &tele.Document{
+		File:     tele.FromReader(bytes.NewReader(buf.Bytes())),
+		FileName: fmt.Sprintf("sudoku-season-%d.csv", season.Number),
+		Caption:  fmt.Sprintf("📊 Экспорт сезона %d — игр: %d", season.Number, len(games)),
+	}
+	return c.Send(doc)
+}
 
 func (b *Bot) onStatus(c tele.Context) error {
 	season, err := b.ensure(c)

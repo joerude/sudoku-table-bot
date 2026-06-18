@@ -68,6 +68,37 @@ func TestGameFlowAndStandings(t *testing.T) {
 	}
 }
 
+func TestTwoPlayerScoringAndDNF(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-500)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "A")
+	b, _, _ := st.RegisterPlayer(chat, 2, "B")
+
+	// Game 1: both finish, A then B -> 3, 1.
+	g1, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	st.AddPick(g1, a.ID)
+	st.AddPick(g1, b.ID)
+	st.FinalizeGame(g1, se.PointsTable)
+
+	// Game 2: only A finishes (B did not finish) -> A +3, B +0.
+	g2, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	st.AddPick(g2, a.ID)
+	st.FinalizeGame(g2, se.PointsTable)
+
+	got := map[string]int{}
+	for _, s := range mustStandings(t, st, chat, se.ID) {
+		got[s.Name] = s.Points
+	}
+	if got["A"] != 6 {
+		t.Errorf("A want 6 (3+3), got %d", got["A"])
+	}
+	if got["B"] != 1 {
+		t.Errorf("B want 1 (1+0), got %d", got["B"])
+	}
+}
+
 func TestNickMapping(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-300)

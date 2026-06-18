@@ -61,6 +61,18 @@ func (s *Store) PlayerByTg(chatID, tgID int64) (*Player, error) {
 	return &p, nil
 }
 
+// RemovePlayer deactivates a player by name (case-insensitive) so they drop out
+// of standings. Returns how many were affected. Their past results are kept.
+func (s *Store) RemovePlayer(chatID int64, name string) (int64, error) {
+	res, err := s.db.Exec(
+		`UPDATE players SET active=0 WHERE chat_id=? AND lower(name)=lower(?) AND active=1`,
+		chatID, name)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // SetNick stores a player's usdoku nickname (used for auto-record matching).
 func (s *Store) SetNick(playerID int64, nick string) error {
 	_, err := s.db.Exec(`UPDATE players SET usdoku_nick=? WHERE id=?`, nick, playerID)

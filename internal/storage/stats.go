@@ -1,5 +1,59 @@
 package storage
 
+import "database/sql"
+
+// ExportGame is one completed game with the points each player earned.
+type ExportGame struct {
+	ID         int64
+	Date       string
+	Difficulty string
+	Mode       string
+	Code       string
+	Points     map[int64]int // playerID -> points earned in this game
+}
+
+// ExportGames returns completed (non-deleted) games of a season with per-player
+// points, for CSV export.
+func (s *Store) ExportGames(chatID, seasonID int64) ([]ExportGame, error) {
+	rows, err := s.db.Query(`
+		SELECT g.id, date(g.completed_at), COALESCE(g.difficulty,''), COALESCE(g.mode,''),
+		       COALESCE(g.usdoku_code,''), gr.player_id, gr.points
+		FROM games g
+		LEFT JOIN game_results gr ON gr.game_id = g.id
+		WHERE g.chat_id=? AND g.season_id=? AND g.status='completed' AND g.deleted=0
+		ORDER BY g.id`, chatID, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ExportGame
+	idx := map[int64]int{}
+	for rows.Next() {
+		var (
+			gid                    int64
+			date, diff, mode, code string
+			pid, pts               sql.NullInt64
+		)
+		if err := rows.Scan(&gid, &date, &diff, &mode, &code, &pid, &pts); err != nil {
+			return nil, err
+		}
+		i, ok := idx[gid]
+		if !ok {
+			out = append(out, ExportGame{
+				ID: gid, Date: date, Difficulty: diff, Mode: mode, Code: code,
+				Points: map[int64]int{},
+			})
+			i = len(out) - 1
+			idx[gid] = i
+		}
+		if pid.Valid {
+			out[i].Points[pid.Int64] = int(pts.Int64)
+		}
+	}
+	return out, rows.Err()
+}
+
 // HistoryGame summarises a completed game for /history.
 type HistoryGame struct {
 	ID         int64
