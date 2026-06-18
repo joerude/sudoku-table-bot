@@ -86,9 +86,12 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 
 	to := tele.ChatID(game.ChatID)
 	if len(unknown) > 0 || len(ids) < minPlayers {
+		log.Printf("🤖 game %d finished, nicks=%v unknown=%v → asking for manual map",
+			game.ID, nicks, unknown)
 		_, _ = b.tb.Send(to, autoMappingText(nicks, unknown), recordKeyboard(game.ID))
 		return
 	}
+	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, nicks)
 
 	for _, id := range ids {
 		if err := b.st.AddPick(game.ID, id); err != nil {

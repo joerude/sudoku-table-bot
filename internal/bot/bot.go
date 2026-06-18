@@ -36,29 +36,40 @@ func New(token string, pollTimeout time.Duration, st *storage.Store) (*Bot, erro
 	return b, nil
 }
 
-// logUpdate logs every incoming command and button press for visibility.
+// logUpdate logs every incoming command and button press in a readable form,
+// e.g.  "▶ joerude · /newgame medium"  or  "⚡ joerude · pick(12:5)".
 func logUpdate(next tele.HandlerFunc) tele.HandlerFunc {
 	return func(c tele.Context) error {
-		var chatID int64
-		if c.Chat() != nil {
-			chatID = c.Chat().ID
-		}
-		user := "?"
-		if c.Sender() != nil {
-			user = c.Sender().Username
-			if user == "" {
-				user = c.Sender().FirstName
-			}
-		}
 		switch {
 		case c.Callback() != nil:
-			log.Printf("callback chat=%d user=%s unique=%s data=%q",
-				chatID, user, c.Callback().Unique, c.Callback().Data)
+			cb := c.Callback()
+			data := cb.Data
+			if data != "" {
+				data = "(" + data + ")"
+			}
+			log.Printf("⚡ %s · %s%s", senderName(c), cb.Unique, data)
 		case c.Message() != nil:
-			log.Printf("message chat=%d user=%s text=%q", chatID, user, c.Message().Text)
+			if text := c.Message().Text; text != "" {
+				log.Printf("▶ %s · %s", senderName(c), text)
+			}
 		}
 		return next(c)
 	}
+}
+
+// senderName returns a short, human label for who triggered an update.
+func senderName(c tele.Context) string {
+	u := c.Sender()
+	if u == nil {
+		return "?"
+	}
+	if u.Username != "" {
+		return "@" + u.Username
+	}
+	if u.FirstName != "" {
+		return u.FirstName
+	}
+	return "id" + strconv.FormatInt(u.ID, 10)
 }
 
 // Start launches the reminder loop, resumes game watchers, and begins polling.

@@ -89,6 +89,7 @@ func (b *Bot) onNewGame(c tele.Context) error {
 	if err := b.st.SetUsdokuCode(gameID, code); err != nil {
 		log.Printf("onNewGame.setcode: %v", err)
 	}
+	log.Printf("🎮 game %d created on usdoku: %s (%s/%s)", gameID, code, difficulty, mode)
 	go b.watchGame(gameID, chatID, code) // auto-record when the game finishes
 	return c.Send(newGameWithCodeText(difficulty, mode, code), recordKeyboard(gameID))
 }
@@ -341,7 +342,10 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		}
 		seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
 			newSeason.Target, newSeason.Number)
+		log.Printf("🏁 season %d closed, winner=%s (%d pts) → season %d started",
+			season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
 	}
+	log.Printf("✅ game %d scored", game.ID)
 	return result, seasonEnd, nil
 }
 

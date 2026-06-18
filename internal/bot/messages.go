@@ -127,6 +127,10 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d игр)</i>\n",
 			medal(i+1), esc(r.Name), r.Points, r.Wins, r.Games))
 	}
+	if leader := rows[0]; leader.Points > 0 {
+		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
+			esc(leader.Name), leader.Points, se.Target, progressBar(leader.Points, se.Target)))
+	}
 	return b.String()
 }
 
