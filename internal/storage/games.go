@@ -124,6 +124,14 @@ func (s *Store) AddPick(gameID, playerID int64) error {
 	return err
 }
 
+// RemoveLastPick deletes the most recently added finisher (highest rank).
+func (s *Store) RemoveLastPick(gameID int64) error {
+	_, err := s.db.Exec(
+		`DELETE FROM game_results WHERE game_id=? AND rank=(
+			SELECT MAX(rank) FROM game_results WHERE game_id=?)`, gameID, gameID)
+	return err
+}
+
 // ClearResults removes all picks for a game (used by reset / edit).
 func (s *Store) ClearResults(gameID int64) error {
 	_, err := s.db.Exec(`DELETE FROM game_results WHERE game_id=?`, gameID)

@@ -232,6 +232,39 @@ func (b *Bot) onReset(c tele.Context) error {
 	return c.Edit(text, markup)
 }
 
+// onUndoPick removes the last finisher tapped, stepping back one.
+func (b *Bot) onUndoPick(c tele.Context) error {
+	gameID := parseID(c.Data())
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		return b.fail(c, "onUndoPick.game", err)
+	}
+	if game == nil {
+		_ = c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+		return nil
+	}
+	if err := b.st.RemoveLastPick(gameID); err != nil {
+		return b.fail(c, "onUndoPick.remove", err)
+	}
+	text, markup, err := b.pickerView(game.ChatID, gameID)
+	if err != nil {
+		return b.fail(c, "onUndoPick.picker", err)
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Шаг назад"})
+	return c.Edit(text, markup)
+}
+
+// onCancelRecord aborts recording: clears partial picks, keeps the game pending.
+func (b *Bot) onCancelRecord(c tele.Context) error {
+	gameID := parseID(c.Data())
+	if err := b.st.ClearResults(gameID); err != nil {
+		return b.fail(c, "onCancelRecord.clear", err)
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
+	return c.Edit("✖️ Запись отменена. Нажми «📝 Записать результат», когда будете готовы.",
+		recordKeyboard(gameID))
+}
+
 // onEdit reopens a finalised game for re-entry.
 func (b *Bot) onEdit(c tele.Context) error {
 	gameID := parseID(c.Data())

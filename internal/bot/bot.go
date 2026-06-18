@@ -15,13 +15,14 @@ import (
 
 // Bot is the running Telegram bot.
 type Bot struct {
-	tb *tele.Bot
-	st *storage.Store
-	ud *usdoku.Client
+	tb     *tele.Bot
+	st     *storage.Store
+	ud     *usdoku.Client
+	dbPath string
 }
 
 // New constructs a Bot using long-polling.
-func New(token string, pollTimeout time.Duration, st *storage.Store) (*Bot, error) {
+func New(token string, pollTimeout time.Duration, st *storage.Store, dbPath string) (*Bot, error) {
 	tb, err := tele.NewBot(tele.Settings{
 		Token:     token,
 		Poller:    &tele.LongPoller{Timeout: pollTimeout},
@@ -30,11 +31,14 @@ func New(token string, pollTimeout time.Duration, st *storage.Store) (*Bot, erro
 	if err != nil {
 		return nil, err
 	}
-	b := &Bot{tb: tb, st: st, ud: usdoku.New()}
+	b := &Bot{tb: tb, st: st, ud: usdoku.New(), dbPath: dbPath}
 	tb.Use(logUpdate)
 	b.routes()
 	return b, nil
 }
+
+// Stop stops the poller so main can close the database cleanly.
+func (b *Bot) Stop() { b.tb.Stop() }
 
 // logUpdate logs every incoming command and button press in a readable form,
 // e.g.  "▶ joerude · /newgame medium"  or  "⚡ joerude · pick(12:5)".
@@ -98,6 +102,7 @@ func botCommands() []tele.Command {
 		{Text: "me", Description: "моя статистика"},
 		{Text: "history", Description: "последние игры"},
 		{Text: "settings", Description: "настройки (админ)"},
+		{Text: "backup", Description: "бэкап базы файлом"},
 		{Text: "help", Description: "справка"},
 	}
 }
@@ -120,8 +125,11 @@ func (b *Bot) routes() {
 	b.tb.Handle("/me", b.onMe)
 	b.tb.Handle("/history", b.onHistory)
 	b.tb.Handle("/settings", b.onSettings)
+	b.tb.Handle("/backup", b.onBackup)
 
 	b.tb.Handle(&tele.Btn{Unique: cbPick}, b.onPick)
+	b.tb.Handle(&tele.Btn{Unique: cbUndo}, b.onUndoPick)
+	b.tb.Handle(&tele.Btn{Unique: cbCancel}, b.onCancelRecord)
 	b.tb.Handle(&tele.Btn{Unique: cbDone}, b.onDone)
 	b.tb.Handle(&tele.Btn{Unique: cbReset}, b.onReset)
 	b.tb.Handle(&tele.Btn{Unique: cbEdit}, b.onEdit)
@@ -137,6 +145,7 @@ func (b *Bot) routes() {
 
 	b.tb.Handle(tele.OnAddedToGroup, b.onAddedToGroup)
 	b.tb.Handle(tele.OnText, b.onText)
+	b.tb.Handle(tele.OnDocument, b.onDocument)
 }
 
 // ensure guarantees a chat row + active season exist, returning the season.

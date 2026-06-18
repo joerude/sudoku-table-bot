@@ -4,7 +4,9 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/bot"
 	"github.com/joerude/sudoku-bot-telegram/internal/config"
@@ -23,16 +25,28 @@ func main() {
 		}
 	}
 
+	// Apply a database uploaded via /restore (atomic swap before opening).
+	if err := storage.ApplyPendingRestore(cfg.DBPath); err != nil {
+		log.Printf("restore: %v", err)
+	}
+
 	st, err := storage.Open(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}
 	defer st.Close()
 
-	b, err := bot.New(cfg.Token, cfg.PollTimeout, st)
+	b, err := bot.New(cfg.Token, cfg.PollTimeout, st, cfg.DBPath)
 	if err != nil {
 		log.Fatalf("bot: %v", err)
 	}
 
-	b.Start()
+	go b.Start()
+
+	// Graceful shutdown: stop polling on SIGINT/SIGTERM so the DB closes cleanly.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	log.Println("shutting down…")
+	b.Stop()
 }

@@ -13,8 +13,10 @@ const (
 	cbPick  = "pick"  // payload: "<gameID>:<playerID>"
 	cbDone  = "done"  // payload: "<gameID>"
 	cbReset = "reset" // payload: "<gameID>"
-	cbEdit  = "edit"  // payload: "<gameID>"
-	cbDel   = "del"   // payload: "<gameID>" — asks to confirm deletion
+	cbEdit   = "edit"   // payload: "<gameID>"
+	cbUndo   = "undo"   // payload: "<gameID>" — undo last pick
+	cbCancel = "cancel" // payload: "<gameID>" — cancel recording
+	cbDel    = "del"    // payload: "<gameID>" — asks to confirm deletion
 	cbDelY  = "dely"  // payload: "<gameID>" — confirmed delete
 	cbDelN  = "deln"  // payload: "<gameID>" — cancel delete
 	cbUndel = "undel" // payload: "<gameID>" — restore deleted game
@@ -57,10 +59,14 @@ func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount int) *
 	}
 
 	if pickedCount > 0 {
+		rows = append(rows, m.Row(m.Data("✅ Готово", cbDone, gid(gameID))))
 		rows = append(rows, m.Row(
-			m.Data("✅ Готово", cbDone, gid(gameID)),
+			m.Data("↩️ Назад", cbUndo, gid(gameID)),
 			m.Data("♻️ Сброс", cbReset, gid(gameID)),
+			m.Data("✖️ Отмена", cbCancel, gid(gameID)),
 		))
+	} else {
+		rows = append(rows, m.Row(m.Data("✖️ Отмена", cbCancel, gid(gameID))))
 	}
 	m.Inline(rows...)
 	return m
