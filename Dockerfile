@@ -1,5 +1,6 @@
 # ---- build stage ----
-FROM golang:1.22-alpine AS build
+# go.mod requires Go >= 1.25 (modernc.org/sqlite); match it here.
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
