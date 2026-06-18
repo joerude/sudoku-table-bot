@@ -28,10 +28,19 @@ func parseNewGameArgs(args []string) (difficulty, mode string) {
 	return
 }
 
-// minPlayers is the smallest league that produces a meaningful result.
-const minPlayers = 2
+// defaultMinPlayers is the fallback minimum when a chat has no setting.
+const defaultMinPlayers = 2
 
-// enoughPlayers guards game actions: a competitive result needs at least two
+// minPlayers is the per-chat minimum participants for a game to count.
+func (b *Bot) minPlayers(chatID int64) int {
+	n, err := b.st.MinPlayers(chatID)
+	if err != nil || n < defaultMinPlayers {
+		return defaultMinPlayers
+	}
+	return n
+}
+
+// enoughPlayers guards game actions: a competitive result needs enough
 // registered players, otherwise the leader's points are uncontested.
 func (b *Bot) enoughPlayers(c tele.Context, chatID int64) bool {
 	players, err := b.st.ListPlayers(chatID)
@@ -39,10 +48,10 @@ func (b *Bot) enoughPlayers(c tele.Context, chatID int64) bool {
 		_ = b.fail(c, "enoughPlayers", err)
 		return false
 	}
-	if len(players) < minPlayers {
+	if min := b.minPlayers(chatID); len(players) < min {
 		_ = c.Send(fmt.Sprintf(
-			"👥 Для зачёта нужно минимум <b>%d</b> игрока. Сейчас зарегистрировано: <b>%d</b>.\n"+
-				"Пусть соперники сделают /join.", minPlayers, len(players)))
+			"👥 Для зачёта нужно минимум <b>%d</b> игроков. Сейчас зарегистрировано: <b>%d</b>.\n"+
+				"Пусть соперники сделают /join.", min, len(players)))
 		return false
 	}
 	return true

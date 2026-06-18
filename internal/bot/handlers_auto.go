@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -97,7 +98,18 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		}
 	}
 
-	if len(unknown) > 0 || mappedJoined < minPlayers || len(ids) == 0 {
+	min := b.minPlayers(game.ChatID)
+
+	// Too few known players actually joined — don't count it (anti-farming).
+	if len(unknown) == 0 && mappedJoined < min {
+		log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
+		_, _ = b.tb.Send(to, fmt.Sprintf(
+			"🚫 Игра не засчитана: участвовало меньше <b>%d</b> игроков (текущий минимум).\n"+
+				"Изменить: /settings minplayers", min))
+		return
+	}
+
+	if len(unknown) > 0 || len(ids) == 0 {
 		log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
 			game.ID, finisherNicks, unknown, mappedJoined)
 		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown), recordKeyboard(game.ID))

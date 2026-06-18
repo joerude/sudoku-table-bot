@@ -46,6 +46,7 @@ type ChatSettings struct {
 	DailyReminder bool
 	DailyTime     string // HH:MM
 	LastDaily     string // YYYY-MM-DD or empty
+	MinPlayers    int
 }
 
 // GetChat returns a single chat's settings.
@@ -53,14 +54,30 @@ func (s *Store) GetChat(chatID int64) (*ChatSettings, error) {
 	var c ChatSettings
 	var daily int
 	err := s.db.QueryRow(`
-		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,'')
+		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,''), min_players
 		FROM chats WHERE chat_id=?`, chatID).
-		Scan(&c.ChatID, &c.TZ, &daily, &c.DailyTime, &c.LastDaily)
+		Scan(&c.ChatID, &c.TZ, &daily, &c.DailyTime, &c.LastDaily, &c.MinPlayers)
 	if err != nil {
 		return nil, err
 	}
 	c.DailyReminder = daily != 0
 	return &c, nil
+}
+
+// MinPlayers returns the minimum participants required for a game to count.
+func (s *Store) MinPlayers(chatID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT min_players FROM chats WHERE chat_id=?`, chatID).Scan(&n)
+	if err == sql.ErrNoRows || n < 1 {
+		return 2, nil
+	}
+	return n, err
+}
+
+// SetMinPlayers sets the minimum participants for a game to count.
+func (s *Store) SetMinPlayers(chatID int64, n int) error {
+	_, err := s.db.Exec(`UPDATE chats SET min_players=? WHERE chat_id=?`, n, chatID)
+	return err
 }
 
 // ChatAdmin returns the recorded admin user id (0 if unset).

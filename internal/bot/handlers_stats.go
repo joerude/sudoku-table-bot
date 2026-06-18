@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -132,6 +133,7 @@ func (b *Bot) onHistory(c tele.Context) error {
 const settingsUsage = `⚙️ <b>Настройки</b>
 /settings target &lt;N&gt; — порог сезона (очки до победы)
 /settings points &lt;a b c…&gt; — таблица очков по местам
+/settings minplayers &lt;N&gt; — мин. участников, чтобы игра засчиталась
 /settings daily &lt;HH:MM|off&gt; — ежедневное напоминание`
 
 func (b *Bot) onSettings(c tele.Context) error {
@@ -144,7 +146,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	if len(args) == 0 {
 		return c.Send(b.settingsSummary(chatID, season))
 	}
-	if !b.requireAdmin(c, chatID) {
+	if !b.requireAdmin(c) {
 		return nil
 	}
 
@@ -169,6 +171,16 @@ func (b *Bot) onSettings(c tele.Context) error {
 		}
 		return c.Send("✅ Таблица очков: " + formatTable(table))
 
+	case "minplayers":
+		n, err := strconv.Atoi(argAt(args, 1))
+		if err != nil || n < 2 {
+			return c.Send("Минимум участников в игре (≥2): /settings minplayers 3")
+		}
+		if err := b.st.SetMinPlayers(chatID, n); err != nil {
+			return b.fail(c, "onSettings.minplayers", err)
+		}
+		return c.Send(fmt.Sprintf("✅ Игра засчитывается, если участвовало ≥ <b>%d</b> игроков.", n))
+
 	case "daily":
 		val := strings.ToLower(argAt(args, 1))
 		if val == "off" {
@@ -192,28 +204,49 @@ func (b *Bot) onSettings(c tele.Context) error {
 
 func (b *Bot) settingsSummary(chatID int64, season *storage.Season) string {
 	daily := "выкл"
-	if ch, err := b.st.GetChat(chatID); err == nil && ch.DailyReminder {
-		daily = "вкл, " + ch.DailyTime
+	minPlayers := 2
+	if ch, err := b.st.GetChat(chatID); err == nil {
+		if ch.DailyReminder {
+			daily = "вкл, " + ch.DailyTime
+		}
+		if ch.MinPlayers > 0 {
+			minPlayers = ch.MinPlayers
+		}
 	}
 	return fmt.Sprintf(
 		"⚙️ <b>Настройки</b>\n"+
 			"Порог сезона: <b>%d</b>\n"+
 			"Таблица очков: <b>%s</b>\n"+
+			"Мин. участников в игре: <b>%d</b>\n"+
 			"Ежедневное напоминание: <b>%s</b>\n\n%s",
-		season.Target, formatTable(season.PointsTable), daily, settingsUsage)
+		season.Target, formatTable(season.PointsTable), minPlayers, daily, settingsUsage)
 }
 
-func (b *Bot) requireAdmin(c tele.Context, chatID int64) bool {
-	admin, err := b.st.ChatAdmin(chatID)
+// isAdmin reports whether the sender may perform privileged actions: in a group
+// they must be a Telegram admin/creator; a private chat is always "admin".
+func (b *Bot) isAdmin(c tele.Context) bool {
+	chat := c.Chat()
+	if chat == nil || chat.Type == tele.ChatPrivate {
+		return true
+	}
+	u := realSender(c)
+	if u == nil {
+		return false
+	}
+	m, err := b.tb.ChatMemberOf(chat, u)
 	if err != nil {
-		_ = b.fail(c, "requireAdmin", err)
+		log.Printf("isAdmin: %v", err)
 		return false
 	}
-	if admin != 0 && c.Sender() != nil && c.Sender().ID != admin {
-		_ = c.Send("⛔ Менять настройки может только админ (тот, кто первым запустил бота в чате).")
-		return false
+	return m.Role == tele.Creator || m.Role == tele.Administrator
+}
+
+func (b *Bot) requireAdmin(c tele.Context) bool {
+	if b.isAdmin(c) {
+		return true
 	}
-	return true
+	_ = c.Send("⛔ Это действие доступно только админам группы.")
+	return false
 }
 
 func argAt(args []string, i int) string {

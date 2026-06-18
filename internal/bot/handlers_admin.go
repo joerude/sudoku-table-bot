@@ -47,7 +47,7 @@ func (b *Bot) onDocument(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onDocument.ensure", err)
 	}
-	if !b.requireAdmin(c, c.Chat().ID) {
+	if !b.requireAdmin(c) {
 		return nil
 	}
 

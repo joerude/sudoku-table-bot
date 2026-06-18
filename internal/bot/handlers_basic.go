@@ -100,6 +100,9 @@ func (b *Bot) onRemovePlayer(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onRemovePlayer.ensure", err)
 	}
+	if !b.requireAdmin(c) {
+		return nil
+	}
 	name := strings.TrimSpace(c.Message().Payload)
 	if name == "" {
 		return c.Send("Кого убрать? Напиши: /removeplayer Имя\n(смотри /players)")

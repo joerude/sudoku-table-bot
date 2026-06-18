@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS chats (
     tz             TEXT    NOT NULL DEFAULT 'Asia/Almaty',
     daily_reminder INTEGER NOT NULL DEFAULT 1,        -- bool: send daily nudge
     daily_time     TEXT    NOT NULL DEFAULT '21:00',  -- HH:MM local
+    min_players    INTEGER NOT NULL DEFAULT 2,        -- min participants for a game to count
     last_daily     TEXT,                              -- date (YYYY-MM-DD) of last daily nudge
     created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
