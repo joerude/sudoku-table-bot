@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -27,12 +28,35 @@ func parseNewGameArgs(args []string) (difficulty, mode string) {
 	return
 }
 
+// minPlayers is the smallest league that produces a meaningful result.
+const minPlayers = 2
+
+// enoughPlayers guards game actions: a competitive result needs at least two
+// registered players, otherwise the leader's points are uncontested.
+func (b *Bot) enoughPlayers(c tele.Context, chatID int64) bool {
+	players, err := b.st.ListPlayers(chatID)
+	if err != nil {
+		_ = b.fail(c, "enoughPlayers", err)
+		return false
+	}
+	if len(players) < minPlayers {
+		_ = c.Send(fmt.Sprintf(
+			"👥 Для зачёта нужно минимум <b>%d</b> игрока. Сейчас зарегистрировано: <b>%d</b>.\n"+
+				"Пусть соперники сделают /join.", minPlayers, len(players)))
+		return false
+	}
+	return true
+}
+
 func (b *Bot) onNewGame(c tele.Context) error {
 	season, err := b.ensure(c)
 	if err != nil {
 		return b.fail(c, "onNewGame.ensure", err)
 	}
 	chatID := c.Chat().ID
+	if !b.enoughPlayers(c, chatID) {
+		return nil
+	}
 
 	pending, err := b.st.ActivePendingGame(chatID)
 	if err != nil {
@@ -74,6 +98,9 @@ func (b *Bot) onResult(c tele.Context) error {
 		return b.fail(c, "onResult.ensure", err)
 	}
 	chatID := c.Chat().ID
+	if !b.enoughPlayers(c, chatID) {
+		return nil
+	}
 
 	pending, err := b.st.ActivePendingGame(chatID)
 	if err != nil {
