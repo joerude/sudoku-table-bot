@@ -49,9 +49,21 @@ func (b *Bot) enoughPlayers(c tele.Context, chatID int64) bool {
 }
 
 func (b *Bot) onNewGame(c tele.Context) error {
+	difficulty, mode := parseNewGameArgs(c.Args())
+	return b.startNewGame(c, difficulty, mode)
+}
+
+// onQuickGame starts a default medium/hardcore game from the quick menu.
+func (b *Bot) onQuickGame(c tele.Context) error {
+	_ = c.Respond()
+	return b.startNewGame(c, "medium", "hardcore")
+}
+
+// startNewGame creates a usdoku game (or falls back to a link) and posts it.
+func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
 	season, err := b.ensure(c)
 	if err != nil {
-		return b.fail(c, "onNewGame.ensure", err)
+		return b.fail(c, "startNewGame.ensure", err)
 	}
 	chatID := c.Chat().ID
 	if !b.enoughPlayers(c, chatID) {
@@ -60,21 +72,20 @@ func (b *Bot) onNewGame(c tele.Context) error {
 
 	pending, err := b.st.ActivePendingGame(chatID)
 	if err != nil {
-		return b.fail(c, "onNewGame.pending", err)
+		return b.fail(c, "startNewGame.pending", err)
 	}
 	if pending != nil {
 		return c.Send("⚠️ Уже есть незакрытая игра. Сначала запиши её результат или отмени:",
 			pendingConflictKeyboard(pending.ID))
 	}
 
-	difficulty, mode := parseNewGameArgs(c.Args())
 	var createdBy int64
 	if c.Sender() != nil {
 		createdBy = c.Sender().ID
 	}
 	gameID, err := b.st.CreatePendingGame(chatID, season.ID, createdBy, difficulty, mode)
 	if err != nil {
-		return b.fail(c, "onNewGame.create", err)
+		return b.fail(c, "startNewGame.create", err)
 	}
 
 	// Try to create a real game on usdoku; fall back to a plain link if the API
@@ -87,7 +98,7 @@ func (b *Bot) onNewGame(c tele.Context) error {
 		return c.Send(newGameText(difficulty, mode), recordKeyboard(gameID))
 	}
 	if err := b.st.SetUsdokuCode(gameID, code); err != nil {
-		log.Printf("onNewGame.setcode: %v", err)
+		log.Printf("startNewGame.setcode: %v", err)
 	}
 	log.Printf("🎮 game %d created on usdoku: %s (%s/%s)", gameID, code, difficulty, mode)
 	go b.watchGame(gameID, chatID, code) // auto-record when the game finishes

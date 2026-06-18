@@ -76,8 +76,28 @@ func senderName(c tele.Context) string {
 func (b *Bot) Start() {
 	go b.runReminders()
 	b.resumeWatches()
+	if err := b.tb.SetCommands(botCommands()); err != nil {
+		log.Printf("set commands: %v", err)
+	}
 	log.Println("bot started")
 	b.tb.Start()
+}
+
+// botCommands is the menu shown by Telegram's "/" button.
+func botCommands() []tele.Command {
+	return []tele.Command{
+		{Text: "join", Description: "зарегистрироваться"},
+		{Text: "setnick", Description: "ник на usdoku (для авто-учёта)"},
+		{Text: "players", Description: "список игроков"},
+		{Text: "newgame", Description: "новая игра + ссылка"},
+		{Text: "result", Description: "записать результат вручную"},
+		{Text: "status", Description: "таблица сезона"},
+		{Text: "season", Description: "инфо о сезоне"},
+		{Text: "me", Description: "моя статистика"},
+		{Text: "history", Description: "последние игры"},
+		{Text: "settings", Description: "настройки (админ)"},
+		{Text: "help", Description: "справка"},
+	}
 }
 
 func (b *Bot) routes() {
@@ -106,6 +126,13 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbDelN}, b.onDeleteCancel)
 	b.tb.Handle(&tele.Btn{Unique: cbUndel}, b.onRestore)
 	b.tb.Handle(&tele.Btn{Unique: cbRec}, b.onRecord)
+
+	b.tb.Handle(&tele.Btn{Unique: cbQGame}, b.onQuickGame)
+	b.tb.Handle(&tele.Btn{Unique: cbQStatus}, b.onQuickStatus)
+	b.tb.Handle(&tele.Btn{Unique: cbQMe}, b.onQuickMe)
+
+	b.tb.Handle(tele.OnAddedToGroup, b.onAddedToGroup)
+	b.tb.Handle(tele.OnText, b.onText)
 }
 
 // ensure guarantees a chat row + active season exist, returning the season.

@@ -11,7 +11,34 @@ func (b *Bot) onHelp(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onHelp.ensure", err)
 	}
-	return c.Send(helpText)
+	return c.Send(helpText, quickMenuKeyboard())
+}
+
+// onAddedToGroup greets the chat with onboarding when the bot is added.
+func (b *Bot) onAddedToGroup(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onAddedToGroup.ensure", err)
+	}
+	return c.Send(welcomeText, quickMenuKeyboard())
+}
+
+// onText nudges users who type a command incorrectly (e.g. "@bot /start").
+func (b *Bot) onText(c tele.Context) error {
+	if c.Message() != nil && strings.Contains(c.Message().Text, "/") {
+		return c.Reply("Команды пиши с «/» в начале и без упоминания — например /start или /help.")
+	}
+	return nil
+}
+
+// onQuickStatus / onQuickMe back the quick-menu buttons.
+func (b *Bot) onQuickStatus(c tele.Context) error {
+	_ = c.Respond()
+	return b.onStatus(c)
+}
+
+func (b *Bot) onQuickMe(c tele.Context) error {
+	_ = c.Respond()
+	return b.onMe(c)
 }
 
 func (b *Bot) onJoin(c tele.Context) error {

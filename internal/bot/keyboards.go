@@ -19,7 +19,23 @@ const (
 	cbDelN  = "deln"  // payload: "<gameID>" — cancel delete
 	cbUndel = "undel" // payload: "<gameID>" — restore deleted game
 	cbRec   = "rec"   // payload: "<gameID>"
+
+	// Quick-action menu (no payload).
+	cbQGame   = "qgame"
+	cbQStatus = "qstatus"
+	cbQMe     = "qme"
 )
+
+// quickMenuKeyboard offers one-tap shortcuts for the most common actions.
+func quickMenuKeyboard() *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(
+		m.Data("🆕 Игра", cbQGame),
+		m.Data("📊 Таблица", cbQStatus),
+		m.Data("👤 Я", cbQMe),
+	))
+	return m
+}
 
 func gid(id int64) string { return fmt.Sprintf("%d", id) }
 

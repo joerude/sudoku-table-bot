@@ -29,6 +29,15 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт игр в судоку 
 <b>Настройки</b> (только админ)
 /settings — порог сезона, таблица очков, напоминания`
 
+const welcomeText = `👋 <b>Привет!</b> Я веду учёт ваших игр в судоку (usdoku.com) — очки, места, сезоны.
+
+<b>С чего начать:</b>
+1. Каждый игрок: /join
+2. Каждый: /setnick &lt;ник на usdoku&gt; — чтобы результат записывался автоматически
+3. /newgame medium — создать игру
+
+Все команды — /help. Удобные кнопки ниже 👇`
+
 // esc escapes the characters that matter for Telegram HTML parse mode.
 func esc(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
