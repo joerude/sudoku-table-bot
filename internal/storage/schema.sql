@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS games (
     mode         TEXT,
     usdoku_code  TEXT,
     reminded     INTEGER NOT NULL DEFAULT 0,           -- bool: event reminder sent
+    deleted      INTEGER NOT NULL DEFAULT 0,           -- bool: soft-deleted (restorable)
     created_by   INTEGER,
     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     completed_at TEXT

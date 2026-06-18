@@ -20,7 +20,7 @@ func (s *Store) Standings(chatID, seasonID int64) ([]Standing, error) {
 		       COUNT(gr.id)                                          AS games
 		FROM players p
 		LEFT JOIN games g
-		       ON g.season_id = ? AND g.status = 'completed' AND g.chat_id = p.chat_id
+		       ON g.season_id = ? AND g.status = 'completed' AND g.deleted = 0 AND g.chat_id = p.chat_id
 		LEFT JOIN game_results gr
 		       ON gr.game_id = g.id AND gr.player_id = p.id
 		WHERE p.chat_id = ? AND p.active = 1

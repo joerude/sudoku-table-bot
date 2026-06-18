@@ -104,7 +104,7 @@ func (s *Store) CompletedToday(chatID int64, date string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`
 		SELECT COUNT(*) FROM games
-		WHERE chat_id=? AND status='completed' AND date(completed_at)=?`,
+		WHERE chat_id=? AND status='completed' AND deleted=0 AND date(completed_at)=?`,
 		chatID, date).Scan(&n)
 	return n, err
 }

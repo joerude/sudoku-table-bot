@@ -95,6 +95,51 @@ func TestNickMapping(t *testing.T) {
 	}
 }
 
+func TestSoftDeleteRestore(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-400)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "A")
+	b, _, _ := st.RegisterPlayer(chat, 2, "B")
+
+	gid, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	st.AddPick(gid, a.ID)
+	st.AddPick(gid, b.ID)
+	st.FinalizeGame(gid, se.PointsTable)
+
+	if before, _ := st.Standings(chat, se.ID); before[0].Points != 3 {
+		t.Fatalf("expected leader 3 before delete, got %d", before[0].Points)
+	}
+
+	// Soft delete removes it from standings...
+	if err := st.SoftDeleteGame(gid); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range mustStandings(t, st, chat, se.ID) {
+		if s.Points != 0 {
+			t.Errorf("deleted game should not count, %s has %d", s.Name, s.Points)
+		}
+	}
+
+	// ...and restore brings it back.
+	if err := st.RestoreGame(gid); err != nil {
+		t.Fatal(err)
+	}
+	if after := mustStandings(t, st, chat, se.ID); after[0].Points != 3 {
+		t.Errorf("restore should bring points back, got %d", after[0].Points)
+	}
+}
+
+func mustStandings(t *testing.T, st *Store, chat, season int64) []Standing {
+	t.Helper()
+	s, err := st.Standings(chat, season)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func TestSeasonRollover(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-200)

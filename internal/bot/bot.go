@@ -31,8 +31,34 @@ func New(token string, pollTimeout time.Duration, st *storage.Store) (*Bot, erro
 		return nil, err
 	}
 	b := &Bot{tb: tb, st: st, ud: usdoku.New()}
+	tb.Use(logUpdate)
 	b.routes()
 	return b, nil
+}
+
+// logUpdate logs every incoming command and button press for visibility.
+func logUpdate(next tele.HandlerFunc) tele.HandlerFunc {
+	return func(c tele.Context) error {
+		var chatID int64
+		if c.Chat() != nil {
+			chatID = c.Chat().ID
+		}
+		user := "?"
+		if c.Sender() != nil {
+			user = c.Sender().Username
+			if user == "" {
+				user = c.Sender().FirstName
+			}
+		}
+		switch {
+		case c.Callback() != nil:
+			log.Printf("callback chat=%d user=%s unique=%s data=%q",
+				chatID, user, c.Callback().Unique, c.Callback().Data)
+		case c.Message() != nil:
+			log.Printf("message chat=%d user=%s text=%q", chatID, user, c.Message().Text)
+		}
+		return next(c)
+	}
 }
 
 // Start launches the reminder loop, resumes game watchers, and begins polling.
@@ -64,7 +90,10 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbDone}, b.onDone)
 	b.tb.Handle(&tele.Btn{Unique: cbReset}, b.onReset)
 	b.tb.Handle(&tele.Btn{Unique: cbEdit}, b.onEdit)
-	b.tb.Handle(&tele.Btn{Unique: cbDel}, b.onDelete)
+	b.tb.Handle(&tele.Btn{Unique: cbDel}, b.onDeleteAsk)
+	b.tb.Handle(&tele.Btn{Unique: cbDelY}, b.onDeleteConfirm)
+	b.tb.Handle(&tele.Btn{Unique: cbDelN}, b.onDeleteCancel)
+	b.tb.Handle(&tele.Btn{Unique: cbUndel}, b.onRestore)
 	b.tb.Handle(&tele.Btn{Unique: cbRec}, b.onRecord)
 }
 

@@ -34,7 +34,7 @@ func (s *Store) ActivePendingGame(chatID int64) (*Game, error) {
 	var g Game
 	err := s.db.QueryRow(
 		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code
-		 FROM games WHERE chat_id=? AND status='pending'
+		 FROM games WHERE chat_id=? AND status='pending' AND deleted=0
 		 ORDER BY id DESC LIMIT 1`, chatID).
 		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode)
 	if err == sql.ErrNoRows {
@@ -74,7 +74,8 @@ type WatchableGame struct {
 func (s *Store) PendingGamesWithCode() ([]WatchableGame, error) {
 	rows, err := s.db.Query(
 		`SELECT id, chat_id, usdoku_code FROM games
-		 WHERE status='pending' AND usdoku_code IS NOT NULL AND usdoku_code <> ''`)
+		 WHERE status='pending' AND deleted=0
+		   AND usdoku_code IS NOT NULL AND usdoku_code <> ''`)
 	if err != nil {
 		return nil, err
 	}
@@ -187,20 +188,17 @@ func (s *Store) ReopenGame(gameID int64) error {
 	return tx.Commit()
 }
 
-// DeleteGame removes a game and its results.
-func (s *Store) DeleteGame(gameID int64) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM game_results WHERE game_id=?`, gameID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM games WHERE id=?`, gameID); err != nil {
-		return err
-	}
-	return tx.Commit()
+// SoftDeleteGame marks a game as deleted so it stops counting toward standings,
+// but keeps the row and its results so it can be restored.
+func (s *Store) SoftDeleteGame(gameID int64) error {
+	_, err := s.db.Exec(`UPDATE games SET deleted=1 WHERE id=?`, gameID)
+	return err
+}
+
+// RestoreGame un-deletes a previously soft-deleted game.
+func (s *Store) RestoreGame(gameID int64) error {
+	_, err := s.db.Exec(`UPDATE games SET deleted=0 WHERE id=?`, gameID)
+	return err
 }
 
 // ResultRow is one finisher of a game, joined with the player name.

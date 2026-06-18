@@ -14,7 +14,10 @@ const (
 	cbDone  = "done"  // payload: "<gameID>"
 	cbReset = "reset" // payload: "<gameID>"
 	cbEdit  = "edit"  // payload: "<gameID>"
-	cbDel   = "del"   // payload: "<gameID>"
+	cbDel   = "del"   // payload: "<gameID>" — asks to confirm deletion
+	cbDelY  = "dely"  // payload: "<gameID>" — confirmed delete
+	cbDelN  = "deln"  // payload: "<gameID>" — cancel delete
+	cbUndel = "undel" // payload: "<gameID>" — restore deleted game
 	cbRec   = "rec"   // payload: "<gameID>"
 )
 
@@ -54,6 +57,23 @@ func resultKeyboard(gameID int64) *tele.ReplyMarkup {
 		m.Data("✏️ Исправить", cbEdit, gid(gameID)),
 		m.Data("🗑 Удалить", cbDel, gid(gameID)),
 	))
+	return m
+}
+
+// confirmDeleteKeyboard asks the user to confirm deletion.
+func confirmDeleteKeyboard(gameID int64) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(
+		m.Data("✅ Да, удалить", cbDelY, gid(gameID)),
+		m.Data("↩️ Отмена", cbDelN, gid(gameID)),
+	))
+	return m
+}
+
+// restoreKeyboard offers to undo a soft-delete.
+func restoreKeyboard(gameID int64) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(m.Data("↩️ Вернуть", cbUndel, gid(gameID))))
 	return m
 }
 

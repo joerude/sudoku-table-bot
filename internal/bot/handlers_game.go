@@ -242,13 +242,75 @@ func (b *Bot) onEdit(c tele.Context) error {
 	return c.Edit(text, markup)
 }
 
-func (b *Bot) onDelete(c tele.Context) error {
+// onDeleteAsk swaps the keyboard for a confirmation prompt (text is preserved).
+func (b *Bot) onDeleteAsk(c tele.Context) error {
 	gameID := parseID(c.Data())
-	if err := b.st.DeleteGame(gameID); err != nil {
-		return b.fail(c, "onDelete.delete", err)
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		return b.fail(c, "onDeleteAsk.game", err)
+	}
+	if game == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+	}
+	_ = c.Respond()
+	return c.Edit(confirmDeleteKeyboard(gameID))
+}
+
+// onDeleteConfirm soft-deletes the game and offers to restore it.
+func (b *Bot) onDeleteConfirm(c tele.Context) error {
+	gameID := parseID(c.Data())
+	if err := b.st.SoftDeleteGame(gameID); err != nil {
+		return b.fail(c, "onDeleteConfirm.delete", err)
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
-	return c.Edit("🗑 Игра удалена. Таблица пересчитана.")
+	return c.Edit("🗑 Игра удалена, таблица пересчитана.\nМожно вернуть:", restoreKeyboard(gameID))
+}
+
+// onDeleteCancel keeps the game and restores its normal keyboard.
+func (b *Bot) onDeleteCancel(c tele.Context) error {
+	gameID := parseID(c.Data())
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		return b.fail(c, "onDeleteCancel.game", err)
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
+	if game != nil && game.Status == "completed" {
+		return c.Edit(resultKeyboard(gameID))
+	}
+	return c.Edit(recordKeyboard(gameID))
+}
+
+// onRestore un-deletes a game and rebuilds its view.
+func (b *Bot) onRestore(c tele.Context) error {
+	gameID := parseID(c.Data())
+	if err := b.st.RestoreGame(gameID); err != nil {
+		return b.fail(c, "onRestore.restore", err)
+	}
+	text, markup, err := b.gameView(gameID)
+	if err != nil {
+		return b.fail(c, "onRestore.view", err)
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Возвращено"})
+	return c.Edit(text, markup)
+}
+
+// gameView rebuilds the message text + keyboard for a game in its current state.
+func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		return "", nil, err
+	}
+	if game == nil {
+		return "🗑 Игра не найдена.", nil, nil
+	}
+	if game.Status == "completed" {
+		rows, err := b.st.GameResults(gameID)
+		if err != nil {
+			return "", nil, err
+		}
+		return resultText(rows), resultKeyboard(gameID), nil
+	}
+	return "🧩 Игра ожидает результата — жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
 
 // scoreAndCheck assigns points to a game's picks, then rolls the season if the

@@ -14,7 +14,7 @@ func (s *Store) RecentGames(chatID int64, n int) ([]HistoryGame, error) {
 	rows, err := s.db.Query(`
 		SELECT id, date(completed_at), COALESCE(difficulty,''), COALESCE(usdoku_code,'')
 		FROM games
-		WHERE chat_id=? AND status='completed'
+		WHERE chat_id=? AND status='completed' AND deleted=0
 		ORDER BY id DESC LIMIT ?`, chatID, n)
 	if err != nil {
 		return nil, err
