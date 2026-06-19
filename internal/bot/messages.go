@@ -49,6 +49,19 @@ func esc(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
+// mention renders a player as a Telegram mention that pings them: a text-mention
+// link by user id (works for everyone who joined), falling back to @username,
+// then a plain escaped name.
+func mention(p storage.Player) string {
+	if p.TgID.Valid {
+		return fmt.Sprintf(`<a href="tg://user?id=%d">%s</a>`, p.TgID.Int64, esc(p.Name))
+	}
+	if p.Username.Valid && p.Username.String != "" {
+		return "@" + esc(p.Username.String)
+	}
+	return esc(p.Name)
+}
+
 func medal(rank int) string {
 	switch rank {
 	case 1:

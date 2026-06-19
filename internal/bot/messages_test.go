@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -68,5 +69,29 @@ func TestSpeedTextEmptyRanked(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("speedText empty: want %q in output\ngot: %s", want, out)
 		}
+	}
+}
+
+func TestMentionWithTgID(t *testing.T) {
+	p := storage.Player{TgID: sql.NullInt64{Int64: 42, Valid: true}, Name: "Vasya"}
+	want := `<a href="tg://user?id=42">Vasya</a>`
+	if got := mention(p); got != want {
+		t.Errorf("mention with tg id: want %q, got %q", want, got)
+	}
+}
+
+func TestMentionUsernameFallback(t *testing.T) {
+	p := storage.Player{Name: "Bob", Username: sql.NullString{String: "bobby", Valid: true}}
+	want := "@bobby"
+	if got := mention(p); got != want {
+		t.Errorf("mention username fallback: want %q, got %q", want, got)
+	}
+}
+
+func TestMentionPlainFallback(t *testing.T) {
+	p := storage.Player{Name: "A<b>"}
+	want := "A&lt;b&gt;"
+	if got := mention(p); got != want {
+		t.Errorf("mention plain fallback: want %q, got %q", want, got)
 	}
 }
