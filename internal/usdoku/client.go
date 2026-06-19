@@ -78,6 +78,23 @@ type Player struct {
 	CompletedAt *int64 `json:"completedAt"` // nil => did not finish
 }
 
+// SolveSeconds is the player's solve time in seconds, or 0 if unknown / DNF.
+// usdoku's timestamp unit is unconfirmed, so a delta implausibly large for a
+// sudoku solve (>6h) is treated as milliseconds and scaled down.
+func (p Player) SolveSeconds() int64 {
+	if p.CompletedAt == nil {
+		return 0
+	}
+	d := *p.CompletedAt - p.JoinedAt
+	if d <= 0 {
+		return 0
+	}
+	if d > 6*3600 {
+		d /= 1000
+	}
+	return d
+}
+
 // Info is the game's metadata.
 type Info struct {
 	Mode         string `json:"mode"`

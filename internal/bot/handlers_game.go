@@ -362,7 +362,13 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		if err != nil {
 			return "", nil, err
 		}
-		return resultText(rows), resultKeyboard(gameID), nil
+		target := 0
+		if season, err := b.st.SeasonByID(game.SeasonID); err == nil && season != nil {
+			target = season.Target
+		}
+		leader, _ := b.st.Leader(game.ChatID, game.SeasonID)
+		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target),
+			resultKeyboard(gameID), nil
 	}
 	return "🧩 Игра ожидает результата — жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
@@ -382,12 +388,17 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 	if err != nil {
 		return "", "", err
 	}
-	result = resultText(rows)
 
 	standings, err := b.st.Standings(game.ChatID, season.ID)
 	if err != nil {
 		return "", "", err
 	}
+	var leader *storage.Standing
+	if len(standings) > 0 {
+		leader = &standings[0]
+	}
+	result = resultText(rows, game.Difficulty.String, game.Mode.String, leader, season.Target)
+
 	if len(standings) > 0 && standings[0].Points >= season.Target {
 		newSeason, err := b.st.CloseSeason(season, standings[0].PlayerID)
 		if err != nil {

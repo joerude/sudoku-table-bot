@@ -119,14 +119,57 @@ func pickerText(picked []storage.ResultRow) string {
 	return b.String()
 }
 
-// resultText is the finalised game summary.
-func resultText(rows []storage.ResultRow) string {
+// resultText is the finalised game summary: winner spotlight, per-finisher
+// points + solve time (when known), and the season leader's progress.
+func resultText(rows []storage.ResultRow, difficulty, mode string, leader *storage.Standing, target int) string {
 	var b strings.Builder
-	b.WriteString("🏁 <b>Игра записана</b>\n")
+	b.WriteString("🏁 <b>Игра записана</b>")
+	if tag := gameTag(difficulty, mode); tag != "" {
+		b.WriteString(" · " + tag)
+	}
+	b.WriteString("\n")
+
+	if len(rows) > 0 {
+		b.WriteString(fmt.Sprintf("\n🏆 <b>%s</b> побеждает!\n", esc(rows[0].Name)))
+	}
 	for _, r := range rows {
-		b.WriteString(fmt.Sprintf("%s %s — <b>%d</b>\n", medal(r.Rank), esc(r.Name), r.Points))
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> — %s", medal(r.Rank), esc(r.Name), signedPts(r.Points)))
+		if r.Duration > 0 {
+			b.WriteString(" · ⏱ " + fmtDuration(r.Duration))
+		}
+		b.WriteString("\n")
+	}
+
+	if leader != nil && leader.Points > 0 && target > 0 {
+		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
+			esc(leader.Name), leader.Points, target, progressBar(leader.Points, target)))
 	}
 	return b.String()
+}
+
+// gameTag renders the "Difficulty · Mode" suffix, omitting empty parts.
+func gameTag(difficulty, mode string) string {
+	var parts []string
+	if difficulty != "" {
+		parts = append(parts, titleCase(difficulty))
+	}
+	if mode != "" {
+		parts = append(parts, titleCase(mode))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// signedPts shows a positive score with a leading "+"; zero stays plain.
+func signedPts(p int) string {
+	if p > 0 {
+		return fmt.Sprintf("+%d", p)
+	}
+	return fmt.Sprintf("%d", p)
+}
+
+// fmtDuration renders a solve time in seconds as m:ss.
+func fmtDuration(secs int) string {
+	return fmt.Sprintf("%d:%02d", secs/60, secs%60)
 }
 
 // standingsText renders the season leaderboard as a medal list.
