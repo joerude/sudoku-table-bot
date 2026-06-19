@@ -112,15 +112,28 @@ func (s *Store) PickedPlayerIDs(gameID int64) ([]int64, error) {
 
 // AddPick appends a player to a game's finish order at the next rank.
 func (s *Store) AddPick(gameID, playerID int64) error {
+	return s.addPick(gameID, playerID, 0)
+}
+
+// AddPickTimed is AddPick with a known solve time in seconds; 0 stores NULL.
+func (s *Store) AddPickTimed(gameID, playerID, durationSecs int64) error {
+	return s.addPick(gameID, playerID, durationSecs)
+}
+
+func (s *Store) addPick(gameID, playerID, durationSecs int64) error {
 	var next int
 	if err := s.db.QueryRow(
 		`SELECT COALESCE(MAX(rank),0)+1 FROM game_results WHERE game_id=?`, gameID).
 		Scan(&next); err != nil {
 		return err
 	}
+	var dur any
+	if durationSecs > 0 {
+		dur = durationSecs
+	}
 	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank) VALUES(?,?,?)`,
-		gameID, playerID, next)
+		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank, duration_secs) VALUES(?,?,?,?)`,
+		gameID, playerID, next, dur)
 	return err
 }
 
@@ -211,15 +224,16 @@ func (s *Store) RestoreGame(gameID int64) error {
 
 // ResultRow is one finisher of a game, joined with the player name.
 type ResultRow struct {
-	Name   string
-	Rank   int
-	Points int
+	Name     string
+	Rank     int
+	Points   int
+	Duration int // solve time in seconds; 0 = unknown (manual entry)
 }
 
 // GameResults returns a game's finishers in rank order with names and points.
 func (s *Store) GameResults(gameID int64) ([]ResultRow, error) {
 	rows, err := s.db.Query(`
-		SELECT p.name, gr.rank, gr.points
+		SELECT p.name, gr.rank, gr.points, gr.duration_secs
 		FROM game_results gr
 		JOIN players p ON p.id = gr.player_id
 		WHERE gr.game_id=? ORDER BY gr.rank`, gameID)
@@ -229,9 +243,15 @@ func (s *Store) GameResults(gameID int64) ([]ResultRow, error) {
 	defer rows.Close()
 	var out []ResultRow
 	for rows.Next() {
-		var r ResultRow
-		if err := rows.Scan(&r.Name, &r.Rank, &r.Points); err != nil {
+		var (
+			r   ResultRow
+			dur sql.NullInt64
+		)
+		if err := rows.Scan(&r.Name, &r.Rank, &r.Points, &dur); err != nil {
 			return nil, err
+		}
+		if dur.Valid {
+			r.Duration = int(dur.Int64)
 		}
 		out = append(out, r)
 	}

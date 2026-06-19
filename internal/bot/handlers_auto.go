@@ -88,13 +88,16 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		}
 	}
 
-	// Finishers in order; map the known ones to player ids.
-	var ids []int64
+	// Finishers in order; map the known ones to player ids, keeping solve times.
+	type pick struct {
+		id, durSecs int64
+	}
+	var picks []pick
 	var finisherNicks []string
 	for _, p := range info.FinishOrder() {
 		finisherNicks = append(finisherNicks, p.Name)
 		if pl, _ := b.st.PlayerByNick(game.ChatID, p.Name); pl != nil {
-			ids = append(ids, pl.ID)
+			picks = append(picks, pick{id: pl.ID, durSecs: p.SolveSeconds()})
 		}
 	}
 
@@ -109,7 +112,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		return
 	}
 
-	if len(unknown) > 0 || len(ids) == 0 {
+	if len(unknown) > 0 || len(picks) == 0 {
 		log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
 			game.ID, finisherNicks, unknown, mappedJoined)
 		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown), recordKeyboard(game.ID))
@@ -117,8 +120,8 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	}
 	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
 
-	for _, id := range ids {
-		if err := b.st.AddPick(game.ID, id); err != nil {
+	for _, pk := range picks {
+		if err := b.st.AddPickTimed(game.ID, pk.id, pk.durSecs); err != nil {
 			log.Printf("autoRecord.pick: %v", err)
 		}
 	}

@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS game_results (
     player_id INTEGER NOT NULL,
     rank      INTEGER NOT NULL,   -- 1-based finishing position
     points    INTEGER NOT NULL DEFAULT 0,
+    duration_secs INTEGER,        -- solve time in seconds (auto-record only; NULL = unknown)
     UNIQUE(game_id, player_id)
 );
 

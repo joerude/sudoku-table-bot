@@ -49,6 +49,7 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE players ADD COLUMN usdoku_nick TEXT`,
 		`ALTER TABLE games ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE chats ADD COLUMN min_players INTEGER NOT NULL DEFAULT 2`,
+		`ALTER TABLE game_results ADD COLUMN duration_secs INTEGER`,
 	} {
 		_, _ = db.Exec(stmt)
 	}
