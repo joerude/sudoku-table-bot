@@ -264,6 +264,65 @@ func (s *Store) SetUsdokuCode(gameID int64, code string) error {
 	return err
 }
 
+// SetDuelTarget records which player a duel game challenges (NULL = open invite).
+func (s *Store) SetDuelTarget(gameID, targetPlayerID int64) error {
+	_, err := s.db.Exec(`UPDATE games SET duel_target_id=? WHERE id=?`, targetPlayerID, gameID)
+	return err
+}
+
+// DuelTargetID returns the challenged player id and true, or (0, false) when the
+// game is not a duel.
+func (s *Store) DuelTargetID(gameID int64) (int64, bool, error) {
+	var t sql.NullInt64
+	err := s.db.QueryRow(`SELECT duel_target_id FROM games WHERE id=?`, gameID).Scan(&t)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if !t.Valid {
+		return 0, false, nil
+	}
+	return t.Int64, true, nil
+}
+
+// ToggleRsvp flips a player's "in" state for a game; returns whether they are now in.
+func (s *Store) ToggleRsvp(gameID, playerID int64) (bool, error) {
+	var exists int
+	if err := s.db.QueryRow(
+		`SELECT 1 FROM game_rsvp WHERE game_id=? AND player_id=?`, gameID, playerID).
+		Scan(&exists); err == nil {
+		_, err := s.db.Exec(`DELETE FROM game_rsvp WHERE game_id=? AND player_id=?`, gameID, playerID)
+		return false, err
+	} else if err != sql.ErrNoRows {
+		return false, err
+	}
+	_, err := s.db.Exec(`INSERT INTO game_rsvp(game_id, player_id) VALUES(?,?)`, gameID, playerID)
+	return true, err
+}
+
+// RsvpPlayers returns the active players who said they're in, ordered by name.
+func (s *Store) RsvpPlayers(gameID int64) ([]Player, error) {
+	rows, err := s.db.Query(
+		`SELECT p.id, p.chat_id, p.tg_id, p.name, p.username, p.usdoku_nick
+		 FROM game_rsvp r JOIN players p ON p.id = r.player_id
+		 WHERE r.game_id=? AND p.active=1 ORDER BY p.name COLLATE NOCASE`, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Player
+	for rows.Next() {
+		var p Player
+		if err := rows.Scan(&p.ID, &p.ChatID, &p.TgID, &p.Name, &p.Username, &p.UsdokuNick); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func nullStr(v string) sql.NullString {
 	if v == "" {
 		return sql.NullString{}
