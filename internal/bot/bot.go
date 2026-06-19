@@ -101,6 +101,7 @@ func botCommands() []tele.Command {
 		{Text: "season", Description: "инфо о сезоне"},
 		{Text: "me", Description: "моя статистика"},
 		{Text: "history", Description: "последние игры"},
+		{Text: "speed", Description: "рейтинг по скорости (medium)"},
 		{Text: "settings", Description: "настройки (админ)"},
 		{Text: "backup", Description: "бэкап базы файлом"},
 		{Text: "help", Description: "справка"},
@@ -124,6 +125,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/season", b.onSeason)
 	b.tb.Handle("/me", b.onMe)
 	b.tb.Handle("/history", b.onHistory)
+	b.tb.Handle("/speed", b.onSpeed)
 	b.tb.Handle("/settings", b.onSettings)
 	b.tb.Handle("/backup", b.onBackup)
 
