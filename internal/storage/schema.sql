@@ -59,3 +59,9 @@ CREATE TABLE IF NOT EXISTS game_results (
 
 CREATE INDEX IF NOT EXISTS idx_results_game ON game_results(game_id);
 CREATE INDEX IF NOT EXISTS idx_games_season ON games(season_id, status);
+
+CREATE TABLE IF NOT EXISTS game_rsvp (
+    game_id   INTEGER NOT NULL,
+    player_id INTEGER NOT NULL,
+    PRIMARY KEY (game_id, player_id)
+);
