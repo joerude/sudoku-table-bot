@@ -60,10 +60,11 @@ func (b *Bot) onJoin(c tele.Context) error {
 		name = "Игрок"
 	}
 
-	_, created, err := b.st.RegisterPlayer(c.Chat().ID, sender.ID, name)
+	p, created, err := b.st.RegisterPlayer(c.Chat().ID, sender.ID, name)
 	if err != nil {
 		return b.fail(c, "onJoin.register", err)
 	}
+	_ = b.st.SetUsername(p.ID, sender.Username) // best-effort; refreshes/clears
 	if created {
 		return c.Send(fmt.Sprintf("✅ <b>%s</b> в игре! Удачи 🍀", esc(name)))
 	}
@@ -131,7 +132,13 @@ func (b *Bot) onPlayers(c tele.Context) error {
 	var sb strings.Builder
 	sb.WriteString("👥 <b>Игроки</b>\n")
 	for _, p := range players {
-		sb.WriteString("• " + esc(p.Name) + "\n")
+		line := "• <b>" + esc(p.Name) + "</b>"
+		if p.UsdokuNick.Valid && p.UsdokuNick.String != "" {
+			line += " — usdoku: <code>" + esc(p.UsdokuNick.String) + "</code>"
+		} else {
+			line += " — <i>ник не задан</i>"
+		}
+		sb.WriteString(line + "\n")
 	}
 	return c.Send(sb.String())
 }
