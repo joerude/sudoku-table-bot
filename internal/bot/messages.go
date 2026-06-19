@@ -26,6 +26,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт игр в судоку 
 /season — инфо о сезоне
 /me — моя статистика
 /history — последние игры
+/speed [easy|medium|hard|extreme] — рейтинг по среднему времени
 /export — выгрузить CSV (игры + очки)
 
 <b>Настройки</b> (только админ)
@@ -205,13 +206,46 @@ func seasonText(se *storage.Season, leader *storage.Standing) string {
 	return b.String()
 }
 
-func meText(name string, st *storage.PlayerStat, se *storage.Season) string {
+func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, se *storage.Season) string {
 	if st.Games == 0 {
 		return fmt.Sprintf("📊 <b>%s</b>\nВ сезоне %d пока нет игр. Сыграй и запиши: /result", esc(name), se.Number)
 	}
-	return fmt.Sprintf(
+	var b strings.Builder
+	fmt.Fprintf(&b,
 		"📊 <b>%s</b> · сезон %d\nМесто: <b>%d</b>\nОчки: <b>%d</b>/%d\nПобед: %d\nИгр: %d",
 		esc(name), se.Number, st.Rank, st.Points, se.Target, st.Wins, st.Games)
+	if sp != nil && sp.Games > 0 {
+		fmt.Fprintf(&b, "\n⏱ Ср. время: <b>%s</b> (по %d, medium)", fmtDuration(sp.AvgSecs), sp.Games)
+		fmt.Fprintf(&b, "\n⚡ Лучшее: <b>%s</b>", fmtDuration(sp.BestSecs))
+	} else {
+		b.WriteString("\n⏱ Ср. время: — (нет авто-игр на medium)")
+	}
+	return b.String()
+}
+
+// speedText renders the /speed leaderboard: players ranked by average solve
+// time at a difficulty, with a footer for those below the games threshold.
+func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.SpeedRow, minGames int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚡ <b>Самые быстрые</b> · %s · сезон %d\n", titleCase(difficulty), se.Number)
+	if len(ranked) == 0 {
+		fmt.Fprintf(&b, "\nПока мало данных — нужно ≥%d авто-игр на %s.\n"+
+			"Создавай игры через /newgame (и задай /setnick) — время подтянется само.",
+			minGames, titleCase(difficulty))
+	} else {
+		for i, r := range ranked {
+			fmt.Fprintf(&b, "%s <b>%s</b> — %s   <i>(%d игр · ⚡ %s)</i>\n",
+				medal(i+1), esc(r.Name), fmtDuration(r.AvgSecs), r.Games, fmtDuration(r.BestSecs))
+		}
+	}
+	if len(fewer) > 0 {
+		names := make([]string, len(fewer))
+		for i, r := range fewer {
+			names[i] = esc(r.Name)
+		}
+		fmt.Fprintf(&b, "\n<i>Мало игр (&lt;%d): %s</i>", minGames, strings.Join(names, ", "))
+	}
+	return b.String()
 }
 
 func historyText(games []storage.HistoryGame) string {

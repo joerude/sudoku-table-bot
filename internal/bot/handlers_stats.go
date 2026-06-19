@@ -116,7 +116,11 @@ func (b *Bot) onMe(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onMe.stat", err)
 	}
-	return c.Send(meText(player.Name, stat, season))
+	sp, err := b.st.SpeedFor(c.Chat().ID, season.ID, player.ID, "medium")
+	if err != nil {
+		return b.fail(c, "onMe.speed", err)
+	}
+	return c.Send(meText(player.Name, stat, sp, season))
 }
 
 func (b *Bot) onHistory(c tele.Context) error {
@@ -247,6 +251,26 @@ func (b *Bot) requireAdmin(c tele.Context) bool {
 	}
 	_ = c.Send("⛔ Это действие доступно только админам группы.")
 	return false
+}
+
+// speedMinGames is the minimum timed games to be ranked on /speed (vs listed
+// in the "мало игр" footer).
+const speedMinGames = 3
+
+func (b *Bot) onSpeed(c tele.Context) error {
+	season, err := b.ensure(c)
+	if err != nil {
+		return b.fail(c, "onSpeed.ensure", err)
+	}
+	difficulty := "medium"
+	if a := strings.ToLower(argAt(c.Args(), 0)); validDifficulty[a] {
+		difficulty = a
+	}
+	ranked, fewer, err := b.st.Speedboard(c.Chat().ID, season.ID, difficulty, speedMinGames)
+	if err != nil {
+		return b.fail(c, "onSpeed.board", err)
+	}
+	return c.Send(speedText(season, difficulty, ranked, fewer, speedMinGames))
 }
 
 func argAt(args []string, i int) string {
