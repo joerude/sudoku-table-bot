@@ -24,7 +24,8 @@ func (s *Store) SpeedFor(chatID, seasonID, playerID int64, difficulty string) (*
 		JOIN games g ON g.id = gr.game_id
 		WHERE gr.player_id = ? AND g.chat_id = ? AND g.season_id = ?
 		  AND g.status = 'completed' AND g.deleted = 0
-		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL`,
+		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL
+		  AND g.duel_target_id IS NULL`,
 		playerID, chatID, seasonID, difficulty).Scan(&avg, &best, &n)
 	if err != nil {
 		return nil, err
@@ -64,6 +65,7 @@ func (s *Store) Speedboard(chatID, seasonID int64, difficulty string, minGames i
 		WHERE p.chat_id = ? AND p.active = 1
 		  AND g.season_id = ? AND g.status = 'completed' AND g.deleted = 0
 		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL
+		  AND g.duel_target_id IS NULL
 		GROUP BY p.id, p.name
 		ORDER BY avg_secs ASC, games DESC, p.name COLLATE NOCASE`,
 		chatID, seasonID, difficulty)
@@ -110,6 +112,7 @@ func (s *Store) ExportGames(chatID, seasonID int64) ([]ExportGame, error) {
 		FROM games g
 		LEFT JOIN game_results gr ON gr.game_id = g.id
 		WHERE g.chat_id=? AND g.season_id=? AND g.status='completed' AND g.deleted=0
+		  AND g.duel_target_id IS NULL
 		ORDER BY g.id`, chatID, seasonID)
 	if err != nil {
 		return nil, err
@@ -158,6 +161,7 @@ func (s *Store) RecentGames(chatID int64, n int) ([]HistoryGame, error) {
 		SELECT id, date(completed_at), COALESCE(difficulty,''), COALESCE(usdoku_code,'')
 		FROM games
 		WHERE chat_id=? AND status='completed' AND deleted=0
+		  AND duel_target_id IS NULL
 		ORDER BY id DESC LIMIT ?`, chatID, n)
 	if err != nil {
 		return nil, err
