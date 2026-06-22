@@ -227,6 +227,7 @@ func (s *Store) RestoreGame(gameID int64) error {
 
 // ResultRow is one finisher of a game, joined with the player name.
 type ResultRow struct {
+	PlayerID int64
 	Name     string
 	Rank     int
 	Points   int
@@ -236,7 +237,7 @@ type ResultRow struct {
 // GameResults returns a game's finishers in rank order with names and points.
 func (s *Store) GameResults(gameID int64) ([]ResultRow, error) {
 	rows, err := s.db.Query(`
-		SELECT p.name, gr.rank, gr.points, gr.duration_secs
+		SELECT gr.player_id, p.name, gr.rank, gr.points, gr.duration_secs
 		FROM game_results gr
 		JOIN players p ON p.id = gr.player_id
 		WHERE gr.game_id=? ORDER BY gr.rank`, gameID)
@@ -250,7 +251,7 @@ func (s *Store) GameResults(gameID int64) ([]ResultRow, error) {
 			r   ResultRow
 			dur sql.NullInt64
 		)
-		if err := rows.Scan(&r.Name, &r.Rank, &r.Points, &dur); err != nil {
+		if err := rows.Scan(&r.PlayerID, &r.Name, &r.Rank, &r.Points, &dur); err != nil {
 			return nil, err
 		}
 		if dur.Valid {
