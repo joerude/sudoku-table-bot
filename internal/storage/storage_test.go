@@ -162,6 +162,91 @@ func TestSoftDeleteRestore(t *testing.T) {
 	}
 }
 
+// TestDNFRecording: 1 finisher (rank 1, timed) + 1 DNF (AddDNF) → correct ordering,
+// points, standings Games count, and finishOrder exclusion.
+func TestDNFRecording(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-600)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	gid, err := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Alice finishes first with a solve time.
+	if err := st.AddPickTimed(gid, a.ID, 120); err != nil {
+		t.Fatal(err)
+	}
+	// Bob joined but did not finish.
+	if err := st.AddDNF(gid, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatal(err)
+	}
+
+	// GameResults: finisher (rank 1) first, then DNF (rank 0).
+	rows, err := st.GameResults(gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	if rows[0].Rank != 1 || rows[0].Name != "Alice" {
+		t.Errorf("rows[0]: want Alice rank 1, got %+v", rows[0])
+	}
+	if rows[0].Points != 3 {
+		t.Errorf("Alice points: want 3 (default table rank-1), got %d", rows[0].Points)
+	}
+	if rows[0].Duration != 120 {
+		t.Errorf("Alice duration: want 120, got %d", rows[0].Duration)
+	}
+	if rows[1].Rank != 0 || rows[1].Name != "Bob" {
+		t.Errorf("rows[1]: want Bob rank 0, got %+v", rows[1])
+	}
+	if rows[1].Points != 0 {
+		t.Errorf("Bob points: want 0, got %d", rows[1].Points)
+	}
+
+	// Standings: Bob counts as a played game but has no wins.
+	standings, err := st.Standings(chat, se.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := map[string]Standing{}
+	for _, s := range standings {
+		idx[s.Name] = s
+	}
+	aliceSt := idx["Alice"]
+	bobSt := idx["Bob"]
+	if aliceSt.Wins != 1 || aliceSt.Games != 1 {
+		t.Errorf("Alice standings: want Wins=1 Games=1, got %+v", aliceSt)
+	}
+	if bobSt.Wins != 0 || bobSt.Games != 1 {
+		t.Errorf("Bob standings: want Wins=0 Games=1, got %+v", bobSt)
+	}
+	if bobSt.Points != 0 {
+		t.Errorf("Bob points: want 0, got %d", bobSt.Points)
+	}
+
+	// RecentGames finishOrder excludes DNF row.
+	recent, err := st.RecentGames(chat, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 1 {
+		t.Fatalf("want 1 recent game, got %d", len(recent))
+	}
+	if len(recent[0].Order) != 1 || recent[0].Order[0] != "Alice" {
+		t.Errorf("finishOrder: want [Alice], got %v", recent[0].Order)
+	}
+}
+
 func mustStandings(t *testing.T, st *Store, chat, season int64) []Standing {
 	t.Helper()
 	s, err := st.Standings(chat, season)

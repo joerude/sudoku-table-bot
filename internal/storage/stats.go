@@ -194,7 +194,7 @@ func (s *Store) finishOrder(gameID int64) ([]string, error) {
 	rows, err := s.db.Query(`
 		SELECT p.name FROM game_results gr
 		JOIN players p ON p.id = gr.player_id
-		WHERE gr.game_id=? ORDER BY gr.rank`, gameID)
+		WHERE gr.game_id=? AND gr.rank > 0 ORDER BY gr.rank`, gameID)
 	if err != nil {
 		return nil, err
 	}
