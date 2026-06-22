@@ -43,7 +43,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 			log.Printf("watchGame.game %s: %v", code, err)
 			return
 		}
-		if g == nil || g.Status != "pending" {
+		if g == nil || g.Status != "pending" || g.Deleted {
 			return
 		}
 

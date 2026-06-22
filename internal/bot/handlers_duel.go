@@ -61,6 +61,9 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 	if caller == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
 	}
+	if targetID == caller.ID {
+		return c.Respond(&tele.CallbackResponse{Text: "Нельзя вызвать самого себя"})
+	}
 	target, err := b.st.PlayerByID(targetID)
 	if err != nil {
 		return b.fail(c, "onDuelPick.target", err)

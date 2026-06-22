@@ -164,6 +164,41 @@ func TestRsvpToggleAndRoster(t *testing.T) {
 	}
 }
 
+func TestGameByIDDeleted(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-605)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 60, "Alice")
+	gid, _ := st.CreatePendingGame(chat, se.ID, a.ID, "medium", "")
+
+	g, err := st.GameByID(gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g == nil {
+		t.Fatal("GameByID returned nil for fresh game")
+	}
+	if g.Deleted {
+		t.Error("fresh game: want Deleted=false, got true")
+	}
+
+	if err := st.SoftDeleteGame(gid); err != nil {
+		t.Fatal(err)
+	}
+	g2, err := st.GameByID(gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g2 == nil {
+		t.Fatal("GameByID returned nil after SoftDeleteGame")
+	}
+	if !g2.Deleted {
+		t.Error("after SoftDeleteGame: want Deleted=true, got false")
+	}
+}
+
 func TestRsvpExcludesDeactivated(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-604)

@@ -15,6 +15,7 @@ type Game struct {
 	Difficulty sql.NullString
 	Mode       sql.NullString
 	UsdokuCode sql.NullString
+	Deleted    bool
 }
 
 // CreatePendingGame opens a new pending game for the chat's active season.
@@ -49,16 +50,18 @@ func (s *Store) ActivePendingGame(chatID int64) (*Game, error) {
 // GameByID fetches a single game.
 func (s *Store) GameByID(id int64) (*Game, error) {
 	var g Game
+	var deleted int
 	err := s.db.QueryRow(
-		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code
+		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code, deleted
 		 FROM games WHERE id=?`, id).
-		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode)
+		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode, &deleted)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	g.Deleted = deleted != 0
 	return &g, nil
 }
 
