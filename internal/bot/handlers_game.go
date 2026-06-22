@@ -385,6 +385,11 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		if err != nil {
 			return "", nil, err
 		}
+		if _, isDuel, derr := b.st.DuelTargetID(gameID); derr != nil {
+			log.Printf("gameView.duelCheck: %v", derr)
+		} else if isDuel {
+			return b.duelResult(game, rows), resultKeyboard(gameID), nil
+		}
 		target := 0
 		if season, err := b.st.SeasonByID(game.SeasonID); err == nil && season != nil {
 			target = season.Target
@@ -412,6 +417,12 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		return "", "", err
 	}
 
+	if _, isDuel, derr := b.st.DuelTargetID(game.ID); derr != nil {
+		return "", "", derr
+	} else if isDuel {
+		return b.duelResult(game, rows), "", nil // duels don't touch the season
+	}
+
 	standings, err := b.st.Standings(game.ChatID, season.ID)
 	if err != nil {
 		return "", "", err
@@ -434,6 +445,19 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 	}
 	log.Printf("✅ game %d scored", game.ID)
 	return result, seasonEnd, nil
+}
+
+// duelResult renders a finished duel: winner, time, and the pair's head-to-head.
+func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
+	if len(rows) < 2 {
+		return duelResultText(rows, 0, 0, false)
+	}
+	wWins, lWins, err := b.st.HeadToHead(game.ChatID, rows[0].PlayerID, rows[1].PlayerID)
+	if err != nil {
+		log.Printf("duelResult.h2h: %v", err)
+		return duelResultText(rows, 0, 0, false)
+	}
+	return duelResultText(rows, wWins, lWins, true)
 }
 
 // finalize scores the game and edits the callback's message with the result,

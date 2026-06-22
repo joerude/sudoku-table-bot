@@ -30,6 +30,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт игр в судоку 
 /me — моя статистика
 /history — последние игры
 /speed [easy|medium|hard|extreme] — рейтинг по среднему времени
+/duels — рейтинг дуэлей
 /export — выгрузить CSV (игры + очки)
 
 <b>Настройки</b> (только админ)
@@ -222,9 +223,13 @@ func seasonText(se *storage.Season, leader *storage.Standing) string {
 	return b.String()
 }
 
-func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, se *storage.Season) string {
+func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, duelL int, se *storage.Season) string {
 	if st.Games == 0 {
-		return fmt.Sprintf("📊 <b>%s</b>\nВ сезоне %d пока нет игр. Сыграй и запиши: /result", esc(name), se.Number)
+		base := fmt.Sprintf("📊 <b>%s</b>\nВ сезоне %d пока нет игр. Сыграй и запиши: /result", esc(name), se.Number)
+		if duelW+duelL > 0 {
+			base += fmt.Sprintf("\n⚔️ Дуэли: <b>%d–%d</b>", duelW, duelL)
+		}
+		return base
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b,
@@ -235,6 +240,51 @@ func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, se *stor
 		fmt.Fprintf(&b, "\n⚡ Лучшее: <b>%s</b>", fmtDuration(sp.BestSecs))
 	} else {
 		b.WriteString("\n⏱ Ср. время: — (нет авто-игр на medium)")
+	}
+	if duelW+duelL > 0 {
+		fmt.Fprintf(&b, "\n⚔️ Дуэли: <b>%d–%d</b>", duelW, duelL)
+	}
+	return b.String()
+}
+
+// duelResultText renders a finished duel. rows are rank-ordered (winner first);
+// winnerWins/loserWins are the pair's head-to-head tally, shown only when h2h.
+func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool) string {
+	var b strings.Builder
+	b.WriteString("⚔️ <b>Дуэль</b>\n")
+	if len(rows) == 0 {
+		b.WriteString("Никто не финишировал.")
+		return b.String()
+	}
+	w := rows[0]
+	fmt.Fprintf(&b, "🏆 <b>%s</b> побеждает", esc(w.Name))
+	if len(rows) >= 2 {
+		fmt.Fprintf(&b, " — %s проигрывает", esc(rows[1].Name))
+	}
+	if w.Duration > 0 {
+		fmt.Fprintf(&b, " · ⏱ %s", fmtDuration(w.Duration))
+	}
+	if h2h && len(rows) >= 2 {
+		fmt.Fprintf(&b, "\n\nH2H: <b>%s</b> %d–%d <b>%s</b>",
+			esc(rows[0].Name), winnerWins, loserWins, esc(rows[1].Name))
+	}
+	return b.String()
+}
+
+// duelsText renders the /duels leaderboard (all-time duel records).
+func duelsText(rows []storage.DuelStanding) string {
+	if len(rows) == 0 {
+		return "⚔️ <b>Дуэли</b>\nЕщё не было дуэлей. Вызови кого-нибудь: /duel"
+	}
+	var b strings.Builder
+	b.WriteString("⚔️ <b>Дуэли</b> · рейтинг\n")
+	for i, r := range rows {
+		pct := 0
+		if total := r.Wins + r.Losses; total > 0 {
+			pct = r.Wins * 100 / total
+		}
+		fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>\n",
+			medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
 	}
 	return b.String()
 }
