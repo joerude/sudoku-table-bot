@@ -95,3 +95,32 @@ func TestMentionPlainFallback(t *testing.T) {
 		t.Errorf("mention plain fallback: want %q, got %q", want, got)
 	}
 }
+
+func TestParseDuelPick(t *testing.T) {
+	diff, id := parseDuelPick("medium:42")
+	if diff != "medium" || id != 42 {
+		t.Errorf("parseDuelPick valid: want (medium, 42), got (%s, %d)", diff, id)
+	}
+	diff, id = parseDuelPick("bad")
+	if diff != "" || id != 0 {
+		t.Errorf("parseDuelPick invalid: want (\"\", 0), got (%s, %d)", diff, id)
+	}
+}
+
+func TestDuelChallengeText(t *testing.T) {
+	target := storage.Player{Name: "Petya", TgID: sql.NullInt64{Int64: 7, Valid: true}}
+	out := duelChallengeText("Vasya", target, "medium", "TRPK", false)
+	for _, want := range []string{"Vasya", "tg://user?id=7", "usdoku.com/TRPK", "Medium"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelChallengeText: want %q in output\ngot: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "⚠️") {
+		t.Errorf("duelChallengeText nickWarn=false: should NOT contain warning\ngot: %s", out)
+	}
+
+	outWarn := duelChallengeText("Vasya", target, "medium", "TRPK", true)
+	if !strings.Contains(outWarn, "setnick") {
+		t.Errorf("duelChallengeText nickWarn=true: want 'setnick' in output\ngot: %s", outWarn)
+	}
+}

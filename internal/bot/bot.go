@@ -97,6 +97,7 @@ func botCommands() []tele.Command {
 		{Text: "newgame", Description: "новая игра + ссылка"},
 		{Text: "export", Description: "выгрузить CSV (игры + очки)"},
 		{Text: "result", Description: "записать результат вручную"},
+		{Text: "duel", Description: "вызвать игрока на дуэль"},
 		{Text: "status", Description: "таблица сезона"},
 		{Text: "season", Description: "инфо о сезоне"},
 		{Text: "me", Description: "моя статистика"},
@@ -119,6 +120,10 @@ func (b *Bot) routes() {
 
 	b.tb.Handle("/newgame", b.onNewGame)
 	b.tb.Handle("/result", b.onResult)
+	b.tb.Handle("/duel", b.onDuel)
+	b.tb.Handle(&tele.Btn{Unique: cbDuelPick}, b.onDuelPick)
+	b.tb.Handle(&tele.Btn{Unique: cbAccept}, b.onAccept)
+	b.tb.Handle(&tele.Btn{Unique: cbDecline}, b.onDecline)
 
 	b.tb.Handle("/status", b.onStatus)
 	b.tb.Handle("/table", b.onStatus)
