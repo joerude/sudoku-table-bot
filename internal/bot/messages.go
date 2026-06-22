@@ -22,6 +22,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт игр в судоку 
 /newgame &lt;easy|medium|hard|extreme&gt; [hardcore|original] — новая игра + ссылка
 /result — записать результат (жми игроков по порядку финиша)
 /duel — вызвать игрока на дуэль (1 на 1)
+/invite — позвать всех в игру (пинг + ссылка)
 
 <b>Статистика</b>
 /status — таблица сезона
@@ -328,6 +329,38 @@ func duelAcceptText(target storage.Player, code string) string {
 
 func duelDeclineText(target storage.Player) string {
 	return fmt.Sprintf("❌ %s отказался. Дуэль отменена.", mention(target))
+}
+
+// inviteText is the /invite post: a ping of everyone, the room link, and the
+// current "in" roster. pings are all active players (mentioned to notify them);
+// roster is who tapped "Я в деле". Editing this message to refresh the roster
+// does NOT re-notify (Telegram only notifies on new messages).
+func inviteText(difficulty, code string, pings, roster []storage.Player) string {
+	var b strings.Builder
+	b.WriteString("🎮 <b>Играем в судоку!</b>")
+	if difficulty != "" {
+		b.WriteString(" · " + titleCase(difficulty))
+	}
+	b.WriteString("\n")
+	if len(pings) > 0 {
+		ms := make([]string, len(pings))
+		for i, p := range pings {
+			ms[i] = mention(p)
+		}
+		b.WriteString(strings.Join(ms, " ") + "\n")
+	}
+	if code != "" {
+		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
+	}
+	b.WriteString("\nЖми «Я в деле», если играешь 👇")
+	if len(roster) > 0 {
+		names := make([]string, len(roster))
+		for i, p := range roster {
+			names[i] = esc(p.Name)
+		}
+		b.WriteString("\n\n✅ В деле: " + strings.Join(names, ", "))
+	}
+	return b.String()
 }
 
 // --- small helpers ---
