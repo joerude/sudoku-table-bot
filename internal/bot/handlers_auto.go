@@ -73,9 +73,10 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	to := tele.ChatID(game.ChatID)
 
-	// Map everyone who joined; collect unknown nicks.
+	// Map everyone who joined; collect unknown nicks and known player ids.
 	mappedJoined := 0
 	var unknown []string
+	var joinedIDs []int64
 	for _, p := range info.Players {
 		pl, err := b.st.PlayerByNick(game.ChatID, p.Name)
 		if err != nil {
@@ -83,6 +84,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		}
 		if pl != nil {
 			mappedJoined++
+			joinedIDs = append(joinedIDs, pl.ID)
 		} else {
 			unknown = append(unknown, p.Name)
 		}
@@ -123,6 +125,17 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	for _, pk := range picks {
 		if err := b.st.AddPickTimed(game.ID, pk.id, pk.durSecs); err != nil {
 			log.Printf("autoRecord.pick: %v", err)
+		}
+	}
+	finished := make(map[int64]bool, len(picks))
+	for _, pk := range picks {
+		finished[pk.id] = true
+	}
+	for _, id := range joinedIDs {
+		if !finished[id] {
+			if err := b.st.AddDNF(game.ID, id); err != nil {
+				log.Printf("autoRecord.dnf: %v", err)
+			}
 		}
 	}
 	result, seasonEnd, err := b.scoreAndCheck(game)

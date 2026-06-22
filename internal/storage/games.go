@@ -234,13 +234,23 @@ type ResultRow struct {
 	Duration int // solve time in seconds; 0 = unknown (manual entry)
 }
 
+// AddDNF records a player who joined but did not finish: rank 0 (scores 0,
+// marks a non-finisher) with no solve time. Safe to call after finishers.
+func (s *Store) AddDNF(gameID, playerID int64) error {
+	_, err := s.db.Exec(
+		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank, duration_secs) VALUES(?,?,0,NULL)`,
+		gameID, playerID)
+	return err
+}
+
 // GameResults returns a game's finishers in rank order with names and points.
+// DNF rows (rank 0) sort after all finishers.
 func (s *Store) GameResults(gameID int64) ([]ResultRow, error) {
 	rows, err := s.db.Query(`
 		SELECT gr.player_id, p.name, gr.rank, gr.points, gr.duration_secs
 		FROM game_results gr
 		JOIN players p ON p.id = gr.player_id
-		WHERE gr.game_id=? ORDER BY gr.rank`, gameID)
+		WHERE gr.game_id=? ORDER BY (gr.rank=0), gr.rank`, gameID)
 	if err != nil {
 		return nil, err
 	}

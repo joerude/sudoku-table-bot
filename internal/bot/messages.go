@@ -147,10 +147,14 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 	}
 	b.WriteString("\n")
 
-	if len(rows) > 0 {
+	if len(rows) > 0 && rows[0].Rank >= 1 {
 		b.WriteString(fmt.Sprintf("\n🏆 <b>%s</b> побеждает!\n", esc(rows[0].Name)))
 	}
 	for _, r := range rows {
+		if r.Rank == 0 {
+			fmt.Fprintf(&b, "— <b>%s</b> · <i>не финишировал</i>\n", esc(r.Name))
+			continue
+		}
 		b.WriteString(fmt.Sprintf("%s <b>%s</b> — %s", medal(r.Rank), esc(r.Name), signedPts(r.Points)))
 		if r.Duration > 0 {
 			b.WriteString(" · ⏱ " + fmtDuration(r.Duration))
@@ -259,7 +263,11 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 	w := rows[0]
 	fmt.Fprintf(&b, "🏆 <b>%s</b> побеждает", esc(w.Name))
 	if len(rows) >= 2 {
-		fmt.Fprintf(&b, " — %s проигрывает", esc(rows[1].Name))
+		if rows[1].Rank == 0 {
+			fmt.Fprintf(&b, " — %s не финишировал", esc(rows[1].Name))
+		} else {
+			fmt.Fprintf(&b, " — %s проигрывает", esc(rows[1].Name))
+		}
 	}
 	if w.Duration > 0 {
 		fmt.Fprintf(&b, " · ⏱ %s", fmtDuration(w.Duration))

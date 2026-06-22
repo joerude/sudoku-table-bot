@@ -78,8 +78,8 @@ func TestMeTextDuelLine(t *testing.T) {
 
 func TestDuelResultText(t *testing.T) {
 	rows := []storage.ResultRow{
-		{Name: "Vasya", Duration: 252},
-		{Name: "Petya"},
+		{Rank: 1, Name: "Vasya", Duration: 252},
+		{Rank: 2, Name: "Petya"},
 	}
 	out := duelResultText(rows, 4, 2, true)
 	for _, want := range []string{"Vasya", "побеждает", "Petya", "4:12", "H2H", "4–2"} {
@@ -209,6 +209,54 @@ func TestInviteTextWithRoster(t *testing.T) {
 	out := inviteText("medium", "TRPK", nil, []storage.Player{{Name: "Bob"}})
 	if !strings.Contains(out, "В деле: Bob") {
 		t.Errorf("inviteText with roster: want 'В деле: Bob' in output\ngot: %s", out)
+	}
+}
+
+func TestResultTextWithDNF(t *testing.T) {
+	rows := []storage.ResultRow{
+		{Rank: 1, Name: "A", Points: 3, Duration: 252},
+		{Rank: 0, Name: "B"},
+	}
+	out := resultText(rows, "medium", "hardcore", nil, 0)
+
+	// Finisher A: medal, name, points, time.
+	for _, want := range []string{"🥇", "A", "4:12"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("resultText DNF: want %q in output\ngot: %s", want, out)
+		}
+	}
+	// DNF player B: shown with "не финишировал", no medal.
+	if !strings.Contains(out, "B") {
+		t.Errorf("resultText DNF: want B in output\ngot: %s", out)
+	}
+	if !strings.Contains(out, "не финишировал") {
+		t.Errorf("resultText DNF: want 'не финишировал' in output\ngot: %s", out)
+	}
+	// B must NOT have a medal (🥇🥈🥉 or "0.").
+	for _, bad := range []string{"🥇 <b>B", "🥈 <b>B", "🥉 <b>B", "0. <b>B"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("resultText DNF: B must not have a medal/rank, got: %s", out)
+		}
+	}
+}
+
+func TestDuelResultTextWithDNF(t *testing.T) {
+	rows := []storage.ResultRow{
+		{Rank: 1, Name: "Vasya", Points: 3, Duration: 180},
+		{Rank: 0, Name: "Petya"},
+	}
+	out := duelResultText(rows, 0, 0, false)
+	if !strings.Contains(out, "Vasya") || !strings.Contains(out, "побеждает") {
+		t.Errorf("duelResultText DNF: want winner info\ngot: %s", out)
+	}
+	if !strings.Contains(out, "Petya") {
+		t.Errorf("duelResultText DNF: want loser name\ngot: %s", out)
+	}
+	if !strings.Contains(out, "не финишировал") {
+		t.Errorf("duelResultText DNF: want 'не финишировал' for loser\ngot: %s", out)
+	}
+	if strings.Contains(out, "проигрывает") {
+		t.Errorf("duelResultText DNF: must NOT say 'проигрывает' when loser is DNF\ngot: %s", out)
 	}
 }
 
