@@ -98,6 +98,7 @@ func botCommands() []tele.Command {
 		{Text: "export", Description: "выгрузить CSV (игры + очки)"},
 		{Text: "result", Description: "записать результат вручную"},
 		{Text: "duel", Description: "вызвать игрока на дуэль"},
+		{Text: "duels", Description: "рейтинг дуэлей"},
 		{Text: "invite", Description: "позвать всех в игру"},
 		{Text: "status", Description: "таблица сезона"},
 		{Text: "season", Description: "инфо о сезоне"},
@@ -128,6 +129,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/invite", b.onInvite)
 	b.tb.Handle(&tele.Btn{Unique: cbJoinIn}, b.onJoinIn)
 
+	b.tb.Handle("/duels", b.onDuels)
 	b.tb.Handle("/status", b.onStatus)
 	b.tb.Handle("/table", b.onStatus)
 	b.tb.Handle("/season", b.onSeason)

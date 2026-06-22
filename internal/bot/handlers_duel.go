@@ -135,6 +135,18 @@ func (b *Bot) onAccept(c tele.Context) error {
 	return c.Edit(duelAcceptText(*target, game.UsdokuCode.String), recordKeyboard(gameID))
 }
 
+// onDuels shows the all-time duel leaderboard.
+func (b *Bot) onDuels(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onDuels.ensure", err)
+	}
+	rows, err := b.st.DuelLeaderboard(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onDuels.board", err)
+	}
+	return c.Send(duelsText(rows))
+}
+
 func (b *Bot) onDecline(c tele.Context) error {
 	gameID := parseID(c.Data())
 	game, err := b.st.GameByID(gameID)

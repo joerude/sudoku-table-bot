@@ -120,7 +120,11 @@ func (b *Bot) onMe(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onMe.speed", err)
 	}
-	return c.Send(meText(player.Name, stat, sp, season))
+	duelW, duelL, err := b.st.DuelRecord(c.Chat().ID, player.ID)
+	if err != nil {
+		return b.fail(c, "onMe.duel", err)
+	}
+	return c.Send(meText(player.Name, stat, sp, duelW, duelL, season))
 }
 
 func (b *Bot) onHistory(c tele.Context) error {
