@@ -210,6 +210,67 @@ func TestDuelLeaderboard(t *testing.T) {
 	}
 }
 
+// makeSoloDuelGame creates a completed duel game with only the winner finishing (no loser row).
+func makeSoloDuelGame(t *testing.T, st *Store, chatID, seasonID, creatorID, winnerID, targetID int64) int64 {
+	t.Helper()
+	gid, err := st.CreatePendingGame(chatID, seasonID, creatorID, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame: %v", err)
+	}
+	if err := st.SetDuelTarget(gid, targetID); err != nil {
+		t.Fatalf("SetDuelTarget: %v", err)
+	}
+	if err := st.AddPick(gid, winnerID); err != nil {
+		t.Fatalf("AddPick winner: %v", err)
+	}
+	se, err := st.ActiveSeason(chatID)
+	if err != nil {
+		t.Fatalf("ActiveSeason: %v", err)
+	}
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatalf("FinalizeGame: %v", err)
+	}
+	return gid
+}
+
+// TestRecentDuels: newest-first, correct Winner/Loser; solo duel has empty Loser.
+func TestRecentDuels(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-3001)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// First game: A beats B (both finish).
+	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
+	// Second game: A wins solo (B didn't finish).
+	makeSoloDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID)
+
+	matches, err := st.RecentDuels(chat, 10)
+	if err != nil {
+		t.Fatalf("RecentDuels: %v", err)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("RecentDuels: want 2 matches, got %d: %+v", len(matches), matches)
+	}
+	// Newest first: solo game was created second → index 0.
+	if matches[0].Winner != "Alice" {
+		t.Errorf("matches[0].Winner: want Alice, got %q", matches[0].Winner)
+	}
+	if matches[0].Loser != "" {
+		t.Errorf("matches[0].Loser: want empty (solo), got %q", matches[0].Loser)
+	}
+	// Older game: A beat B.
+	if matches[1].Winner != "Alice" {
+		t.Errorf("matches[1].Winner: want Alice, got %q", matches[1].Winner)
+	}
+	if matches[1].Loser != "Bob" {
+		t.Errorf("matches[1].Loser: want Bob, got %q", matches[1].Loser)
+	}
+}
+
 // TestHeadToHead: wins against each other only; third-player duels don't count.
 func TestHeadToHead(t *testing.T) {
 	st := openTemp(t)

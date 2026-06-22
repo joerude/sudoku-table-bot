@@ -135,6 +135,12 @@ func (b *Bot) onAccept(c tele.Context) error {
 	return c.Edit(duelAcceptText(*target, game.UsdokuCode.String), recordKeyboard(gameID))
 }
 
+// onDuelCancel dismisses the opponent picker (no game was created yet).
+func (b *Bot) onDuelCancel(c tele.Context) error {
+	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
+	return c.Edit("✖️ Вызов отменён.")
+}
+
 // onDuels shows the all-time duel leaderboard.
 func (b *Bot) onDuels(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
@@ -144,7 +150,11 @@ func (b *Bot) onDuels(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onDuels.board", err)
 	}
-	return c.Send(duelsText(rows))
+	recent, err := b.st.RecentDuels(c.Chat().ID, 8)
+	if err != nil {
+		return b.fail(c, "onDuels.recent", err)
+	}
+	return c.Send(duelsText(rows, recent))
 }
 
 func (b *Bot) onDecline(c tele.Context) error {

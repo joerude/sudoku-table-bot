@@ -271,8 +271,8 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 	return b.String()
 }
 
-// duelsText renders the /duels leaderboard (all-time duel records).
-func duelsText(rows []storage.DuelStanding) string {
+// duelsText renders the /duels leaderboard (all-time duel records) and recent log.
+func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch) string {
 	if len(rows) == 0 {
 		return "⚔️ <b>Дуэли</b>\nЕщё не было дуэлей. Вызови кого-нибудь: /duel"
 	}
@@ -285,6 +285,16 @@ func duelsText(rows []storage.DuelStanding) string {
 		}
 		fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>\n",
 			medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
+	}
+	if len(recent) > 0 {
+		b.WriteString("\n<b>Последние дуэли</b>\n")
+		for _, m := range recent {
+			if m.Loser != "" {
+				fmt.Fprintf(&b, "%s · <b>%s</b> обыграл %s\n", m.Date, esc(m.Winner), esc(m.Loser))
+			} else {
+				fmt.Fprintf(&b, "%s · <b>%s</b> (соперник не финишировал)\n", m.Date, esc(m.Winner))
+			}
+		}
 	}
 	return b.String()
 }
