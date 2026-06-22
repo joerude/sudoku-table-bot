@@ -30,6 +30,8 @@ const (
 	cbDuelPick = "duelpick" // payload: "<difficulty>:<targetPlayerID>"
 	cbAccept   = "accept"   // payload: "<gameID>"
 	cbDecline  = "decline"  // payload: "<gameID>"
+
+	cbJoinIn = "joinin" // payload: "<gameID>"
 )
 
 // quickMenuKeyboard offers one-tap shortcuts for the most common actions.
@@ -136,6 +138,13 @@ func duelKeyboard(gameID int64) *tele.ReplyMarkup {
 		m.Data("✅ Принять", cbAccept, gid(gameID)),
 		m.Data("❌ Отказ", cbDecline, gid(gameID)),
 	))
+	return m
+}
+
+// inviteKeyboard is the RSVP toggle on an /invite post; count is the roster size.
+func inviteKeyboard(gameID int64, count int) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(m.Data(fmt.Sprintf("✅ Я в деле (%d)", count), cbJoinIn, gid(gameID))))
 	return m
 }
 

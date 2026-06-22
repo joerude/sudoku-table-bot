@@ -107,6 +107,26 @@ func TestParseDuelPick(t *testing.T) {
 	}
 }
 
+func TestInviteTextNilRoster(t *testing.T) {
+	pings := []storage.Player{{Name: "Vasya", TgID: sql.NullInt64{Int64: 7, Valid: true}}}
+	out := inviteText("medium", "TRPK", pings, nil)
+	for _, want := range []string{"Играем", "tg://user?id=7", "usdoku.com/TRPK", "Medium"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("inviteText nil roster: want %q in output\ngot: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "В деле:") {
+		t.Errorf("inviteText nil roster: should NOT contain 'В деле:'\ngot: %s", out)
+	}
+}
+
+func TestInviteTextWithRoster(t *testing.T) {
+	out := inviteText("medium", "TRPK", nil, []storage.Player{{Name: "Bob"}})
+	if !strings.Contains(out, "В деле: Bob") {
+		t.Errorf("inviteText with roster: want 'В деле: Bob' in output\ngot: %s", out)
+	}
+}
+
 func TestDuelChallengeText(t *testing.T) {
 	target := storage.Player{Name: "Petya", TgID: sql.NullInt64{Int64: 7, Valid: true}}
 	out := duelChallengeText("Vasya", target, "medium", "TRPK", false)
