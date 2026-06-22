@@ -26,6 +26,10 @@ const (
 	cbQGame   = "qgame"
 	cbQStatus = "qstatus"
 	cbQMe     = "qme"
+
+	cbDuelPick = "duelpick" // payload: "<difficulty>:<targetPlayerID>"
+	cbAccept   = "accept"   // payload: "<gameID>"
+	cbDecline  = "decline"  // payload: "<gameID>"
 )
 
 // quickMenuKeyboard offers one-tap shortcuts for the most common actions.
@@ -103,6 +107,35 @@ func restoreKeyboard(gameID int64) *tele.ReplyMarkup {
 func recordKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID))))
+	return m
+}
+
+// duelPickKeyboard lists candidate opponents; tapping one issues the challenge.
+func duelPickKeyboard(difficulty string, players []storage.Player) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	var btns []tele.Btn
+	for _, p := range players {
+		btns = append(btns, m.Data(p.Name, cbDuelPick, fmt.Sprintf("%s:%d", difficulty, p.ID)))
+	}
+	var rows []tele.Row
+	for i := 0; i < len(btns); i += 2 {
+		end := i + 2
+		if end > len(btns) {
+			end = len(btns)
+		}
+		rows = append(rows, m.Row(btns[i:end]...))
+	}
+	m.Inline(rows...)
+	return m
+}
+
+// duelKeyboard is the Accept/Decline prompt on a duel challenge.
+func duelKeyboard(gameID int64) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(
+		m.Data("✅ Принять", cbAccept, gid(gameID)),
+		m.Data("❌ Отказ", cbDecline, gid(gameID)),
+	))
 	return m
 }
 

@@ -68,50 +68,73 @@ func (b *Bot) onQuickGame(c tele.Context) error {
 	return b.startNewGame(c, "medium", "hardcore")
 }
 
-// startNewGame creates a usdoku game (or falls back to a link) and posts it.
-func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
+// gameRoom is a freshly created pending game; code is empty when usdoku room
+// creation failed (manual fallback — players use /result).
+type gameRoom struct {
+	gameID int64
+	code   string
+}
+
+// createGameRoom runs the shared setup for /newgame, /duel and /invite: guards,
+// creates the pending game, tries to open a usdoku room, starts the watcher. It
+// does NOT post a chat message. Returns (nil, nil) when a guard already replied
+// to the user (caller should just return nil).
+func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom, error) {
 	season, err := b.ensure(c)
 	if err != nil {
-		return b.fail(c, "startNewGame.ensure", err)
+		return nil, err
 	}
 	chatID := c.Chat().ID
 	if !b.enoughPlayers(c, chatID) {
-		return nil
+		return nil, nil // guard replied
 	}
-
 	pending, err := b.st.ActivePendingGame(chatID)
 	if err != nil {
-		return b.fail(c, "startNewGame.pending", err)
+		return nil, err
 	}
 	if pending != nil {
-		return c.Send("⚠️ Уже есть незакрытая игра. Сначала запиши её результат или отмени:",
+		_ = c.Send("⚠️ Уже есть незакрытая игра. Сначала запиши её результат или отмени:",
 			pendingConflictKeyboard(pending.ID))
+		return nil, nil
 	}
-
 	var createdBy int64
 	if c.Sender() != nil {
 		createdBy = c.Sender().ID
 	}
 	gameID, err := b.st.CreatePendingGame(chatID, season.ID, createdBy, difficulty, mode)
 	if err != nil {
-		return b.fail(c, "startNewGame.create", err)
+		return nil, err
 	}
-
-	// Try to create a real game on usdoku; fall back to a plain link if the API
-	// is unreachable or changed shape.
+	room := &gameRoom{gameID: gameID}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	code, err := b.ud.Create(ctx, difficulty, mode, "private")
 	if err != nil {
 		log.Printf("usdoku create: %v", err)
-		return c.Send(newGameText(difficulty, mode), recordKeyboard(gameID))
+		return room, nil // game exists, no code
 	}
 	if err := b.st.SetUsdokuCode(gameID, code); err != nil {
-		log.Printf("startNewGame.setcode: %v", err)
+		log.Printf("createGameRoom.setcode: %v", err)
 	}
+	room.code = code
 	log.Printf("🎮 game %d created on usdoku: %s (%s/%s)", gameID, code, difficulty, mode)
-	go b.watchGame(gameID, chatID, code) // auto-record when the game finishes
-	return c.Send(newGameWithCodeText(difficulty, mode, code), recordKeyboard(gameID))
+	go b.watchGame(gameID, chatID, code)
+	return room, nil
+}
+
+// startNewGame creates a usdoku game (or falls back to a link) and posts it.
+func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
+	room, err := b.createGameRoom(c, difficulty, mode)
+	if err != nil {
+		return b.fail(c, "startNewGame", err)
+	}
+	if room == nil {
+		return nil // a guard already replied
+	}
+	if room.code == "" {
+		return c.Send(newGameText(difficulty, mode), recordKeyboard(room.gameID))
+	}
+	return c.Send(newGameWithCodeText(difficulty, mode, room.code), recordKeyboard(room.gameID))
 }
 
 func (b *Bot) onResult(c tele.Context) error {

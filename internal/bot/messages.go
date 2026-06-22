@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
@@ -20,6 +21,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт игр в судоку 
 <b>Игра</b>
 /newgame &lt;easy|medium|hard|extreme&gt; [hardcore|original] — новая игра + ссылка
 /result — записать результат (жми игроков по порядку финиша)
+/duel — вызвать игрока на дуэль (1 на 1)
 
 <b>Статистика</b>
 /status — таблица сезона
@@ -286,6 +288,46 @@ func seasonEndText(number int, winner string, points, nextTarget, nextNumber int
 		"🎉🏆 <b>Сезон %d завершён!</b>\nПобедитель: <b>%s</b> (%d очков) 👑\n\n"+
 			"Начат <b>сезон %d</b> — все с нуля. Цель: %d очков. Поехали! 🔥",
 		number, esc(winner), points, nextNumber, nextTarget)
+}
+
+// parseDuelPick splits a cbDuelPick payload "<difficulty>:<targetPlayerID>".
+func parseDuelPick(s string) (difficulty string, targetID int64) {
+	i := strings.IndexByte(s, ':')
+	if i < 0 {
+		return "", 0
+	}
+	difficulty = s[:i]
+	targetID, _ = strconv.ParseInt(s[i+1:], 10, 64)
+	return difficulty, targetID
+}
+
+// duelChallengeText is the posted challenge. code may be empty (manual fallback).
+// nickWarn appends a note when a participant has no usdoku nick (no auto-record).
+func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚔️ <b>%s</b> вызывает %s на дуэль! · %s\n",
+		esc(challenger), mention(target), titleCase(difficulty))
+	if code != "" {
+		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
+	}
+	b.WriteString("\nПринимаешь вызов?")
+	if nickWarn {
+		b.WriteString("\n\n⚠️ У кого-то не задан /setnick — авто-запись не сработает, запишите результат через /result.")
+	}
+	return b.String()
+}
+
+func duelAcceptText(target storage.Player, code string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🔥 %s принял вызов! Поехали.\n", mention(target))
+	if code != "" {
+		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s", code)
+	}
+	return b.String()
+}
+
+func duelDeclineText(target storage.Player) string {
+	return fmt.Sprintf("❌ %s отказался. Дуэль отменена.", mention(target))
 }
 
 // --- small helpers ---
