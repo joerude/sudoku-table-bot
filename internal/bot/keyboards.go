@@ -27,9 +27,10 @@ const (
 	cbQStatus = "qstatus"
 	cbQMe     = "qme"
 
-	cbDuelPick = "duelpick" // payload: "<difficulty>:<targetPlayerID>"
-	cbAccept   = "accept"   // payload: "<gameID>"
-	cbDecline  = "decline"  // payload: "<gameID>"
+	cbDuelPick    = "duelpick"    // payload: "<difficulty>:<targetPlayerID>"
+	cbDuelCancel  = "duelcancel" // no payload — dismiss the opponent picker
+	cbAccept      = "accept"     // payload: "<gameID>"
+	cbDecline     = "decline"    // payload: "<gameID>"
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 )
@@ -127,6 +128,7 @@ func duelPickKeyboard(difficulty string, players []storage.Player) *tele.ReplyMa
 		}
 		rows = append(rows, m.Row(btns[i:end]...))
 	}
+	rows = append(rows, m.Row(m.Data("✖️ Отмена", cbDuelCancel)))
 	m.Inline(rows...)
 	return m
 }

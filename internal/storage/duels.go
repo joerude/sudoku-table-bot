@@ -1,5 +1,7 @@
 package storage
 
+import "database/sql"
+
 // DuelStanding is one player's all-time duel record.
 type DuelStanding struct {
 	Name   string
@@ -47,6 +49,48 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 			return nil, err
 		}
 		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DuelMatch is one finished duel for the recent-duels log.
+type DuelMatch struct {
+	Date   string // YYYY-MM-DD
+	Winner string
+	Loser  string // "" if the opponent did not finish / wasn't recorded
+}
+
+// RecentDuels returns the most recent finished duels (newest first), with the
+// winner (rank 1) and loser (rank 2, may be absent).
+func (s *Store) RecentDuels(chatID int64, n int) ([]DuelMatch, error) {
+	rows, err := s.db.Query(`
+		SELECT date(g.completed_at) AS d,
+		       MAX(CASE WHEN gr.rank=1 THEN p.name END) AS winner,
+		       MAX(CASE WHEN gr.rank=2 THEN p.name END) AS loser
+		FROM games g
+		JOIN game_results gr ON gr.game_id = g.id
+		JOIN players p ON p.id = gr.player_id
+		WHERE g.chat_id=? AND g.status='completed' AND g.deleted=0
+		  AND g.duel_target_id IS NOT NULL
+		GROUP BY g.id
+		ORDER BY g.id DESC
+		LIMIT ?`, chatID, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DuelMatch
+	for rows.Next() {
+		var (
+			m             DuelMatch
+			winner, loser sql.NullString
+		)
+		if err := rows.Scan(&m.Date, &winner, &loser); err != nil {
+			return nil, err
+		}
+		m.Winner = winner.String
+		m.Loser = loser.String
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }

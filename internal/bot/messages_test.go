@@ -101,7 +101,7 @@ func TestDuelsText(t *testing.T) {
 		{Name: "Vasya", Wins: 8, Losses: 2},
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
-	out := duelsText(rows)
+	out := duelsText(rows, nil)
 	for _, want := range []string{"🥇", "Vasya", "8–2", "(80%)", "Masha", "(50%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText: want %q in output\ngot: %s", want, out)
@@ -110,9 +110,24 @@ func TestDuelsText(t *testing.T) {
 }
 
 func TestDuelsTextEmpty(t *testing.T) {
-	out := duelsText(nil)
+	out := duelsText(nil, nil)
 	if !strings.Contains(out, "Ещё не было дуэлей") {
 		t.Errorf("duelsText empty: want 'Ещё не было дуэлей' in output\ngot: %s", out)
+	}
+}
+
+func TestDuelsTextWithRecent(t *testing.T) {
+	rows := []storage.DuelStanding{
+		{Name: "Vasya", Wins: 3, Losses: 1},
+	}
+	recent := []storage.DuelMatch{
+		{Date: "2026-06-22", Winner: "Vasya", Loser: "Petya"},
+	}
+	out := duelsText(rows, recent)
+	for _, want := range []string{"Последние дуэли", "2026-06-22", "Vasya", "обыграл", "Petya"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelsText with recent: want %q in output\ngot: %s", want, out)
+		}
 	}
 }
 
