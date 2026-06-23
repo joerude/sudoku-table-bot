@@ -17,14 +17,14 @@ func (b *Bot) onDuel(c tele.Context) error {
 	}
 	me := realSender(c)
 	if me == nil {
-		return c.Send(anonMsg)
+		return b.ephemeral(c, anonMsg)
 	}
 	caller, err := b.st.PlayerByTg(chatID, me.ID)
 	if err != nil {
 		return b.fail(c, "onDuel.caller", err)
 	}
 	if caller == nil {
-		return c.Send("Сначала зарегистрируйся: /join")
+		return b.ephemeral(c, "Сначала зарегистрируйся: /join")
 	}
 	players, err := b.st.ListPlayers(chatID)
 	if err != nil {
@@ -37,7 +37,7 @@ func (b *Bot) onDuel(c tele.Context) error {
 		}
 	}
 	if len(others) == 0 {
-		return c.Send("Нет соперников. Пусть кто-то ещё сделает /join.")
+		return b.ephemeral(c, "Нет соперников. Пусть кто-то ещё сделает /join.")
 	}
 	difficulty, _ := parseNewGameArgs(c.Args())
 	return c.Send("⚔️ Кого вызываешь на дуэль?", duelPickKeyboard(difficulty, others))

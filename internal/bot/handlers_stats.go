@@ -31,7 +31,7 @@ func (b *Bot) onExport(c tele.Context) error {
 		return b.fail(c, "onExport.games", err)
 	}
 	if len(games) == 0 {
-		return c.Send("В этом сезоне ещё нет сыгранных игр для экспорта.")
+		return b.ephemeral(c, "В этом сезоне ещё нет сыгранных игр для экспорта.")
 	}
 
 	var buf bytes.Buffer
@@ -103,14 +103,14 @@ func (b *Bot) onMe(c tele.Context) error {
 		return b.fail(c, "onMe.ensure", err)
 	}
 	if c.Sender() == nil {
-		return c.Send("Не удалось определить пользователя.")
+		return b.ephemeral(c, "Не удалось определить пользователя.")
 	}
 	player, err := b.st.PlayerByTg(c.Chat().ID, c.Sender().ID)
 	if err != nil {
 		return b.fail(c, "onMe.player", err)
 	}
 	if player == nil {
-		return c.Send("Ты ещё не в игре. Жми /join")
+		return b.ephemeral(c, "Ты ещё не в игре. Жми /join")
 	}
 	stat, err := b.st.StatFor(c.Chat().ID, season.ID, player.ID)
 	if err != nil {
@@ -162,7 +162,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	case "target":
 		n, err := strconv.Atoi(argAt(args, 1))
 		if err != nil || n <= 0 {
-			return c.Send("Укажи число: /settings target 100")
+			return b.ephemeral(c, "Укажи число: /settings target 100")
 		}
 		if err := b.st.UpdateSeasonTarget(season.ID, n); err != nil {
 			return b.fail(c, "onSettings.target", err)
@@ -172,7 +172,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	case "points":
 		table, err := parseInts(args[1:])
 		if err != nil || len(table) == 0 {
-			return c.Send("Укажи очки по местам: /settings points 3 1 0")
+			return b.ephemeral(c, "Укажи очки по местам: /settings points 3 1 0")
 		}
 		if err := b.st.UpdateSeasonPoints(season.ID, table); err != nil {
 			return b.fail(c, "onSettings.points", err)
@@ -182,7 +182,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	case "minplayers":
 		n, err := strconv.Atoi(argAt(args, 1))
 		if err != nil || n < 2 {
-			return c.Send("Минимум участников в игре (≥2): /settings minplayers 3")
+			return b.ephemeral(c, "Минимум участников в игре (≥2): /settings minplayers 3")
 		}
 		if err := b.st.SetMinPlayers(chatID, n); err != nil {
 			return b.fail(c, "onSettings.minplayers", err)
@@ -198,7 +198,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 			return c.Send("🔕 Ежедневные напоминания выключены.")
 		}
 		if _, err := time.Parse("15:04", val); err != nil {
-			return c.Send("Формат времени HH:MM, например: /settings daily 21:00")
+			return b.ephemeral(c, "Формат времени HH:MM, например: /settings daily 21:00")
 		}
 		if err := b.st.SetDailyReminder(chatID, true, val); err != nil {
 			return b.fail(c, "onSettings.daily", err)
@@ -253,7 +253,7 @@ func (b *Bot) requireAdmin(c tele.Context) bool {
 	if b.isAdmin(c) {
 		return true
 	}
-	_ = c.Send("⛔ Это действие доступно только админам группы.")
+	_ = b.ephemeral(c, "⛔ Это действие доступно только админам группы.")
 	return false
 }
 

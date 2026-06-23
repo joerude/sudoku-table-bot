@@ -49,7 +49,7 @@ func (b *Bot) enoughPlayers(c tele.Context, chatID int64) bool {
 		return false
 	}
 	if min := b.minPlayers(chatID); len(players) < min {
-		_ = c.Send(fmt.Sprintf(
+		_ = b.ephemeral(c, fmt.Sprintf(
 			"👥 Для зачёта нужно минимум <b>%d</b> игроков. Сейчас зарегистрировано: <b>%d</b>.\n"+
 				"Пусть соперники сделают /join.", min, len(players)))
 		return false
