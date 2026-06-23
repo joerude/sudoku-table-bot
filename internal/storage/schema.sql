@@ -60,9 +60,6 @@ CREATE TABLE IF NOT EXISTS game_results (
 CREATE INDEX IF NOT EXISTS idx_results_game ON game_results(game_id);
 CREATE INDEX IF NOT EXISTS idx_games_season ON games(season_id, status);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_season
-    ON seasons(chat_id) WHERE status = 'active';
-
 CREATE TABLE IF NOT EXISTS game_rsvp (
     game_id   INTEGER NOT NULL,
     player_id INTEGER NOT NULL,

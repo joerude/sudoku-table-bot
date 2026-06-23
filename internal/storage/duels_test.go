@@ -271,6 +271,124 @@ func TestRecentDuels(t *testing.T) {
 	}
 }
 
+// makeDNFDuelGame creates a completed duel where the opponent DNF'd (rank 0).
+func makeDNFDuelGame(t *testing.T, st *Store, chatID, seasonID, creatorID, winnerID, dnfID, targetID int64) int64 {
+	t.Helper()
+	gid, err := st.CreatePendingGame(chatID, seasonID, creatorID, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame: %v", err)
+	}
+	if err := st.SetDuelTarget(gid, targetID); err != nil {
+		t.Fatalf("SetDuelTarget: %v", err)
+	}
+	if err := st.AddPick(gid, winnerID); err != nil {
+		t.Fatalf("AddPick winner: %v", err)
+	}
+	if err := st.AddDNF(gid, dnfID); err != nil {
+		t.Fatalf("AddDNF: %v", err)
+	}
+	se, err := st.ActiveSeason(chatID)
+	if err != nil {
+		t.Fatalf("ActiveSeason: %v", err)
+	}
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatalf("FinalizeGame: %v", err)
+	}
+	return gid
+}
+
+// TestDuelDNFCountsAsLoss: an opponent stored via AddDNF (rank 0) must count as
+// a loss in DuelRecord, DuelLeaderboard, and RecentDuels.
+func TestDuelDNFCountsAsLoss(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-5001)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// Alice wins; Bob DNF (rank 0).
+	makeDNFDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
+
+	// DuelRecord: Bob must show losses=1 (not 0).
+	_, bLosses, err := st.DuelRecord(chat, b.ID)
+	if err != nil {
+		t.Fatalf("DuelRecord Bob: %v", err)
+	}
+	if bLosses != 1 {
+		t.Errorf("DuelRecord Bob DNF: want losses=1, got %d", bLosses)
+	}
+
+	// Alice must show wins=1, losses=0.
+	aWins, aLosses, err := st.DuelRecord(chat, a.ID)
+	if err != nil {
+		t.Fatalf("DuelRecord Alice: %v", err)
+	}
+	if aWins != 1 || aLosses != 0 {
+		t.Errorf("DuelRecord Alice: want (1,0), got (%d,%d)", aWins, aLosses)
+	}
+
+	// DuelLeaderboard: Bob shows 0-1.
+	lb, err := st.DuelLeaderboard(chat)
+	if err != nil {
+		t.Fatalf("DuelLeaderboard: %v", err)
+	}
+	lbIdx := map[string]DuelStanding{}
+	for _, d := range lb {
+		lbIdx[d.Name] = d
+	}
+	if lbIdx["Bob"].Wins != 0 || lbIdx["Bob"].Losses != 1 {
+		t.Errorf("DuelLeaderboard Bob: want 0W/1L, got %+v", lbIdx["Bob"])
+	}
+
+	// RecentDuels: the DNF opponent must appear as Loser.
+	matches, err := st.RecentDuels(chat, 5)
+	if err != nil {
+		t.Fatalf("RecentDuels: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("RecentDuels: want 1 match, got %d", len(matches))
+	}
+	if matches[0].Winner != "Alice" {
+		t.Errorf("RecentDuels: winner want Alice, got %q", matches[0].Winner)
+	}
+	if matches[0].Loser != "Bob" {
+		t.Errorf("RecentDuels: loser want Bob (DNF), got %q", matches[0].Loser)
+	}
+}
+
+// TestDuelNormalLossStillWorks: a normal rank-2 loss still reports correctly.
+func TestDuelNormalLossStillWorks(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-5002)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// Alice wins (rank 1), Bob loses (rank 2).
+	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
+
+	aWins, aLosses, _ := st.DuelRecord(chat, a.ID)
+	bWins, bLosses, _ := st.DuelRecord(chat, b.ID)
+	if aWins != 1 || aLosses != 0 {
+		t.Errorf("Alice normal win: want (1,0), got (%d,%d)", aWins, aLosses)
+	}
+	if bWins != 0 || bLosses != 1 {
+		t.Errorf("Bob normal loss: want (0,1), got (%d,%d)", bWins, bLosses)
+	}
+
+	matches, err := st.RecentDuels(chat, 5)
+	if err != nil {
+		t.Fatalf("RecentDuels: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Loser != "Bob" {
+		t.Errorf("RecentDuels normal: want Loser=Bob, got %+v", matches)
+	}
+}
+
 // TestHeadToHead: wins against each other only; third-player duels don't count.
 func TestHeadToHead(t *testing.T) {
 	st := openTemp(t)

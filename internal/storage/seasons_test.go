@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -93,5 +94,82 @@ func TestActiveSeasonRolloverStillWorks(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("want exactly 1 active season after rollover, got %d", count)
+	}
+}
+
+// TestMigrateDedupsActiveSeasonsOnReopen: if the DB somehow accumulated multiple
+// active seasons per chat (e.g. restored from a backup), a second Open must
+// archive the extras, keeping the one with the most completed games (ties: lowest id).
+func TestMigrateDedupsActiveSeasonsOnReopen(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "dedup.db")
+
+	// First Open: normal bootstrap — creates schema + index.
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("first Open: %v", err)
+	}
+
+	const chat = int64(-9001)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create season #1 (the "real" one with a completed game).
+	se1, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatalf("ActiveSeason: %v", err)
+	}
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	gid, err := st.CreatePendingGame(chat, se1.ID, a.ID, "medium", "hardcore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.AddPick(gid, a.ID)
+	st.AddPick(gid, b.ID)
+	st.FinalizeGame(gid, se1.PointsTable)
+
+	// Temporarily drop the unique index so we can inject duplicate active seasons.
+	if _, err := st.db.Exec(`DROP INDEX IF EXISTS idx_one_active_season`); err != nil {
+		t.Fatalf("drop index: %v", err)
+	}
+	// Insert two more empty active seasons (no completed games).
+	for _, num := range []int{2, 3} {
+		if _, err := st.db.Exec(
+			`INSERT INTO seasons(chat_id, number, target, points_table, status)
+			 VALUES(?, ?, 100, '[3,1,0]', 'active')`, chat, num); err != nil {
+			t.Fatalf("insert extra active season %d: %v", num, err)
+		}
+	}
+
+	// Verify we have 3 active seasons before reopen.
+	var before int
+	st.db.QueryRow(`SELECT COUNT(*) FROM seasons WHERE chat_id=? AND status='active'`, chat).Scan(&before)
+	if before != 3 {
+		t.Fatalf("precondition: want 3 active seasons, got %d", before)
+	}
+	st.Close()
+
+	// Second Open: migrate() dedup runs, should archive the two empty extras.
+	st2, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("second Open (reopen): %v", err)
+	}
+	defer st2.Close()
+
+	var after int
+	st2.db.QueryRow(`SELECT COUNT(*) FROM seasons WHERE chat_id=? AND status='active'`, chat).Scan(&after)
+	if after != 1 {
+		t.Errorf("after reopen: want exactly 1 active season, got %d", after)
+	}
+
+	// The surviving active season must be se1 (the one with the completed game).
+	surviving, err := st2.activeSeasonRow(chat)
+	if err != nil {
+		t.Fatalf("activeSeasonRow after reopen: %v", err)
+	}
+	if surviving.ID != se1.ID {
+		t.Errorf("wrong season survived: want id=%d (has completed game), got id=%d", se1.ID, surviving.ID)
 	}
 }

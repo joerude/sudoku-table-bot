@@ -74,7 +74,15 @@ func (s *Store) CloseSeason(se *Season, winnerID int64) (*Season, error) {
 		 WHERE id=?`, winnerID, se.ID); err != nil {
 		return nil, err
 	}
-	return s.CreateSeason(se.ChatID, se.Number+1, se.Target, se.PointsTable)
+	pts, _ := json.Marshal(se.PointsTable)
+	if _, err := s.db.Exec(
+		`INSERT INTO seasons(chat_id, number, target, points_table, status)
+		 VALUES(?, ?, ?, ?, 'active')
+		 ON CONFLICT(chat_id) WHERE status='active' DO NOTHING`,
+		se.ChatID, se.Number+1, se.Target, string(pts)); err != nil {
+		return nil, err
+	}
+	return s.activeSeasonRow(se.ChatID)
 }
 
 // UpdateSeasonTarget changes the active season's points target.

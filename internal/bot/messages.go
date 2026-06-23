@@ -261,6 +261,10 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 		return b.String()
 	}
 	w := rows[0]
+	if w.Rank == 0 {
+		b.WriteString("Никто не финишировал.")
+		return b.String()
+	}
 	fmt.Fprintf(&b, "🏆 <b>%s</b> побеждает", esc(w.Name))
 	if len(rows) >= 2 {
 		if rows[1].Rank == 0 {
