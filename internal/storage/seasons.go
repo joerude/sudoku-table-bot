@@ -18,18 +18,33 @@ type Season struct {
 }
 
 // ActiveSeason returns the chat's current active season, creating season #1 if
-// none exists yet.
+// none exists yet. The create is race-safe: a partial unique index guarantees
+// one active season per chat, so a concurrent creator's insert no-ops and we
+// read the winner's season.
 func (s *Store) ActiveSeason(chatID int64) (*Season, error) {
-	se, err := s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status FROM seasons
-		 WHERE chat_id=? AND status='active' ORDER BY number DESC LIMIT 1`, chatID))
-	if err == sql.ErrNoRows {
-		return s.CreateSeason(chatID, 1, domain.DefaultTarget, domain.DefaultPointsTable)
+	se, err := s.activeSeasonRow(chatID)
+	if err == nil {
+		return se, nil
 	}
-	if err != nil {
+	if err != sql.ErrNoRows {
 		return nil, err
 	}
-	return se, nil
+	pts, _ := json.Marshal(domain.DefaultPointsTable)
+	if _, err := s.db.Exec(
+		`INSERT INTO seasons(chat_id, number, target, points_table, status)
+		 VALUES(?, 1, ?, ?, 'active')
+		 ON CONFLICT(chat_id) WHERE status='active' DO NOTHING`,
+		chatID, domain.DefaultTarget, string(pts)); err != nil {
+		return nil, err
+	}
+	return s.activeSeasonRow(chatID)
+}
+
+// activeSeasonRow reads the chat's active season (sql.ErrNoRows if none).
+func (s *Store) activeSeasonRow(chatID int64) (*Season, error) {
+	return s.scanSeason(s.db.QueryRow(
+		`SELECT id, chat_id, number, target, points_table, status FROM seasons
+		 WHERE chat_id=? AND status='active' ORDER BY number DESC LIMIT 1`, chatID))
 }
 
 // SeasonByID fetches a season by id.
