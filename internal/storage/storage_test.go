@@ -247,6 +247,61 @@ func TestDNFRecording(t *testing.T) {
 	}
 }
 
+// TestSetPickDuration: fills NULL duration; is a no-op when already set; GameResults reports it.
+func TestSetPickDuration(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-700)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	gid, err := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Alice picked without a time (duration_secs NULL).
+	if err := st.AddPick(gid, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Bob picked with an explicit time.
+	if err := st.AddPickTimed(gid, b.ID, 200); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fill Alice's NULL duration.
+	if err := st.SetPickDuration(gid, a.ID, 150); err != nil {
+		t.Fatalf("SetPickDuration: %v", err)
+	}
+	// Attempt to overwrite Bob's already-set duration — must be a no-op.
+	if err := st.SetPickDuration(gid, b.ID, 999); err != nil {
+		t.Fatalf("SetPickDuration no-op: %v", err)
+	}
+
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := st.GameResults(gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	idx := map[string]ResultRow{}
+	for _, r := range rows {
+		idx[r.Name] = r
+	}
+	if idx["Alice"].Duration != 150 {
+		t.Errorf("Alice duration: want 150, got %d", idx["Alice"].Duration)
+	}
+	if idx["Bob"].Duration != 200 {
+		t.Errorf("Bob duration: want 200 (unchanged), got %d", idx["Bob"].Duration)
+	}
+}
+
 func mustStandings(t *testing.T, st *Store, chat, season int64) []Standing {
 	t.Helper()
 	s, err := st.Standings(chat, season)

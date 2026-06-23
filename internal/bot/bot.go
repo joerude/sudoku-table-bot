@@ -144,6 +144,7 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbUndo}, b.onUndoPick)
 	b.tb.Handle(&tele.Btn{Unique: cbCancel}, b.onCancelRecord)
 	b.tb.Handle(&tele.Btn{Unique: cbDone}, b.onDone)
+	b.tb.Handle(&tele.Btn{Unique: cbDoneDNF}, b.onDoneDNF)
 	b.tb.Handle(&tele.Btn{Unique: cbReset}, b.onReset)
 	b.tb.Handle(&tele.Btn{Unique: cbEdit}, b.onEdit)
 	b.tb.Handle(&tele.Btn{Unique: cbDel}, b.onDeleteAsk)

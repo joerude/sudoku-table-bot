@@ -272,6 +272,15 @@ func (s *Store) GameResults(gameID int64) ([]ResultRow, error) {
 	return out, rows.Err()
 }
 
+// SetPickDuration fills a finisher's solve time (seconds) if not already set.
+func (s *Store) SetPickDuration(gameID, playerID, durationSecs int64) error {
+	_, err := s.db.Exec(
+		`UPDATE game_results SET duration_secs=?
+		 WHERE game_id=? AND player_id=? AND duration_secs IS NULL`,
+		durationSecs, gameID, playerID)
+	return err
+}
+
 // SetUsdokuCode attaches an optional usdoku game code to a game.
 func (s *Store) SetUsdokuCode(gameID int64, code string) error {
 	_, err := s.db.Exec(`UPDATE games SET usdoku_code=? WHERE id=?`, code, gameID)
