@@ -14,7 +14,7 @@ type DuelStanding struct {
 func (s *Store) DuelRecord(chatID, playerID int64) (wins, losses int, err error) {
 	err = s.db.QueryRow(`
 		SELECT COALESCE(SUM(CASE WHEN gr.rank=1 THEN 1 ELSE 0 END),0),
-		       COALESCE(SUM(CASE WHEN gr.rank>1 THEN 1 ELSE 0 END),0)
+		       COALESCE(SUM(CASE WHEN gr.rank<>1 THEN 1 ELSE 0 END),0)
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		WHERE gr.player_id=? AND g.chat_id=? AND g.status='completed'
@@ -28,7 +28,7 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 	rows, err := s.db.Query(`
 		SELECT p.name,
 		       COALESCE(SUM(CASE WHEN gr.rank=1 THEN 1 ELSE 0 END),0) AS wins,
-		       COALESCE(SUM(CASE WHEN gr.rank>1 THEN 1 ELSE 0 END),0) AS losses
+		       COALESCE(SUM(CASE WHEN gr.rank<>1 THEN 1 ELSE 0 END),0) AS losses
 		FROM players p
 		JOIN game_results gr ON gr.player_id = p.id
 		JOIN games g ON g.id = gr.game_id
@@ -66,7 +66,7 @@ func (s *Store) RecentDuels(chatID int64, n int) ([]DuelMatch, error) {
 	rows, err := s.db.Query(`
 		SELECT date(g.completed_at) AS d,
 		       MAX(CASE WHEN gr.rank=1 THEN p.name END) AS winner,
-		       MAX(CASE WHEN gr.rank=2 THEN p.name END) AS loser
+		       MAX(CASE WHEN gr.rank<>1 THEN p.name END) AS loser
 		FROM games g
 		JOIN game_results gr ON gr.game_id = g.id
 		JOIN players p ON p.id = gr.player_id

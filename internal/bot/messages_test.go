@@ -240,6 +240,20 @@ func TestResultTextWithDNF(t *testing.T) {
 	}
 }
 
+func TestDuelResultTextAllDNF(t *testing.T) {
+	rows := []storage.ResultRow{
+		{Rank: 0, Name: "Vasya"},
+		{Rank: 0, Name: "Petya"},
+	}
+	out := duelResultText(rows, 0, 0, false)
+	if !strings.Contains(out, "Никто не финишировал") {
+		t.Errorf("duelResultText all-DNF: want 'Никто не финишировал' in output\ngot: %s", out)
+	}
+	if strings.Contains(out, "побеждает") {
+		t.Errorf("duelResultText all-DNF: must NOT contain 'побеждает'\ngot: %s", out)
+	}
+}
+
 func TestDuelResultTextWithDNF(t *testing.T) {
 	rows := []storage.ResultRow{
 		{Rank: 1, Name: "Vasya", Points: 3, Duration: 180},

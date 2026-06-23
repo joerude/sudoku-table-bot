@@ -52,6 +52,21 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE game_results ADD COLUMN duration_secs INTEGER`,
 		`ALTER TABLE players ADD COLUMN username TEXT`,
 		`ALTER TABLE games ADD COLUMN duel_target_id INTEGER`,
+		`UPDATE seasons SET status='archived'
+		 WHERE status='active' AND id NOT IN (
+		     SELECT id FROM (
+		         SELECT s.id,
+		                ROW_NUMBER() OVER (PARTITION BY s.chat_id
+		                                   ORDER BY COUNT(g.id) DESC, s.id ASC) rn
+		         FROM seasons s
+		         LEFT JOIN games g
+		                ON g.season_id = s.id AND g.status='completed' AND g.deleted=0
+		         WHERE s.status='active'
+		         GROUP BY s.id
+		     ) WHERE rn = 1
+		 )`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_season
+		     ON seasons(chat_id) WHERE status='active'`,
 	} {
 		_, _ = db.Exec(stmt)
 	}

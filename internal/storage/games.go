@@ -312,7 +312,7 @@ func (s *Store) ToggleRsvp(gameID, playerID int64) (bool, error) {
 	} else if err != sql.ErrNoRows {
 		return false, err
 	}
-	_, err := s.db.Exec(`INSERT INTO game_rsvp(game_id, player_id) VALUES(?,?)`, gameID, playerID)
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO game_rsvp(game_id, player_id) VALUES(?,?)`, gameID, playerID)
 	return true, err
 }
 
