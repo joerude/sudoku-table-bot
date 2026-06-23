@@ -492,56 +492,65 @@ func (b *Bot) onDoneDNF(c tele.Context) error {
 }
 
 // backfillUsdokuTimes fills finishers' solve times from the game's usdoku room
-// (matched by usdoku nick). Best-effort: no usdoku code, API error, or unset
-// nicks simply leave times empty. Used by the manual finalize path (auto-record
-// already captures times directly).
-func (b *Bot) backfillUsdokuTimes(game *storage.Game) {
+// (matched by usdoku nick) and returns the names of finishers who have no nick
+// set, so the caller can nudge them. Best-effort with a short timeout so it never
+// blocks the result for long; only meaningful when the game had a usdoku room.
+// Used by the manual finalize path (auto-record captures times directly).
+func (b *Bot) backfillUsdokuTimes(game *storage.Game) []string {
 	if !game.UsdokuCode.Valid || game.UsdokuCode.String == "" {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	info, err := b.ud.Info(ctx, game.UsdokuCode.String)
-	if err != nil {
-		log.Printf("backfillUsdokuTimes.info %s: %v", game.UsdokuCode.String, err)
-		return
-	}
-	secsByNick := make(map[string]int64) // lower(usdoku name) -> solve seconds
-	for _, p := range info.Players {
-		if s := p.SolveSeconds(); s > 0 {
-			secsByNick[strings.ToLower(p.Name)] = s
-		}
-	}
-	if len(secsByNick) == 0 {
-		return
+		return nil
 	}
 	rows, err := b.st.GameResults(game.ID)
 	if err != nil {
-		return
+		return nil
 	}
-	for _, r := range rows {
-		if r.Rank == 0 || r.Duration > 0 { // skip DNF and already-timed
-			continue
-		}
-		pl, err := b.st.PlayerByID(r.PlayerID)
-		if err != nil || pl == nil || !pl.UsdokuNick.Valid || pl.UsdokuNick.String == "" {
-			continue
-		}
-		if secs, ok := secsByNick[strings.ToLower(pl.UsdokuNick.String)]; ok {
-			if err := b.st.SetPickDuration(game.ID, r.PlayerID, secs); err != nil {
-				log.Printf("backfillUsdokuTimes.set: %v", err)
+	secsByNick := make(map[string]int64) // lower(usdoku name) -> solve seconds
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if info, err := b.ud.Info(ctx, game.UsdokuCode.String); err != nil {
+		log.Printf("backfillUsdokuTimes.info %s: %v", game.UsdokuCode.String, err)
+	} else {
+		for _, p := range info.Players {
+			if s := p.SolveSeconds(); s > 0 {
+				secsByNick[strings.ToLower(p.Name)] = s
 			}
 		}
 	}
+	var noNick []string
+	for _, r := range rows {
+		if r.Rank == 0 { // DNF isn't a finisher
+			continue
+		}
+		pl, err := b.st.PlayerByID(r.PlayerID)
+		if err != nil || pl == nil {
+			continue
+		}
+		if !pl.UsdokuNick.Valid || pl.UsdokuNick.String == "" {
+			noNick = append(noNick, r.Name)
+			continue
+		}
+		if r.Duration == 0 {
+			if secs, ok := secsByNick[strings.ToLower(pl.UsdokuNick.String)]; ok {
+				if err := b.st.SetPickDuration(game.ID, r.PlayerID, secs); err != nil {
+					log.Printf("backfillUsdokuTimes.set: %v", err)
+				}
+			}
+		}
+	}
+	return noNick
 }
 
 // finalize scores the game and edits the callback's message with the result,
 // rolling the season if needed.
 func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
-	b.backfillUsdokuTimes(game) // manual records: pull solve times from usdoku
+	noNick := b.backfillUsdokuTimes(game) // manual records: pull solve times from usdoku
 	result, seasonEnd, err := b.scoreAndCheck(game)
 	if err != nil {
 		return b.fail(c, "finalize", err)
+	}
+	if len(noNick) > 0 {
+		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b> — задайте /setnick",
+			esc(strings.Join(noNick, ", ")))
 	}
 	if err := c.Edit(result, resultKeyboard(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
