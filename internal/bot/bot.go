@@ -185,13 +185,50 @@ func realSender(c tele.Context) *tele.User {
 	return u
 }
 
+// ephemeralTTL is how long a self-deleting service message lives.
+const ephemeralTTL = 20 * time.Second
+
+// ephemeral sends a transient service message (error / guard / validation) that
+// deletes itself after ephemeralTTL, along with the user command that triggered
+// it. Deleting the user's message needs the bot to be a group admin and is
+// silently skipped otherwise. Use for noise only — never for results, stats,
+// confirmations, or messages with action buttons.
+func (b *Bot) ephemeral(c tele.Context, text string, opts ...interface{}) error {
+	msg, err := b.tb.Send(c.Recipient(), text, opts...)
+	if err != nil {
+		return err
+	}
+	var userCmd *tele.Message
+	if c.Callback() == nil { // c.Message() is the user's command, not a bot msg
+		userCmd = c.Message()
+	}
+	b.scheduleDelete(ephemeralTTL, msg, userCmd)
+	return nil
+}
+
+// scheduleDelete removes the given messages after d (best-effort; survives only
+// while the process is up — a restart drops pending deletes, which is fine for a
+// 20s TTL).
+func (b *Bot) scheduleDelete(d time.Duration, msgs ...*tele.Message) {
+	time.AfterFunc(d, func() {
+		for _, m := range msgs {
+			if m == nil {
+				continue
+			}
+			if err := b.tb.Delete(m); err != nil {
+				log.Printf("ephemeral delete: %v", err)
+			}
+		}
+	})
+}
+
 // fail logs an error and shows a generic message to the user.
 func (b *Bot) fail(c tele.Context, where string, err error) error {
 	log.Printf("%s: %v", where, err)
 	if c.Callback() != nil {
 		_ = c.Respond(&tele.CallbackResponse{Text: "Ошибка, попробуйте ещё раз"})
 	}
-	return c.Send("⚠️ Что-то пошло не так. Попробуйте ещё раз.")
+	return b.ephemeral(c, "⚠️ Что-то пошло не так. Попробуйте ещё раз.")
 }
 
 // parseID reads an int64 from callback payload (whole string or before ':').

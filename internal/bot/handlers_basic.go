@@ -47,7 +47,7 @@ func (b *Bot) onJoin(c tele.Context) error {
 	}
 	sender := realSender(c)
 	if sender == nil {
-		return c.Send(anonMsg)
+		return b.ephemeral(c, anonMsg)
 	}
 	name := strings.TrimSpace(c.Message().Payload)
 	if name == "" {
@@ -77,18 +77,18 @@ func (b *Bot) onSetNick(c tele.Context) error {
 	}
 	sender := realSender(c)
 	if sender == nil {
-		return c.Send(anonMsg)
+		return b.ephemeral(c, anonMsg)
 	}
 	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
 	if err != nil {
 		return b.fail(c, "onSetNick.player", err)
 	}
 	if player == nil {
-		return c.Send("Сначала зарегистрируйся: /join")
+		return b.ephemeral(c, "Сначала зарегистрируйся: /join")
 	}
 	nick := strings.TrimSpace(c.Message().Payload)
 	if nick == "" {
-		return c.Send("Укажи свой ник из usdoku: /setnick МойНик")
+		return b.ephemeral(c, "Укажи свой ник из usdoku: /setnick МойНик")
 	}
 	if err := b.st.SetNick(player.ID, nick); err != nil {
 		return b.fail(c, "onSetNick.set", err)
@@ -106,14 +106,14 @@ func (b *Bot) onRemovePlayer(c tele.Context) error {
 	}
 	name := strings.TrimSpace(c.Message().Payload)
 	if name == "" {
-		return c.Send("Кого убрать? Напиши: /removeplayer Имя\n(смотри /players)")
+		return b.ephemeral(c, "Кого убрать? Напиши: /removeplayer Имя\n(смотри /players)")
 	}
 	n, err := b.st.RemovePlayer(c.Chat().ID, name)
 	if err != nil {
 		return b.fail(c, "onRemovePlayer.remove", err)
 	}
 	if n == 0 {
-		return c.Send("Не нашёл игрока: <b>" + esc(name) + "</b>. Проверь /players.")
+		return b.ephemeral(c, "Не нашёл игрока: <b>"+esc(name)+"</b>. Проверь /players.")
 	}
 	return c.Send("🗑 Игрок убран: <b>" + esc(name) + "</b> (его прошлые игры сохранены).")
 }
@@ -127,7 +127,7 @@ func (b *Bot) onPlayers(c tele.Context) error {
 		return b.fail(c, "onPlayers.list", err)
 	}
 	if len(players) == 0 {
-		return c.Send("Пока никто не зарегистрирован. Жми /join")
+		return b.ephemeral(c, "Пока никто не зарегистрирован. Жми /join")
 	}
 	var sb strings.Builder
 	sb.WriteString("👥 <b>Игроки</b>\n")
