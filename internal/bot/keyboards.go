@@ -20,7 +20,8 @@ const (
 	cbDelY  = "dely"  // payload: "<gameID>" — confirmed delete
 	cbDelN  = "deln"  // payload: "<gameID>" — cancel delete
 	cbUndel = "undel" // payload: "<gameID>" — restore deleted game
-	cbRec   = "rec"   // payload: "<gameID>"
+	cbRec     = "rec"     // payload: "<gameID>"
+	cbDoneDNF = "donednf" // payload: "<gameID>" — finalize, rest = DNF (0)
 
 	// Quick-action menu (no payload).
 	cbQGame   = "qgame"
@@ -67,6 +68,7 @@ func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount int) *
 
 	if pickedCount > 0 {
 		rows = append(rows, m.Row(m.Data("✅ Готово", cbDone, gid(gameID))))
+		rows = append(rows, m.Row(m.Data("🏳 Остальные не доиграли (0)", cbDoneDNF, gid(gameID))))
 		rows = append(rows, m.Row(
 			m.Data("↩️ Назад", cbUndo, gid(gameID)),
 			m.Data("♻️ Сброс", cbReset, gid(gameID)),
