@@ -130,6 +130,9 @@ func (b *Bot) routes() {
 	b.tb.Handle("/invite", b.onInvite)
 	b.tb.Handle(&tele.Btn{Unique: cbJoinIn}, b.onJoinIn)
 
+	b.tb.Handle("/stats", b.onStats)
+	b.tb.Handle(&tele.Btn{Unique: cbStatsTab}, b.onStatsTab)
+
 	b.tb.Handle("/duels", b.onDuels)
 	b.tb.Handle("/status", b.onStatus)
 	b.tb.Handle("/table", b.onStatus)

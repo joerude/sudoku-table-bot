@@ -249,6 +249,98 @@ func (b *Bot) isAdmin(c tele.Context) bool {
 	return m.Role == tele.Creator || m.Role == tele.Administrator
 }
 
+// statsView builds the dashboard text + tab keyboard for one tab. The "me" tab
+// is rendered for whoever triggered the update (c.Sender()).
+func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, error) {
+	season, err := b.ensure(c)
+	if err != nil {
+		return "", nil, err
+	}
+	chatID := c.Chat().ID
+	var text string
+	switch tab {
+	case "me":
+		text, err = b.meTab(c, season)
+	case "speed":
+		ranked, fewer, e := b.st.Speedboard(chatID, season.ID, "medium", speedMinGames)
+		if e != nil {
+			return "", nil, e
+		}
+		text = speedText(season, "medium", ranked, fewer, speedMinGames)
+	case "duels":
+		rows, e := b.st.DuelLeaderboard(chatID)
+		if e != nil {
+			return "", nil, e
+		}
+		recent, e := b.st.RecentDuels(chatID, 8)
+		if e != nil {
+			return "", nil, e
+		}
+		text = duelsText(rows, recent)
+	case "history":
+		games, e := b.st.RecentGames(chatID, 8)
+		if e != nil {
+			return "", nil, e
+		}
+		text = historyText(games)
+	default:
+		tab = "table"
+		standings, e := b.st.Standings(chatID, season.ID)
+		if e != nil {
+			return "", nil, e
+		}
+		text = standingsText(season, standings)
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return text, statsKeyboard(tab), nil
+}
+
+// meTab renders the caller's personal stats, or a join hint if unregistered.
+func (b *Bot) meTab(c tele.Context, season *storage.Season) (string, error) {
+	if c.Sender() == nil {
+		return "Не удалось определить пользователя.", nil
+	}
+	player, err := b.st.PlayerByTg(c.Chat().ID, c.Sender().ID)
+	if err != nil {
+		return "", err
+	}
+	if player == nil {
+		return "Ты ещё не в игре. Жми /join", nil
+	}
+	stat, err := b.st.StatFor(c.Chat().ID, season.ID, player.ID)
+	if err != nil {
+		return "", err
+	}
+	sp, err := b.st.SpeedFor(c.Chat().ID, season.ID, player.ID, "medium")
+	if err != nil {
+		return "", err
+	}
+	duelW, duelL, err := b.st.DuelRecord(c.Chat().ID, player.ID)
+	if err != nil {
+		return "", err
+	}
+	return meText(player.Name, stat, sp, duelW, duelL, season), nil
+}
+
+func (b *Bot) onStats(c tele.Context) error {
+	text, markup, err := b.statsView(c, "table")
+	if err != nil {
+		return b.fail(c, "onStats", err)
+	}
+	return c.Send(text, markup)
+}
+
+func (b *Bot) onStatsTab(c tele.Context) error {
+	text, markup, err := b.statsView(c, c.Data())
+	if err != nil {
+		return b.fail(c, "onStatsTab", err)
+	}
+	_ = c.Respond()
+	return c.Edit(text, markup)
+}
+
 func (b *Bot) requireAdmin(c tele.Context) bool {
 	if b.isAdmin(c) {
 		return true
