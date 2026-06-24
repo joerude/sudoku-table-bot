@@ -208,13 +208,17 @@ func playDiffKeyboard() *tele.ReplyMarkup {
 }
 
 // claimNickKeyboard offers one tap-to-claim button per unrecognised usdoku nick.
+// Nicks whose callback_data payload would exceed Telegram's 64-byte hard limit are
+// skipped silently; they remain listed in the text body for manual /setnick.
 func claimNickKeyboard(gameID int64, nicks []string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	for _, n := range nicks {
-		rows = append(rows, m.Row(
-			m.Data("Это я: "+n, cbClaimNick, fmt.Sprintf("%d:%s", gameID, n)),
-		))
+		data := fmt.Sprintf("%d:%s", gameID, n)
+		if len(data) > 64 { // Telegram callback_data hard limit (bytes)
+			continue
+		}
+		rows = append(rows, m.Row(m.Data("Это я: "+n, cbClaimNick, data)))
 	}
 	m.Inline(rows...)
 	return m

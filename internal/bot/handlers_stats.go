@@ -299,10 +299,11 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 
 // meTab renders the caller's personal stats, or a join hint if unregistered.
 func (b *Bot) meTab(c tele.Context, season *storage.Season) (string, error) {
-	if c.Sender() == nil {
+	sender := realSender(c)
+	if sender == nil {
 		return "Не удалось определить пользователя.", nil
 	}
-	player, err := b.st.PlayerByTg(c.Chat().ID, c.Sender().ID)
+	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
 	if err != nil {
 		return "", err
 	}
@@ -332,6 +333,8 @@ func (b *Bot) onStats(c tele.Context) error {
 	return c.Send(text, markup)
 }
 
+// onStatsTab edits the single shared group message in place; the "me" tab therefore
+// renders for whoever last tapped, not as a per-user private view — this is by design.
 func (b *Bot) onStatsTab(c tele.Context) error {
 	text, markup, err := b.statsView(c, c.Data())
 	if err != nil {
