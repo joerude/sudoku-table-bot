@@ -100,7 +100,16 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	for _, p := range info.FinishOrder() {
 		finisherNicks = append(finisherNicks, p.Name)
 		if pl, _ := b.st.PlayerByNick(game.ChatID, p.Name); pl != nil {
-			picks = append(picks, pick{id: pl.ID, durSecs: p.SolveSeconds()})
+			secs := p.SolveSeconds(info.Info.StartedAt)
+			if secs == 0 {
+				var comp int64
+				if p.CompletedAt != nil {
+					comp = *p.CompletedAt
+				}
+				log.Printf("⏱ no solve time for %s: startedAt=%d joinedAt=%d completedAt=%d",
+					p.Name, info.Info.StartedAt, p.JoinedAt, comp)
+			}
+			picks = append(picks, pick{id: pl.ID, durSecs: secs})
 		}
 	}
 

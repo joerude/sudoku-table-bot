@@ -83,15 +83,23 @@ type Player struct {
 const maxSolveSeconds = 6 * 3600
 
 // SolveSeconds is the player's solve time in seconds, or 0 if unknown / DNF /
-// implausible. usdoku's timestamp unit is unconfirmed, so a delta too large for a
-// sudoku solve is treated as milliseconds and scaled down; if it's still too
-// large (or joinedAt is missing, which would make the delta a raw timestamp), it
-// is treated as bad data and ignored.
-func (p Player) SolveSeconds() int64 {
-	if p.CompletedAt == nil || p.JoinedAt <= 0 {
+// implausible. The base is the round start (startedAt) — the right reference for
+// a race — falling back to the player's joinedAt when the game has no startedAt.
+// usdoku's timestamp unit is unconfirmed, so a delta too large for a sudoku solve
+// is treated as milliseconds and scaled down; if it's still too large (or no base
+// is available, which would make the delta a raw timestamp) it is ignored.
+func (p Player) SolveSeconds(startedAt int64) int64 {
+	if p.CompletedAt == nil {
 		return 0
 	}
-	d := *p.CompletedAt - p.JoinedAt
+	base := startedAt
+	if base <= 0 {
+		base = p.JoinedAt
+	}
+	if base <= 0 {
+		return 0
+	}
+	d := *p.CompletedAt - base
 	if d <= 0 {
 		return 0
 	}
