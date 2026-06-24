@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -118,6 +119,11 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
 			game.ID, finisherNicks, unknown, mappedJoined)
 		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown), recordKeyboard(game.ID))
+		if len(unknown) > 0 {
+			_, _ = b.tb.Send(to,
+				"Это твой ник? Привяжу его к тебе одним тапом:",
+				claimNickKeyboard(game.ID, unknown))
+		}
 		return
 	}
 	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
@@ -149,4 +155,33 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	if seasonEnd != "" {
 		_, _ = b.tb.Send(to, seasonEnd)
 	}
+}
+
+// onClaimNick binds an unrecognised usdoku nick to the tapping player, so future
+// games auto-record for them. Re-attribution of the just-finished game is left to
+// a manual /result if needed (keeps this a safe, single-write action).
+func (b *Bot) onClaimNick(c tele.Context) error {
+	data := c.Data()
+	i := strings.IndexByte(data, ':')
+	if i < 0 {
+		return c.Respond(&tele.CallbackResponse{Text: "Не понял ник"})
+	}
+	nick := data[i+1:]
+	sender := realSender(c)
+	if sender == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Не получилось определить тебя"})
+	}
+	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
+	if err != nil {
+		return b.fail(c, "onClaimNick.player", err)
+	}
+	if player == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
+	}
+	if err := b.st.SetNick(player.ID, nick); err != nil {
+		return b.fail(c, "onClaimNick.set", err)
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Готово: ник " + nick + " привязан"})
+	return c.Send(fmt.Sprintf("✅ <b>%s</b> = usdoku <code>%s</code>. Дальше учёт сам.",
+		esc(player.Name), esc(nick)))
 }

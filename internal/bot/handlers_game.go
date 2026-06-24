@@ -131,10 +131,20 @@ func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
 	if room == nil {
 		return nil // a guard already replied
 	}
+	var text string
 	if room.code == "" {
-		return c.Send(newGameText(difficulty, mode), recordKeyboard(room.gameID))
+		text = newGameText(difficulty, mode)
+	} else {
+		text = newGameWithCodeText(difficulty, mode, room.code)
 	}
-	return c.Send(newGameWithCodeText(difficulty, mode, room.code), recordKeyboard(room.gameID))
+	if players, perr := b.st.ListPlayers(c.Chat().ID); perr == nil {
+		if missing := namesMissingNick(players); len(missing) > 0 {
+			text += fmt.Sprintf(
+				"\n\n⚠️ Без ника (авто-учёт не сработает): <b>%s</b> — задайте /setnick.",
+				esc(strings.Join(missing, ", ")))
+		}
+	}
+	return c.Send(text, recordKeyboard(room.gameID))
 }
 
 func (b *Bot) onResult(c tele.Context) error {

@@ -149,6 +149,7 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbDelN}, b.onDeleteCancel)
 	b.tb.Handle(&tele.Btn{Unique: cbUndel}, b.onRestore)
 	b.tb.Handle(&tele.Btn{Unique: cbRec}, b.onRecord)
+	b.tb.Handle(&tele.Btn{Unique: cbClaimNick}, b.onClaimNick)
 
 	b.tb.Handle(&tele.Btn{Unique: cbQGame}, b.onQuickGame)
 	b.tb.Handle(&tele.Btn{Unique: cbQStatus}, b.onQuickStatus)

@@ -37,6 +37,8 @@ const (
 
 	cbStatsTab = "ststab" // payload: "<tab>" — table|me|speed|duels|history
 
+	cbClaimNick = "claim" // payload: "<gameID>:<usdokuNick>" — bind nick to tapper
+
 	cbPlayGame   = "pgame" // no payload — opens difficulty chooser
 	cbPlayDuel   = "pduel" // no payload — routes to duel flow
 	cbPlayInvite = "pinv"  // no payload — routes to invite flow
@@ -202,6 +204,19 @@ func playDiffKeyboard() *tele.ReplyMarkup {
 			m.Data("💀 Extreme", cbPlayDiff, "extreme"),
 		),
 	)
+	return m
+}
+
+// claimNickKeyboard offers one tap-to-claim button per unrecognised usdoku nick.
+func claimNickKeyboard(gameID int64, nicks []string) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	for _, n := range nicks {
+		rows = append(rows, m.Row(
+			m.Data("Это я: "+n, cbClaimNick, fmt.Sprintf("%d:%s", gameID, n)),
+		))
+	}
+	m.Inline(rows...)
 	return m
 }
 

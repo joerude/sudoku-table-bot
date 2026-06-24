@@ -94,7 +94,7 @@ func (b *Bot) onSetNick(c tele.Context) error {
 		return b.fail(c, "onSetNick.set", err)
 	}
 	return c.Send(fmt.Sprintf(
-		"✅ usdoku-ник: <b>%s</b>. Теперь результаты будут подтягиваться автоматически.", esc(nick)))
+		"✅ usdoku-ник: <b>%s</b> сохранён — проверю в ближайшей игре.", esc(nick)))
 }
 
 func (b *Bot) onRemovePlayer(c tele.Context) error {
