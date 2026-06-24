@@ -78,19 +78,28 @@ type Player struct {
 	CompletedAt *int64 `json:"completedAt"` // nil => did not finish
 }
 
-// SolveSeconds is the player's solve time in seconds, or 0 if unknown / DNF.
-// usdoku's timestamp unit is unconfirmed, so a delta implausibly large for a
-// sudoku solve (>6h) is treated as milliseconds and scaled down.
+// maxSolveSeconds bounds a plausible sudoku solve; anything longer is bad data
+// (e.g. a missing joinedAt makes the delta a raw timestamp) and is discarded.
+const maxSolveSeconds = 6 * 3600
+
+// SolveSeconds is the player's solve time in seconds, or 0 if unknown / DNF /
+// implausible. usdoku's timestamp unit is unconfirmed, so a delta too large for a
+// sudoku solve is treated as milliseconds and scaled down; if it's still too
+// large (or joinedAt is missing, which would make the delta a raw timestamp), it
+// is treated as bad data and ignored.
 func (p Player) SolveSeconds() int64 {
-	if p.CompletedAt == nil {
+	if p.CompletedAt == nil || p.JoinedAt <= 0 {
 		return 0
 	}
 	d := *p.CompletedAt - p.JoinedAt
 	if d <= 0 {
 		return 0
 	}
-	if d > 6*3600 {
-		d /= 1000
+	if d > maxSolveSeconds {
+		d /= 1000 // likely milliseconds
+	}
+	if d > maxSolveSeconds {
+		return 0 // still implausible → bad data
 	}
 	return d
 }
