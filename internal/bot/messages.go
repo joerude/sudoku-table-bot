@@ -356,6 +356,18 @@ func seasonEndText(number int, winner string, points, nextTarget, nextNumber int
 		number, esc(winner), points, nextNumber, nextTarget)
 }
 
+// namesMissingNick returns the names of players with no usdoku nick set, in
+// input order — used to warn before a game that auto-record will skip them.
+func namesMissingNick(players []storage.Player) []string {
+	var out []string
+	for _, p := range players {
+		if !p.UsdokuNick.Valid || p.UsdokuNick.String == "" {
+			out = append(out, p.Name)
+		}
+	}
+	return out
+}
+
 // parseDuelPick splits a cbDuelPick payload "<difficulty>:<targetPlayerID>".
 func parseDuelPick(s string) (difficulty string, targetID int64) {
 	i := strings.IndexByte(s, ':')

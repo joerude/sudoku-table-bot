@@ -379,3 +379,41 @@ func TestHelpTextLeadsWithPlayAndStats(t *testing.T) {
 		}
 	}
 }
+
+func TestNamesMissingNick(t *testing.T) {
+	withNick := storage.Player{Name: "Ann", UsdokuNick: sql.NullString{String: "ann", Valid: true}}
+	emptyNick := storage.Player{Name: "Bob", UsdokuNick: sql.NullString{String: "", Valid: true}}
+	noNick := storage.Player{Name: "Cy"} // UsdokuNick invalid
+	got := namesMissingNick([]storage.Player{withNick, emptyNick, noNick})
+	want := []string{"Bob", "Cy"}
+	if len(got) != len(want) {
+		t.Fatalf("want %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d]=%q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestClaimNickKeyboardOneButtonPerNick(t *testing.T) {
+	m := claimNickKeyboard(42, []string{"joe", "max"})
+	var data []string
+	for _, row := range m.InlineKeyboard {
+		for _, btn := range row {
+			if btn.Unique != cbClaimNick {
+				t.Errorf("unexpected unique %q", btn.Unique)
+			}
+			data = append(data, btn.Data)
+		}
+	}
+	want := []string{"42:joe", "42:max"}
+	if len(data) != len(want) {
+		t.Fatalf("want %v, got %v", want, data)
+	}
+	for i := range want {
+		if data[i] != want[i] {
+			t.Errorf("data[%d]=%q want %q", i, data[i], want[i])
+		}
+	}
+}
