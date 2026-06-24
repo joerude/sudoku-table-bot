@@ -305,6 +305,38 @@ func TestStatsKeyboardMarksActive(t *testing.T) {
 	}
 }
 
+func TestPlayDiffKeyboardOffersAllDifficulties(t *testing.T) {
+	m := playDiffKeyboard()
+	got := map[string]bool{}
+	for _, row := range m.InlineKeyboard {
+		for _, btn := range row {
+			if btn.Unique == cbPlayDiff {
+				got[btn.Data] = true
+			}
+		}
+	}
+	for _, want := range []string{"easy", "medium", "hard", "extreme"} {
+		if !got[want] {
+			t.Errorf("playDiffKeyboard missing difficulty %q", want)
+		}
+	}
+}
+
+func TestPlayMenuKeyboardHasThreeModes(t *testing.T) {
+	m := playMenuKeyboard()
+	uniques := map[string]bool{}
+	for _, row := range m.InlineKeyboard {
+		for _, btn := range row {
+			uniques[btn.Unique] = true
+		}
+	}
+	for _, want := range []string{cbPlayGame, cbPlayDuel, cbPlayInvite} {
+		if !uniques[want] {
+			t.Errorf("play menu missing button %q", want)
+		}
+	}
+}
+
 func TestDuelChallengeText(t *testing.T) {
 	target := storage.Player{Name: "Petya", TgID: sql.NullInt64{Int64: 7, Valid: true}}
 	out := duelChallengeText("Vasya", target, "medium", "TRPK", false)

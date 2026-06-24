@@ -36,6 +36,11 @@ const (
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
 	cbStatsTab = "ststab" // payload: "<tab>" — table|me|speed|duels|history
+
+	cbPlayGame   = "pgame" // no payload — opens difficulty chooser
+	cbPlayDuel   = "pduel" // no payload — routes to duel flow
+	cbPlayInvite = "pinv"  // no payload — routes to invite flow
+	cbPlayDiff   = "pdiff" // payload: "<difficulty>" — creates a normal game
 )
 
 // quickMenuKeyboard offers one-tap shortcuts for the most common actions.
@@ -171,6 +176,33 @@ var statsTabs = []struct{ id, label string }{
 	{"speed", "⚡ Скорость"},
 	{"duels", "⚔️ Дуэли"},
 	{"history", "📜 История"},
+}
+
+// playMenuKeyboard is the /play hub: pick a game mode.
+func playMenuKeyboard() *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(
+		m.Row(m.Data("🆕 Обычная игра", cbPlayGame)),
+		m.Row(
+			m.Data("⚔️ Дуэль", cbPlayDuel),
+			m.Data("📣 Позвать всех", cbPlayInvite),
+		),
+	)
+	return m
+}
+
+// playDiffKeyboard chooses difficulty for a normal game; Medium is prominent.
+func playDiffKeyboard() *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(
+		m.Row(m.Data("⚡ Medium (обычная)", cbPlayDiff, "medium")),
+		m.Row(
+			m.Data("🟢 Easy", cbPlayDiff, "easy"),
+			m.Data("🔴 Hard", cbPlayDiff, "hard"),
+			m.Data("💀 Extreme", cbPlayDiff, "extreme"),
+		),
+	)
+	return m
 }
 
 // statsKeyboard renders the dashboard tab row; the active tab gets a "•" marker.

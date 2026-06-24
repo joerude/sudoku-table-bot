@@ -120,6 +120,12 @@ func (b *Bot) routes() {
 	b.tb.Handle("/removeplayer", b.onRemovePlayer)
 	b.tb.Handle("/export", b.onExport)
 
+	b.tb.Handle("/play", b.onPlay)
+	b.tb.Handle(&tele.Btn{Unique: cbPlayGame}, b.onPlayGame)
+	b.tb.Handle(&tele.Btn{Unique: cbPlayDiff}, b.onPlayDiff)
+	b.tb.Handle(&tele.Btn{Unique: cbPlayDuel}, b.onPlayDuel)
+	b.tb.Handle(&tele.Btn{Unique: cbPlayInvite}, b.onPlayInvite)
+
 	b.tb.Handle("/newgame", b.onNewGame)
 	b.tb.Handle("/result", b.onResult)
 	b.tb.Handle("/duel", b.onDuel)
