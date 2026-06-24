@@ -396,6 +396,23 @@ func TestNamesMissingNick(t *testing.T) {
 	}
 }
 
+func TestClaimNickKeyboardSkipsOverlongNicks(t *testing.T) {
+	long := strings.Repeat("я", 40) // ~80 bytes → payload exceeds 64
+	m := claimNickKeyboard(42, []string{"joe", long})
+	var data []string
+	for _, row := range m.InlineKeyboard {
+		for _, btn := range row {
+			if len(btn.Data) > 64 {
+				t.Errorf("callback_data exceeds 64 bytes: %d", len(btn.Data))
+			}
+			data = append(data, btn.Data)
+		}
+	}
+	if len(data) != 1 || data[0] != "42:joe" {
+		t.Fatalf("want only [42:joe], got %v", data)
+	}
+}
+
 func TestClaimNickKeyboardOneButtonPerNick(t *testing.T) {
 	m := claimNickKeyboard(42, []string{"joe", "max"})
 	var data []string

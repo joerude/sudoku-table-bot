@@ -120,9 +120,10 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 			game.ID, finisherNicks, unknown, mappedJoined)
 		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown), recordKeyboard(game.ID))
 		if len(unknown) > 0 {
-			_, _ = b.tb.Send(to,
-				"Это твой ник? Привяжу его к тебе одним тапом:",
-				claimNickKeyboard(game.ID, unknown))
+			if kb := claimNickKeyboard(game.ID, unknown); len(kb.InlineKeyboard) > 0 {
+				_, _ = b.tb.Send(to,
+					"Это твой ник? Привяжу его к тебе одним тапом:", kb)
+			}
 		}
 		return
 	}
