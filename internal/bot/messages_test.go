@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tele "gopkg.in/telebot.v3"
+
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -271,6 +273,35 @@ func TestDuelResultTextWithDNF(t *testing.T) {
 	}
 	if strings.Contains(out, "проигрывает") {
 		t.Errorf("duelResultText DNF: must NOT say 'проигрывает' when loser is DNF\ngot: %s", out)
+	}
+}
+
+func TestStatsKeyboardMarksActive(t *testing.T) {
+	m := statsKeyboard("me")
+	var flat []tele.InlineButton
+	for _, row := range m.InlineKeyboard {
+		flat = append(flat, row...)
+	}
+	if len(flat) != 5 {
+		t.Fatalf("want 5 tab buttons, got %d", len(flat))
+	}
+	ids := map[string]string{} // data -> text
+	for _, btn := range flat {
+		if btn.Unique != cbStatsTab {
+			t.Errorf("button %q has unique %q, want %q", btn.Text, btn.Unique, cbStatsTab)
+		}
+		ids[btn.Data] = btn.Text
+	}
+	for _, want := range []string{"table", "me", "speed", "duels", "history"} {
+		if _, ok := ids[want]; !ok {
+			t.Errorf("missing tab %q", want)
+		}
+	}
+	if !strings.Contains(ids["me"], "•") {
+		t.Errorf("active tab 'me' not marked: %q", ids["me"])
+	}
+	if strings.Contains(ids["table"], "•") {
+		t.Errorf("inactive tab 'table' wrongly marked: %q", ids["table"])
 	}
 }
 

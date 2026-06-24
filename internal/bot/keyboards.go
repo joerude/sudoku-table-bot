@@ -34,6 +34,8 @@ const (
 	cbDecline     = "decline"    // payload: "<gameID>"
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
+
+	cbStatsTab = "ststab" // payload: "<tab>" — table|me|speed|duels|history
 )
 
 // quickMenuKeyboard offers one-tap shortcuts for the most common actions.
@@ -159,5 +161,37 @@ func pendingConflictKeyboard(gameID int64) *tele.ReplyMarkup {
 		m.Data("📝 Записать результат", cbRec, gid(gameID)),
 		m.Data("🗑 Отменить игру", cbDel, gid(gameID)),
 	))
+	return m
+}
+
+// statsTabs are the /stats dashboard tabs in display order.
+var statsTabs = []struct{ id, label string }{
+	{"table", "🏆 Таблица"},
+	{"me", "👤 Я"},
+	{"speed", "⚡ Скорость"},
+	{"duels", "⚔️ Дуэли"},
+	{"history", "📜 История"},
+}
+
+// statsKeyboard renders the dashboard tab row; the active tab gets a "•" marker.
+func statsKeyboard(active string) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	var btns []tele.Btn
+	for _, t := range statsTabs {
+		label := t.label
+		if t.id == active {
+			label = "• " + label
+		}
+		btns = append(btns, m.Data(label, cbStatsTab, t.id))
+	}
+	var rows []tele.Row
+	for i := 0; i < len(btns); i += 3 {
+		end := i + 3
+		if end > len(btns) {
+			end = len(btns)
+		}
+		rows = append(rows, m.Row(btns[i:end]...))
+	}
+	m.Inline(rows...)
 	return m
 }
