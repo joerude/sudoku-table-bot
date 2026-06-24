@@ -354,3 +354,28 @@ func TestDuelChallengeText(t *testing.T) {
 		t.Errorf("duelChallengeText nickWarn=true: want 'setnick' in output\ngot: %s", outWarn)
 	}
 }
+
+func TestBotCommandsAreTheSixEveryday(t *testing.T) {
+	cmds := botCommands()
+	got := make([]string, len(cmds))
+	for i, c := range cmds {
+		got[i] = c.Text
+	}
+	want := []string{"play", "stats", "join", "setnick", "players", "help"}
+	if len(got) != len(want) {
+		t.Fatalf("want %d menu commands, got %d: %v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("menu[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestHelpTextLeadsWithPlayAndStats(t *testing.T) {
+	for _, want := range []string{"/play", "/stats"} {
+		if !strings.Contains(helpText, want) {
+			t.Errorf("helpText missing %q", want)
+		}
+	}
+}
