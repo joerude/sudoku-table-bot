@@ -521,7 +521,7 @@ func (b *Bot) backfillUsdokuTimes(game *storage.Game) []string {
 		log.Printf("backfillUsdokuTimes.info %s: %v", game.UsdokuCode.String, err)
 	} else {
 		for _, p := range info.Players {
-			if s := p.SolveSeconds(); s > 0 {
+			if s := p.SolveSeconds(info.Info.StartedAt); s > 0 {
 				secsByNick[strings.ToLower(p.Name)] = s
 			}
 		}

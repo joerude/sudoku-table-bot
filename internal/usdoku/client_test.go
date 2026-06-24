@@ -90,19 +90,22 @@ func TestFinishedByStatusAndSuperseded(t *testing.T) {
 func TestSolveSeconds(t *testing.T) {
 	ms := func(v int64) *int64 { return &v }
 	cases := []struct {
-		name string
-		p    Player
-		want int64
+		name      string
+		p         Player
+		startedAt int64
+		want      int64
 	}{
-		{"dnf (no completedAt)", Player{JoinedAt: 1000}, 0},
-		{"missing joinedAt → raw timestamp ignored", Player{JoinedAt: 0, CompletedAt: ms(1782286619)}, 0},
-		{"plain seconds", Player{JoinedAt: 100, CompletedAt: ms(352)}, 252},
-		{"milliseconds scaled down", Player{JoinedAt: 1_000_000, CompletedAt: ms(1_252_000)}, 252},
-		{"implausible → 0", Player{JoinedAt: 1, CompletedAt: ms(99_999_999_999)}, 0},
-		{"negative delta", Player{JoinedAt: 500, CompletedAt: ms(100)}, 0},
+		{"dnf (no completedAt)", Player{JoinedAt: 1000}, 100, 0},
+		{"no base at all → ignored", Player{JoinedAt: 0, CompletedAt: ms(1782286619)}, 0, 0},
+		{"startedAt base when joinedAt missing", Player{JoinedAt: 0, CompletedAt: ms(352)}, 100, 252},
+		{"startedAt preferred over joinedAt", Player{JoinedAt: 50, CompletedAt: ms(352)}, 100, 252},
+		{"joinedAt fallback when no startedAt", Player{JoinedAt: 100, CompletedAt: ms(352)}, 0, 252},
+		{"milliseconds scaled down", Player{CompletedAt: ms(1_252_000)}, 1_000_000, 252},
+		{"implausible → 0", Player{CompletedAt: ms(99_999_999_999)}, 1, 0},
+		{"negative delta", Player{CompletedAt: ms(100)}, 500, 0},
 	}
 	for _, c := range cases {
-		if got := c.p.SolveSeconds(); got != c.want {
+		if got := c.p.SolveSeconds(c.startedAt); got != c.want {
 			t.Errorf("%s: SolveSeconds()=%d want %d", c.name, got, c.want)
 		}
 	}
