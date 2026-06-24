@@ -19,3 +19,5 @@ sudoku-bot
 .vscode/
 *.swp
 .DS_Store
+
+.claude/settings.local.json

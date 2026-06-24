@@ -86,3 +86,24 @@ func TestFinishedByStatusAndSuperseded(t *testing.T) {
 		}
 	}
 }
+
+func TestSolveSeconds(t *testing.T) {
+	ms := func(v int64) *int64 { return &v }
+	cases := []struct {
+		name string
+		p    Player
+		want int64
+	}{
+		{"dnf (no completedAt)", Player{JoinedAt: 1000}, 0},
+		{"missing joinedAt → raw timestamp ignored", Player{JoinedAt: 0, CompletedAt: ms(1782286619)}, 0},
+		{"plain seconds", Player{JoinedAt: 100, CompletedAt: ms(352)}, 252},
+		{"milliseconds scaled down", Player{JoinedAt: 1_000_000, CompletedAt: ms(1_252_000)}, 252},
+		{"implausible → 0", Player{JoinedAt: 1, CompletedAt: ms(99_999_999_999)}, 0},
+		{"negative delta", Player{JoinedAt: 500, CompletedAt: ms(100)}, 0},
+	}
+	for _, c := range cases {
+		if got := c.p.SolveSeconds(); got != c.want {
+			t.Errorf("%s: SolveSeconds()=%d want %d", c.name, got, c.want)
+		}
+	}
+}

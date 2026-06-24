@@ -182,8 +182,11 @@ func signedPts(p int) string {
 	return fmt.Sprintf("%d", p)
 }
 
-// fmtDuration renders a solve time in seconds as m:ss.
+// fmtDuration renders a solve time in seconds as m:ss, or h:mm:ss past an hour.
 func fmtDuration(secs int) string {
+	if secs >= 3600 {
+		return fmt.Sprintf("%d:%02d:%02d", secs/3600, (secs%3600)/60, secs%60)
+	}
 	return fmt.Sprintf("%d:%02d", secs/60, secs%60)
 }
 
