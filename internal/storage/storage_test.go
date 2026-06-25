@@ -302,6 +302,36 @@ func TestSetPickDuration(t *testing.T) {
 	}
 }
 
+func TestWeeklyDigestRoundTrip(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-800)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.SetWeeklyDigest(chat, false); err != nil {
+		t.Fatal(err)
+	}
+	c, err := st.GetChat(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.WeeklyDigest {
+		t.Errorf("after SetWeeklyDigest(false): want false, got true")
+	}
+
+	if err := st.SetWeeklyDigest(chat, true); err != nil {
+		t.Fatal(err)
+	}
+	c, err = st.GetChat(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.WeeklyDigest {
+		t.Errorf("after SetWeeklyDigest(true): want true, got false")
+	}
+}
+
 func mustStandings(t *testing.T, st *Store, chat, season int64) []Standing {
 	t.Helper()
 	s, err := st.Standings(chat, season)

@@ -54,15 +54,16 @@ type ChatSettings struct {
 // GetChat returns a single chat's settings.
 func (s *Store) GetChat(chatID int64) (*ChatSettings, error) {
 	var c ChatSettings
-	var daily int
+	var daily, weekly int
 	err := s.db.QueryRow(`
-		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,''), min_players
+		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,''), weekly_digest, COALESCE(last_weekly,''), min_players
 		FROM chats WHERE chat_id=?`, chatID).
-		Scan(&c.ChatID, &c.TZ, &daily, &c.DailyTime, &c.LastDaily, &c.MinPlayers)
+		Scan(&c.ChatID, &c.TZ, &daily, &c.DailyTime, &c.LastDaily, &weekly, &c.LastWeekly, &c.MinPlayers)
 	if err != nil {
 		return nil, err
 	}
 	c.DailyReminder = daily != 0
+	c.WeeklyDigest = weekly != 0
 	return &c, nil
 }
 
