@@ -429,6 +429,23 @@ func TestRecordsTextRendersHoldersAndEmpty(t *testing.T) {
 	}
 }
 
+func TestStreakBadgeText(t *testing.T) {
+	out := streakBadgeText(4, 6, []string{"🔥", "⚡"})
+	for _, want := range []string{"Серия побед", "4", "Дней подряд", "6", "🔥", "⚡"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("streakBadgeText: want %q in %q", want, out)
+		}
+	}
+	// zeros + no badges → empty string (nothing appended)
+	if s := streakBadgeText(0, 0, nil); s != "" {
+		t.Errorf("expected empty, got %q", s)
+	}
+	// win streak of 1 is not a "streak" worth showing
+	if s := streakBadgeText(1, 0, nil); s != "" {
+		t.Errorf("streak of 1 should render empty, got %q", s)
+	}
+}
+
 func TestClaimNickKeyboardOneButtonPerNick(t *testing.T) {
 	m := claimNickKeyboard(42, []string{"joe", "max"})
 	var data []string

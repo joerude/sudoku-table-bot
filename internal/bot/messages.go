@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
@@ -471,6 +472,36 @@ func recordsText(rows []storage.RecordRow) string {
 		fmt.Fprintf(&b, "<b>%s</b> — %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
 	}
 	return b.String()
+}
+
+// streakBadgeText renders the streak lines + badge row appended to /me. Returns
+// "" when there is nothing noteworthy (streaks < 2 and no badges).
+func streakBadgeText(winStreak, dayStreak int, badges []string) string {
+	var b strings.Builder
+	if winStreak >= 2 {
+		fmt.Fprintf(&b, "\n🔥 Серия побед: <b>%d</b>", winStreak)
+	}
+	if dayStreak >= 2 {
+		fmt.Fprintf(&b, "\n📅 Дней подряд: <b>%d</b>", dayStreak)
+	}
+	if len(badges) > 0 {
+		b.WriteString("\n🏆 " + strings.Join(badges, " "))
+	}
+	return b.String()
+}
+
+// loadLoc loads a timezone, falling back to UTC.
+func loadLoc(tz string) *time.Location {
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// parseDBTime parses a SQLite datetime('now') string (UTC) into a time.Time.
+func parseDBTime(s string) (time.Time, error) {
+	return time.Parse("2006-01-02 15:04:05", s)
 }
 
 // --- small helpers ---
