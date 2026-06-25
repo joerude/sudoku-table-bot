@@ -11,8 +11,57 @@ import (
 
 	tele "gopkg.in/telebot.v3"
 
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
+
+// meExtra computes a player's streak lines + badge row (best-effort; returns ""
+// on any storage error so the core /me view still renders).
+func (b *Bot) meExtra(chatID, playerID int64, tz string) string {
+	ranks, err := b.st.RecentRanks(chatID, playerID)
+	if err != nil {
+		log.Printf("meExtra.ranks: %v", err)
+		return ""
+	}
+	times, err := b.st.PlayedTimes(chatID, playerID)
+	if err != nil {
+		log.Printf("meExtra.times: %v", err)
+		return ""
+	}
+	loc := loadLoc(tz)
+	today := time.Now().In(loc).Format("2006-01-02")
+	dates := make([]string, 0, len(times))
+	for _, t := range times {
+		if parsed, e := parseDBTime(t); e == nil {
+			dates = append(dates, parsed.UTC().In(loc).Format("2006-01-02"))
+		}
+	}
+	wins, games, best, err := b.st.CareerStats(chatID, playerID)
+	if err != nil {
+		log.Printf("meExtra.career: %v", err)
+		return ""
+	}
+	seasonsWon, err := b.st.SeasonsWon(chatID, playerID)
+	if err != nil {
+		log.Printf("meExtra.seasonsWon: %v", err)
+		return ""
+	}
+	ws := domain.WinStreak(ranks)
+	ds := domain.DayStreak(dates, today)
+	badges := domain.Badges(domain.BadgeInput{
+		Wins: wins, Games: games, BestSecs: best,
+		WinStreak: ws, DayStreak: ds, SeasonsWon: seasonsWon,
+	})
+	return streakBadgeText(ws, ds, badges)
+}
+
+// chatTZ returns the chat's timezone string, defaulting to UTC on error.
+func (b *Bot) chatTZ(chatID int64) string {
+	if ch, err := b.st.GetChat(chatID); err == nil && ch.TZ != "" {
+		return ch.TZ
+	}
+	return "UTC"
+}
 
 // onExport sends the current season's games + points as a CSV document,
 // mirroring the old Google Sheet (a points column per player).
@@ -124,7 +173,8 @@ func (b *Bot) onMe(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onMe.duel", err)
 	}
-	return c.Send(meText(player.Name, stat, sp, duelW, duelL, season))
+	return c.Send(meText(player.Name, stat, sp, duelW, duelL, season) +
+		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)))
 }
 
 func (b *Bot) onHistory(c tele.Context) error {
@@ -328,7 +378,8 @@ func (b *Bot) meTab(c tele.Context, season *storage.Season) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return meText(player.Name, stat, sp, duelW, duelL, season), nil
+	return meText(player.Name, stat, sp, duelW, duelL, season) +
+		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)), nil
 }
 
 func (b *Bot) onStats(c tele.Context) error {
