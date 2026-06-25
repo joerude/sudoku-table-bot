@@ -134,6 +134,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/me", b.onMe)
 	b.tb.Handle("/history", b.onHistory)
 	b.tb.Handle("/speed", b.onSpeed)
+	b.tb.Handle("/weekly", b.onWeekly)
 	b.tb.Handle("/settings", b.onSettings)
 	b.tb.Handle("/backup", b.onBackup)
 
