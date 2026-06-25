@@ -283,6 +283,12 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = historyText(games)
+	case "records":
+		recs, e := b.st.RecordsBoard(chatID)
+		if e != nil {
+			return "", nil, e
+		}
+		text = recordsText(recs)
 	default:
 		tab = "table"
 		standings, e := b.st.Standings(chatID, season.ID)

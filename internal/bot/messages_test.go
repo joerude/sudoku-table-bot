@@ -282,8 +282,8 @@ func TestStatsKeyboardMarksActive(t *testing.T) {
 	for _, row := range m.InlineKeyboard {
 		flat = append(flat, row...)
 	}
-	if len(flat) != 5 {
-		t.Fatalf("want 5 tab buttons, got %d", len(flat))
+	if len(flat) != 6 {
+		t.Fatalf("want 6 tab buttons, got %d", len(flat))
 	}
 	ids := map[string]string{} // data -> text
 	for _, btn := range flat {
@@ -292,7 +292,7 @@ func TestStatsKeyboardMarksActive(t *testing.T) {
 		}
 		ids[btn.Data] = btn.Text
 	}
-	for _, want := range []string{"table", "me", "speed", "duels", "history"} {
+	for _, want := range []string{"table", "me", "speed", "duels", "history", "records"} {
 		if _, ok := ids[want]; !ok {
 			t.Errorf("missing tab %q", want)
 		}
@@ -410,6 +410,22 @@ func TestClaimNickKeyboardSkipsOverlongNicks(t *testing.T) {
 	}
 	if len(data) != 1 || data[0] != "42:joe" {
 		t.Fatalf("want only [42:joe], got %v", data)
+	}
+}
+
+func TestRecordsTextRendersHoldersAndEmpty(t *testing.T) {
+	rows := []storage.RecordRow{
+		{Difficulty: "easy", Secs: 72, Name: "Ann"},
+		{Difficulty: "medium", Secs: 118, Name: "Joe<b>"},
+	}
+	out := recordsText(rows)
+	for _, want := range []string{"1:12", "Ann", "1:58", "Easy", "Medium", "Joe&lt;b&gt;"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("recordsText: want %q in\n%s", want, out)
+		}
+	}
+	if empty := recordsText(nil); !strings.Contains(empty, "Пока нет") {
+		t.Errorf("empty recordsText should hint, got: %s", empty)
 	}
 }
 

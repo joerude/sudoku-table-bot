@@ -210,6 +210,41 @@ func (s *Store) finishOrder(gameID int64) ([]string, error) {
 	return names, rows.Err()
 }
 
+// RecordRow is the fastest all-time solve at one difficulty and who set it.
+type RecordRow struct {
+	Difficulty string
+	Secs       int
+	Name       string
+}
+
+// RecordsBoard returns the fastest auto-recorded solve per difficulty across
+// all seasons (duels and deleted/pending games excluded). SQLite returns the
+// row matching MIN() for the bare columns in a GROUP BY.
+func (s *Store) RecordsBoard(chatID int64) ([]RecordRow, error) {
+	rows, err := s.db.Query(`
+		SELECT g.difficulty, MIN(gr.duration_secs) AS best, p.name
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		JOIN players p ON p.id = gr.player_id
+		WHERE g.chat_id = ? AND g.status = 'completed' AND g.deleted = 0
+		  AND g.duel_target_id IS NULL AND gr.duration_secs IS NOT NULL
+		  AND g.difficulty IS NOT NULL AND g.difficulty <> ''
+		GROUP BY g.difficulty`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RecordRow
+	for rows.Next() {
+		var r RecordRow
+		if err := rows.Scan(&r.Difficulty, &r.Secs, &r.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // PlayerStat is a single player's season summary for /me.
 type PlayerStat struct {
 	Points int

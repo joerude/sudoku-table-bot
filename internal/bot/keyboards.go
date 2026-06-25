@@ -178,6 +178,7 @@ var statsTabs = []struct{ id, label string }{
 	{"speed", "⚡ Скорость"},
 	{"duels", "⚔️ Дуэли"},
 	{"history", "📜 История"},
+	{"records", "🏆 Рекорды"},
 }
 
 // playMenuKeyboard is the /play hub: pick a game mode.

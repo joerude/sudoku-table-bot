@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -439,6 +440,35 @@ func inviteText(difficulty, code string, pings, roster []storage.Player) string 
 			names[i] = esc(p.Name)
 		}
 		b.WriteString("\n\n✅ В деле: " + strings.Join(names, ", "))
+	}
+	return b.String()
+}
+
+// difficultyRank orders records easy < medium < hard < extreme < other.
+var difficultyRank = map[string]int{"easy": 0, "medium": 1, "hard": 2, "extreme": 3}
+
+// recordsText renders the all-time fastest solve per difficulty.
+func recordsText(rows []storage.RecordRow) string {
+	if len(rows) == 0 {
+		return "🏆 <b>Рекорды</b>\nПока нет рекордов — сыграйте авто-игру (нужен /setnick), и время попадёт сюда."
+	}
+	sorted := make([]storage.RecordRow, len(rows))
+	copy(sorted, rows)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		ri, ok := difficultyRank[sorted[i].Difficulty]
+		if !ok {
+			ri = 99
+		}
+		rj, ok := difficultyRank[sorted[j].Difficulty]
+		if !ok {
+			rj = 99
+		}
+		return ri < rj
+	})
+	var b strings.Builder
+	b.WriteString("🏆 <b>Рекорды</b> · лучшее время\n")
+	for _, r := range sorted {
+		fmt.Fprintf(&b, "<b>%s</b> — %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
 	}
 	return b.String()
 }
