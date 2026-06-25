@@ -352,3 +352,36 @@ func (s *Store) StatFor(chatID, seasonID, playerID int64) (*PlayerStat, error) {
 	}
 	return &PlayerStat{}, nil
 }
+
+// GamesSince counts completed non-duel games on/after a UTC timestamp.
+func (s *Store) GamesSince(chatID int64, sinceUTC string) (int, error) {
+	var n int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM games
+		WHERE chat_id=? AND status='completed' AND deleted=0
+		  AND duel_target_id IS NULL AND completed_at >= ?`, chatID, sinceUTC).Scan(&n)
+	return n, err
+}
+
+// FastestSince returns the single fastest auto-recorded solve on/after a UTC
+// timestamp (nil if none).
+func (s *Store) FastestSince(chatID int64, sinceUTC string) (*RecordRow, error) {
+	var r RecordRow
+	err := s.db.QueryRow(`
+		SELECT g.difficulty, gr.duration_secs, p.name
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		JOIN players p ON p.id = gr.player_id
+		WHERE g.chat_id=? AND g.status='completed' AND g.deleted=0
+		  AND g.duel_target_id IS NULL AND gr.duration_secs IS NOT NULL
+		  AND g.completed_at >= ?
+		ORDER BY gr.duration_secs ASC LIMIT 1`, chatID, sinceUTC).
+		Scan(&r.Difficulty, &r.Secs, &r.Name)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}

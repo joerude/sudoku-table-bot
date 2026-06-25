@@ -46,6 +46,8 @@ type ChatSettings struct {
 	DailyReminder bool
 	DailyTime     string // HH:MM
 	LastDaily     string // YYYY-MM-DD or empty
+	WeeklyDigest  bool
+	LastWeekly    string // YYYY-MM-DD or empty
 	MinPlayers    int
 }
 
@@ -96,7 +98,7 @@ func (s *Store) ChatAdmin(chatID int64) (int64, error) {
 // AllChats returns settings for every known chat.
 func (s *Store) AllChats() ([]ChatSettings, error) {
 	rows, err := s.db.Query(`
-		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,'')
+		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,''), weekly_digest, COALESCE(last_weekly,'')
 		FROM chats`)
 	if err != nil {
 		return nil, err
@@ -105,11 +107,12 @@ func (s *Store) AllChats() ([]ChatSettings, error) {
 	var out []ChatSettings
 	for rows.Next() {
 		var c ChatSettings
-		var daily int
-		if err := rows.Scan(&c.ChatID, &c.TZ, &daily, &c.DailyTime, &c.LastDaily); err != nil {
+		var daily, weekly int
+		if err := rows.Scan(&c.ChatID, &c.TZ, &daily, &c.DailyTime, &c.LastDaily, &weekly, &c.LastWeekly); err != nil {
 			return nil, err
 		}
 		c.DailyReminder = daily != 0
+		c.WeeklyDigest = weekly != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -144,6 +147,22 @@ func (s *Store) SetDailyReminder(chatID int64, on bool, hhmm string) error {
 		return err
 	}
 	_, err := s.db.Exec(`UPDATE chats SET daily_reminder=? WHERE chat_id=?`, b, chatID)
+	return err
+}
+
+// SetLastWeekly records that the weekly digest fired for a chat on a date.
+func (s *Store) SetLastWeekly(chatID int64, date string) error {
+	_, err := s.db.Exec(`UPDATE chats SET last_weekly=? WHERE chat_id=?`, date, chatID)
+	return err
+}
+
+// SetWeeklyDigest toggles the weekly digest for a chat.
+func (s *Store) SetWeeklyDigest(chatID int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE chats SET weekly_digest=? WHERE chat_id=?`, v, chatID)
 	return err
 }
 
