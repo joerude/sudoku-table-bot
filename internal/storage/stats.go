@@ -245,6 +245,92 @@ func (s *Store) RecordsBoard(chatID int64) ([]RecordRow, error) {
 	return out, rows.Err()
 }
 
+// RecentRanks returns a player's finishing ranks for completed non-duel games,
+// newest first — for win-streak computation.
+func (s *Store) RecentRanks(chatID, playerID int64) ([]int, error) {
+	rows, err := s.db.Query(`
+		SELECT gr.rank
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		WHERE g.chat_id = ? AND gr.player_id = ?
+		  AND g.status = 'completed' AND g.deleted = 0 AND g.duel_target_id IS NULL
+		ORDER BY g.completed_at DESC, g.id DESC`, chatID, playerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int
+	for rows.Next() {
+		var r int
+		if err := rows.Scan(&r); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// PlayedTimes returns completed_at timestamps (UTC, "2006-01-02 15:04:05") of a
+// player's completed non-duel games, newest first — for play-day streaks.
+func (s *Store) PlayedTimes(chatID, playerID int64) ([]string, error) {
+	rows, err := s.db.Query(`
+		SELECT g.completed_at
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		WHERE g.chat_id = ? AND gr.player_id = ?
+		  AND g.status = 'completed' AND g.deleted = 0 AND g.duel_target_id IS NULL
+		  AND g.completed_at IS NOT NULL
+		ORDER BY g.completed_at DESC`, chatID, playerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// CareerStats returns a player's cross-season totals: wins (rank=1), games
+// played (any rank incl. DNF), and best solve seconds (0 if no timed games).
+func (s *Store) CareerStats(chatID, playerID int64) (wins, games, bestSecs int, err error) {
+	var best, winsN sql.NullInt64
+	err = s.db.QueryRow(`
+		SELECT
+		  SUM(CASE WHEN gr.rank = 1 THEN 1 ELSE 0 END),
+		  COUNT(*),
+		  MIN(gr.duration_secs)
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		WHERE g.chat_id = ? AND gr.player_id = ?
+		  AND g.status = 'completed' AND g.deleted = 0 AND g.duel_target_id IS NULL`,
+		chatID, playerID).Scan(&winsN, &games, &best)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if winsN.Valid {
+		wins = int(winsN.Int64)
+	}
+	if best.Valid {
+		bestSecs = int(best.Int64)
+	}
+	return wins, games, bestSecs, nil
+}
+
+// SeasonsWon counts archived seasons this player won.
+func (s *Store) SeasonsWon(chatID, playerID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM seasons WHERE chat_id = ? AND winner_id = ?`,
+		chatID, playerID).Scan(&n)
+	return n, err
+}
+
 // PlayerStat is a single player's season summary for /me.
 type PlayerStat struct {
 	Points int
