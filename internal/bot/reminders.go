@@ -84,6 +84,37 @@ func (b *Bot) remindDaily() {
 	}
 }
 
+// buildWeeklyDigest assembles the trailing-7-day digest for a chat. hasGames is
+// false when no games were played in the window (caller decides what to show).
+func (b *Bot) buildWeeklyDigest(chatID int64) (text string, hasGames bool, err error) {
+	sinceUTC := time.Now().UTC().Add(-7 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+	weekGames, err := b.st.GamesSince(chatID, sinceUTC)
+	if err != nil {
+		return "", false, err
+	}
+	if weekGames == 0 {
+		return "", false, nil
+	}
+	season, err := b.st.ActiveSeason(chatID)
+	if err != nil {
+		return "", false, err
+	}
+	standings, err := b.st.Standings(chatID, season.ID)
+	if err != nil {
+		return "", false, err
+	}
+	top := standings
+	if len(top) > 3 {
+		top = top[:3]
+	}
+	fastest, err := b.st.FastestSince(chatID, sinceUTC)
+	if err != nil {
+		log.Printf("buildWeeklyDigest fastest: %v", err)
+	}
+	streakName, streakLen := b.longestWinStreak(chatID)
+	return digestText(season, top, fastest, streakName, streakLen, weekGames), true, nil
+}
+
 // remindWeekly posts a Monday digest at the chat's daily_time (chat tz),
 // at most once per day, skipped when no games were played in the trailing week.
 func (b *Bot) remindWeekly() {
@@ -106,36 +137,15 @@ func (b *Bot) remindWeekly() {
 		if err := b.st.SetLastWeekly(ch.ChatID, date); err != nil {
 			log.Printf("remindWeekly mark: %v", err)
 		}
-		sinceUTC := time.Now().UTC().Add(-7 * 24 * time.Hour).Format("2006-01-02 15:04:05")
-		weekGames, err := b.st.GamesSince(ch.ChatID, sinceUTC)
+		text, hasGames, err := b.buildWeeklyDigest(ch.ChatID)
 		if err != nil {
-			log.Printf("remindWeekly games: %v", err)
+			log.Printf("remindWeekly build: %v", err)
 			continue
 		}
-		if weekGames == 0 {
+		if !hasGames {
 			continue // quiet week, skip the digest
 		}
-		season, err := b.st.ActiveSeason(ch.ChatID)
-		if err != nil {
-			log.Printf("remindWeekly season: %v", err)
-			continue
-		}
-		standings, err := b.st.Standings(ch.ChatID, season.ID)
-		if err != nil {
-			log.Printf("remindWeekly standings: %v", err)
-			continue
-		}
-		top := standings
-		if len(top) > 3 {
-			top = top[:3]
-		}
-		fastest, err := b.st.FastestSince(ch.ChatID, sinceUTC)
-		if err != nil {
-			log.Printf("remindWeekly fastest: %v", err)
-		}
-		streakName, streakLen := b.longestWinStreak(ch.ChatID)
-		if _, err := b.tb.Send(tele.ChatID(ch.ChatID),
-			digestText(season, top, fastest, streakName, streakLen, weekGames)); err != nil {
+		if _, err := b.tb.Send(tele.ChatID(ch.ChatID), text); err != nil {
 			log.Printf("remindWeekly send: %v", err)
 		}
 	}

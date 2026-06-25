@@ -146,6 +146,20 @@ func (b *Bot) onSeason(c tele.Context) error {
 	return c.Send(seasonText(season, leader))
 }
 
+func (b *Bot) onWeekly(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onWeekly.ensure", err)
+	}
+	text, hasGames, err := b.buildWeeklyDigest(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onWeekly.build", err)
+	}
+	if !hasGames {
+		return b.ephemeral(c, "📅 За последнюю неделю ещё нет сыгранных игр.")
+	}
+	return c.Send(text)
+}
+
 func (b *Bot) onMe(c tele.Context) error {
 	season, err := b.ensure(c)
 	if err != nil {

@@ -25,6 +25,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт ваших игр в с
 /result — записать результат вручную (если авто-учёт не сработал)
 /newgame, /duel, /invite — то же, что /play, но командой
 /status, /me, /speed, /duels, /history, /season — то же, что вкладки /stats
+/weekly — итоги недели сейчас (то же, что авто-пост в пн)
 /export — выгрузить игры сезона в CSV
 
 <b>Админ</b>
