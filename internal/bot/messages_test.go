@@ -467,3 +467,17 @@ func TestClaimNickKeyboardOneButtonPerNick(t *testing.T) {
 		}
 	}
 }
+
+func TestDigestText(t *testing.T) {
+	se := &storage.Season{Number: 3, Target: 100}
+	top := []storage.Standing{
+		{Name: "Ann", Points: 24, Wins: 8}, {Name: "Joe", Points: 15, Wins: 5}, {Name: "Max", Points: 9, Wins: 3},
+	}
+	fastest := &storage.RecordRow{Difficulty: "medium", Secs: 118, Name: "Joe"}
+	out := digestText(se, top, fastest, "Ann", 4, 11)
+	for _, want := range []string{"Сезон 3", "Ann", "Joe", "Max", "1:58", "🔥", "Ann", "11"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("digestText: want %q in\n%s", want, out)
+		}
+	}
+}

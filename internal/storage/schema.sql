@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS chats (
     daily_time     TEXT    NOT NULL DEFAULT '21:00',  -- HH:MM local
     min_players    INTEGER NOT NULL DEFAULT 2,        -- min participants for a game to count
     last_daily     TEXT,                              -- date (YYYY-MM-DD) of last daily nudge
+    weekly_digest  INTEGER NOT NULL DEFAULT 1,        -- bool: send weekly digest
+    last_weekly    TEXT,                              -- date (YYYY-MM-DD) of last digest
     created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

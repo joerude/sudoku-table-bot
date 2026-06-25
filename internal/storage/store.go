@@ -67,6 +67,8 @@ func migrate(db *sql.DB) {
 		 )`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_season
 		     ON seasons(chat_id) WHERE status='active'`,
+		`ALTER TABLE chats ADD COLUMN weekly_digest INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE chats ADD COLUMN last_weekly TEXT`,
 	} {
 		_, _ = db.Exec(stmt)
 	}

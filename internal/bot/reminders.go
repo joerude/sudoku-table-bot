@@ -5,6 +5,8 @@ import (
 	"time"
 
 	tele "gopkg.in/telebot.v3"
+
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 )
 
 // stalePendingMinutes is how long a pending game waits before the bot nudges.
@@ -17,6 +19,7 @@ func (b *Bot) runReminders() {
 	for range ticker.C {
 		b.remindStalePending()
 		b.remindDaily()
+		b.remindWeekly()
 	}
 }
 
@@ -79,4 +82,80 @@ func (b *Bot) remindDaily() {
 			log.Printf("remindDaily send: %v", err)
 		}
 	}
+}
+
+// remindWeekly posts a Monday digest at the chat's daily_time (chat tz),
+// at most once per day, skipped when no games were played in the trailing week.
+func (b *Bot) remindWeekly() {
+	chats, err := b.st.AllChats()
+	if err != nil {
+		log.Printf("remindWeekly: %v", err)
+		return
+	}
+	for _, ch := range chats {
+		if !ch.WeeklyDigest {
+			continue
+		}
+		loc := loadLoc(ch.TZ)
+		now := time.Now().In(loc)
+		date := now.Format("2006-01-02")
+		if now.Weekday() != time.Monday || now.Format("15:04") < ch.DailyTime || ch.LastWeekly == date {
+			continue
+		}
+		// Mark handled regardless, so we post at most once.
+		if err := b.st.SetLastWeekly(ch.ChatID, date); err != nil {
+			log.Printf("remindWeekly mark: %v", err)
+		}
+		sinceUTC := time.Now().UTC().Add(-7 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+		weekGames, err := b.st.GamesSince(ch.ChatID, sinceUTC)
+		if err != nil {
+			log.Printf("remindWeekly games: %v", err)
+			continue
+		}
+		if weekGames == 0 {
+			continue // quiet week, skip the digest
+		}
+		season, err := b.st.ActiveSeason(ch.ChatID)
+		if err != nil {
+			log.Printf("remindWeekly season: %v", err)
+			continue
+		}
+		standings, err := b.st.Standings(ch.ChatID, season.ID)
+		if err != nil {
+			log.Printf("remindWeekly standings: %v", err)
+			continue
+		}
+		top := standings
+		if len(top) > 3 {
+			top = top[:3]
+		}
+		fastest, err := b.st.FastestSince(ch.ChatID, sinceUTC)
+		if err != nil {
+			log.Printf("remindWeekly fastest: %v", err)
+		}
+		streakName, streakLen := b.longestWinStreak(ch.ChatID)
+		if _, err := b.tb.Send(tele.ChatID(ch.ChatID),
+			digestText(season, top, fastest, streakName, streakLen, weekGames)); err != nil {
+			log.Printf("remindWeekly send: %v", err)
+		}
+	}
+}
+
+// longestWinStreak finds the active player with the longest current win streak.
+func (b *Bot) longestWinStreak(chatID int64) (name string, length int) {
+	players, err := b.st.ListPlayers(chatID)
+	if err != nil {
+		log.Printf("longestWinStreak: %v", err)
+		return "", 0
+	}
+	for _, p := range players {
+		ranks, err := b.st.RecentRanks(chatID, p.ID)
+		if err != nil {
+			continue
+		}
+		if ws := domain.WinStreak(ranks); ws > length {
+			length, name = ws, p.Name
+		}
+	}
+	return name, length
 }

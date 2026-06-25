@@ -504,6 +504,26 @@ func parseDBTime(s string) (time.Time, error) {
 	return time.Parse("2006-01-02 15:04:05", s)
 }
 
+// digestText renders the weekly digest: top-3 standings, the week's fastest
+// solve, the longest current win streak, and games played this week. fastest
+// and streakName may be empty when there is no data for them.
+func digestText(se *storage.Season, top []storage.Standing, fastest *storage.RecordRow, streakName string, streakLen, weekGames int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "📅 <b>Итоги недели</b> · Сезон %d\n\n", se.Number)
+	for i, s := range top {
+		fmt.Fprintf(&b, "%s <b>%s</b> — %d <i>(%d поб)</i>\n", medal(i+1), esc(s.Name), s.Points, s.Wins)
+	}
+	fmt.Fprintf(&b, "\n🎮 Игр за неделю: <b>%d</b>", weekGames)
+	if fastest != nil {
+		fmt.Fprintf(&b, "\n⚡ Быстрейшее: <b>%s</b> · %s · %s",
+			fmtDuration(fastest.Secs), titleCase(fastest.Difficulty), esc(fastest.Name))
+	}
+	if streakName != "" && streakLen >= 2 {
+		fmt.Fprintf(&b, "\n🔥 Серия побед: <b>%s</b> ×%d", esc(streakName), streakLen)
+	}
+	return b.String()
+}
+
 // --- small helpers ---
 
 func titleCase(s string) string {

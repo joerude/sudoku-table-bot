@@ -192,7 +192,8 @@ const settingsUsage = `⚙️ <b>Настройки</b>
 /settings target &lt;N&gt; — порог сезона (очки до победы)
 /settings points &lt;a b c…&gt; — таблица очков по местам
 /settings minplayers &lt;N&gt; — мин. участников, чтобы игра засчиталась
-/settings daily &lt;HH:MM|off&gt; — ежедневное напоминание`
+/settings daily &lt;HH:MM|off&gt; — ежедневное напоминание
+/settings weekly &lt;on|off&gt; — недельный дайджест (понедельник)`
 
 func (b *Bot) onSettings(c tele.Context) error {
 	season, err := b.ensure(c)
@@ -255,6 +256,21 @@ func (b *Bot) onSettings(c tele.Context) error {
 		}
 		return c.Send("🔔 Ежедневное напоминание в " + val)
 
+	case "weekly":
+		val := strings.ToLower(argAt(args, 1))
+		on := val == "on" || val == "вкл" || val == "1"
+		off := val == "off" || val == "выкл" || val == "0"
+		if !on && !off {
+			return b.ephemeral(c, "Включить/выключить недельный дайджест: /settings weekly on|off")
+		}
+		if err := b.st.SetWeeklyDigest(c.Chat().ID, on); err != nil {
+			return b.fail(c, "onSettings.weekly", err)
+		}
+		if on {
+			return c.Send("🗓 Недельный дайджест включён (понедельник).")
+		}
+		return c.Send("🔕 Недельный дайджест выключен.")
+
 	default:
 		return c.Send(settingsUsage)
 	}
@@ -262,10 +278,14 @@ func (b *Bot) onSettings(c tele.Context) error {
 
 func (b *Bot) settingsSummary(chatID int64, season *storage.Season) string {
 	daily := "выкл"
+	weekly := "вкл"
 	minPlayers := 2
 	if ch, err := b.st.GetChat(chatID); err == nil {
 		if ch.DailyReminder {
 			daily = "вкл, " + ch.DailyTime
+		}
+		if !ch.WeeklyDigest {
+			weekly = "выкл"
 		}
 		if ch.MinPlayers > 0 {
 			minPlayers = ch.MinPlayers
@@ -276,8 +296,9 @@ func (b *Bot) settingsSummary(chatID int64, season *storage.Season) string {
 			"Порог сезона: <b>%d</b>\n"+
 			"Таблица очков: <b>%s</b>\n"+
 			"Мин. участников в игре: <b>%d</b>\n"+
-			"Ежедневное напоминание: <b>%s</b>\n\n%s",
-		season.Target, formatTable(season.PointsTable), minPlayers, daily, settingsUsage)
+			"Ежедневное напоминание: <b>%s</b>\n"+
+			"Недельный дайджест: <b>%s</b>\n\n%s",
+		season.Target, formatTable(season.PointsTable), minPlayers, daily, weekly, settingsUsage)
 }
 
 // isAdmin reports whether the sender may perform privileged actions: in a group
