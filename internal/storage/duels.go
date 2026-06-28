@@ -17,8 +17,7 @@ func (s *Store) DuelRecord(chatID, playerID int64) (wins, losses int, err error)
 		       COALESCE(SUM(CASE WHEN gr.rank<>1 THEN 1 ELSE 0 END),0)
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
-		WHERE gr.player_id=? AND g.chat_id=? AND g.status='completed'
-		  AND g.deleted=0 AND g.duel_target_id IS NOT NULL`,
+		WHERE gr.player_id=? AND g.chat_id=? AND `+sqlDuelGames,
 		playerID, chatID).Scan(&wins, &losses)
 	return wins, losses, err
 }
@@ -32,8 +31,7 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 		FROM players p
 		JOIN game_results gr ON gr.player_id = p.id
 		JOIN games g ON g.id = gr.game_id
-		WHERE p.chat_id=? AND p.active=1 AND g.status='completed'
-		  AND g.deleted=0 AND g.duel_target_id IS NOT NULL
+		WHERE p.chat_id=? AND p.active=1 AND `+sqlDuelGames+`
 		GROUP BY p.id, p.name
 		HAVING (wins + losses) > 0
 		ORDER BY wins DESC, (CAST(wins AS REAL)/(wins+losses)) DESC, p.name COLLATE NOCASE`,
@@ -70,8 +68,7 @@ func (s *Store) RecentDuels(chatID int64, n int) ([]DuelMatch, error) {
 		FROM games g
 		JOIN game_results gr ON gr.game_id = g.id
 		JOIN players p ON p.id = gr.player_id
-		WHERE g.chat_id=? AND g.status='completed' AND g.deleted=0
-		  AND g.duel_target_id IS NOT NULL
+		WHERE g.chat_id=? AND `+sqlDuelGames+`
 		GROUP BY g.id
 		ORDER BY g.id DESC
 		LIMIT ?`, chatID, n)
@@ -102,8 +99,7 @@ func (s *Store) HeadToHead(chatID, aID, bID int64) (aWins, bWins int, err error)
 		       COALESCE(SUM(CASE WHEN gr.player_id=? AND gr.rank=1 THEN 1 ELSE 0 END),0)
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
-		WHERE g.chat_id=? AND g.status='completed' AND g.deleted=0
-		  AND g.duel_target_id IS NOT NULL
+		WHERE g.chat_id=? AND `+sqlDuelGames+`
 		  AND gr.game_id IN (
 		      SELECT game_id FROM game_results WHERE player_id=?
 		      INTERSECT
