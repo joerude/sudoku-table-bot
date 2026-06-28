@@ -129,7 +129,6 @@ func (b *Bot) routes() {
 
 	b.tb.Handle("/duels", b.onDuels)
 	b.tb.Handle("/status", b.onStatus)
-	b.tb.Handle("/table", b.onStatus)
 	b.tb.Handle("/season", b.onSeason)
 	b.tb.Handle("/me", b.onMe)
 	b.tb.Handle("/history", b.onHistory)
