@@ -23,9 +23,8 @@ func (s *Store) SpeedFor(chatID, seasonID, playerID int64, difficulty string) (*
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		WHERE gr.player_id = ? AND g.chat_id = ? AND g.season_id = ?
-		  AND g.status = 'completed' AND g.deleted = 0
-		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL
-		  AND g.duel_target_id IS NULL`,
+		  AND `+sqlSeasonalGames+`
+		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL`,
 		playerID, chatID, seasonID, difficulty).Scan(&avg, &best, &n)
 	if err != nil {
 		return nil, err
@@ -63,9 +62,8 @@ func (s *Store) Speedboard(chatID, seasonID int64, difficulty string, minGames i
 		JOIN game_results gr ON gr.player_id = p.id
 		JOIN games g ON g.id = gr.game_id
 		WHERE p.chat_id = ? AND p.active = 1
-		  AND g.season_id = ? AND g.status = 'completed' AND g.deleted = 0
+		  AND g.season_id = ? AND `+sqlSeasonalGames+`
 		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL
-		  AND g.duel_target_id IS NULL
 		GROUP BY p.id, p.name
 		ORDER BY avg_secs ASC, games DESC, p.name COLLATE NOCASE`,
 		chatID, seasonID, difficulty)
@@ -111,8 +109,7 @@ func (s *Store) ExportGames(chatID, seasonID int64) ([]ExportGame, error) {
 		       COALESCE(g.usdoku_code,''), gr.player_id, gr.points
 		FROM games g
 		LEFT JOIN game_results gr ON gr.game_id = g.id
-		WHERE g.chat_id=? AND g.season_id=? AND g.status='completed' AND g.deleted=0
-		  AND g.duel_target_id IS NULL
+		WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames+`
 		ORDER BY g.id`, chatID, seasonID)
 	if err != nil {
 		return nil, err
@@ -158,11 +155,10 @@ type HistoryGame struct {
 // RecentGames returns the last n completed games for a chat, newest first.
 func (s *Store) RecentGames(chatID int64, n int) ([]HistoryGame, error) {
 	rows, err := s.db.Query(`
-		SELECT id, date(completed_at), COALESCE(difficulty,''), COALESCE(usdoku_code,'')
-		FROM games
-		WHERE chat_id=? AND status='completed' AND deleted=0
-		  AND duel_target_id IS NULL
-		ORDER BY id DESC LIMIT ?`, chatID, n)
+		SELECT g.id, date(g.completed_at), COALESCE(g.difficulty,''), COALESCE(g.usdoku_code,'')
+		FROM games g
+		WHERE g.chat_id=? AND `+sqlSeasonalGames+`
+		ORDER BY g.id DESC LIMIT ?`, chatID, n)
 	if err != nil {
 		return nil, err
 	}
@@ -226,8 +222,8 @@ func (s *Store) RecordsBoard(chatID int64) ([]RecordRow, error) {
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		JOIN players p ON p.id = gr.player_id
-		WHERE g.chat_id = ? AND g.status = 'completed' AND g.deleted = 0
-		  AND g.duel_target_id IS NULL AND gr.duration_secs IS NOT NULL
+		WHERE g.chat_id = ? AND `+sqlSeasonalGames+`
+		  AND gr.duration_secs IS NOT NULL
 		  AND g.difficulty IS NOT NULL AND g.difficulty <> ''
 		GROUP BY g.difficulty`, chatID)
 	if err != nil {
@@ -253,7 +249,7 @@ func (s *Store) RecentRanks(chatID, playerID int64) ([]int, error) {
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		WHERE g.chat_id = ? AND gr.player_id = ?
-		  AND g.status = 'completed' AND g.deleted = 0 AND g.duel_target_id IS NULL
+		  AND `+sqlSeasonalGames+`
 		ORDER BY g.completed_at DESC, g.id DESC`, chatID, playerID)
 	if err != nil {
 		return nil, err
@@ -278,7 +274,7 @@ func (s *Store) PlayedTimes(chatID, playerID int64) ([]string, error) {
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		WHERE g.chat_id = ? AND gr.player_id = ?
-		  AND g.status = 'completed' AND g.deleted = 0 AND g.duel_target_id IS NULL
+		  AND `+sqlSeasonalGames+`
 		  AND g.completed_at IS NOT NULL
 		ORDER BY g.completed_at DESC`, chatID, playerID)
 	if err != nil {
@@ -308,7 +304,7 @@ func (s *Store) CareerStats(chatID, playerID int64) (wins, games, bestSecs int, 
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		WHERE g.chat_id = ? AND gr.player_id = ?
-		  AND g.status = 'completed' AND g.deleted = 0 AND g.duel_target_id IS NULL`,
+		  AND `+sqlSeasonalGames,
 		chatID, playerID).Scan(&winsN, &games, &best)
 	if err != nil {
 		return 0, 0, 0, err
@@ -357,9 +353,9 @@ func (s *Store) StatFor(chatID, seasonID, playerID int64) (*PlayerStat, error) {
 func (s *Store) GamesSince(chatID int64, sinceUTC string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM games
-		WHERE chat_id=? AND status='completed' AND deleted=0
-		  AND duel_target_id IS NULL AND completed_at >= ?`, chatID, sinceUTC).Scan(&n)
+		SELECT COUNT(*) FROM games g
+		WHERE g.chat_id=? AND `+sqlSeasonalGames+`
+		  AND g.completed_at >= ?`, chatID, sinceUTC).Scan(&n)
 	return n, err
 }
 
@@ -372,8 +368,8 @@ func (s *Store) FastestSince(chatID int64, sinceUTC string) (*RecordRow, error) 
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		JOIN players p ON p.id = gr.player_id
-		WHERE g.chat_id=? AND g.status='completed' AND g.deleted=0
-		  AND g.duel_target_id IS NULL AND gr.duration_secs IS NOT NULL
+		WHERE g.chat_id=? AND `+sqlSeasonalGames+`
+		  AND gr.duration_secs IS NOT NULL
 		  AND g.completed_at >= ?
 		ORDER BY gr.duration_secs ASC LIMIT 1`, chatID, sinceUTC).
 		Scan(&r.Difficulty, &r.Secs, &r.Name)
