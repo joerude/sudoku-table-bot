@@ -3,6 +3,7 @@ package storage
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 )
@@ -329,6 +330,28 @@ func TestWeeklyDigestRoundTrip(t *testing.T) {
 	}
 	if !c.WeeklyDigest {
 		t.Errorf("after SetWeeklyDigest(true): want true, got false")
+	}
+}
+
+func TestCompletedTodayCountsDuels(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-3050)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// One normal game and one duel game, both completed "now".
+	makeNormalGame(t, st, chat, se.ID, a.ID, b.ID)
+	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	n, err := st.CompletedToday(chat, today)
+	if err != nil {
+		t.Fatalf("CompletedToday: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("CompletedToday: want 2 (duel counts as played today), got %d", n)
 	}
 }
 
