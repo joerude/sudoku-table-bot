@@ -191,15 +191,40 @@ func (b *Bot) onMe(c tele.Context) error {
 		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)))
 }
 
+// historyDefault is the page size for the History tab / bare /history.
+// historyMax caps "/history all" so the message stays under Telegram's 4096 limit.
+const (
+	historyDefault = 8
+	historyMax     = 50
+)
+
+// onHistory shows recent games. "/history" → last 8; "/history N" → last N;
+// "/history all" → up to historyMax.
 func (b *Bot) onHistory(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onHistory.ensure", err)
 	}
-	games, err := b.st.RecentGames(c.Chat().ID, 8)
+	n := historyDefault
+	if args := c.Args(); len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "all", "все", "всё":
+			n = historyMax
+		default:
+			if v, err := strconv.Atoi(args[0]); err == nil && v > 0 {
+				n = min(v, historyMax)
+			}
+		}
+	}
+	games, err := b.st.RecentGames(c.Chat().ID, n)
 	if err != nil {
 		return b.fail(c, "onHistory.recent", err)
 	}
-	return c.Send(historyText(games))
+	text := historyText(games, b.chatTZ(c.Chat().ID))
+	// Hint at the full list only when the view is likely truncated.
+	if n == historyDefault && len(games) >= historyDefault {
+		text += "\n<i>/history all — весь список</i>"
+	}
+	return c.Send(text)
 }
 
 const settingsUsage = `⚙️ <b>Настройки</b>
@@ -361,13 +386,13 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = duelsText(rows, recent)
+		text = duelsText(rows, recent, b.chatTZ(chatID))
 	case "history":
 		games, e := b.st.RecentGames(chatID, 8)
 		if e != nil {
 			return "", nil, e
 		}
-		text = historyText(games)
+		text = historyText(games, b.chatTZ(chatID))
 	case "records":
 		recs, e := b.st.RecordsBoard(chatID)
 		if e != nil {

@@ -38,6 +38,7 @@ func (b *Bot) resumeWatches() {
 // It stops if the game is recorded manually, deleted, or the deadline passes.
 func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	deadline := time.Now().Add(watchTimeout)
+	var state watchState
 	for {
 		g, err := b.st.GameByID(gameID)
 		if err != nil {
@@ -53,7 +54,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		cancel()
 		if err != nil {
 			log.Printf("watchGame.info %s: %v", code, err)
-		} else if info.Finished() {
+		} else if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
 			b.autoRecord(g, info)
 			return
 		}

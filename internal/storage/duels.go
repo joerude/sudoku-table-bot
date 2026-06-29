@@ -53,16 +53,16 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 
 // DuelMatch is one finished duel for the recent-duels log.
 type DuelMatch struct {
-	Date   string // YYYY-MM-DD
-	Winner string
-	Loser  string // "" if the opponent did not finish / wasn't recorded
+	CompletedAt string // UTC datetime "2006-01-02 15:04:05" (render converts to chat TZ)
+	Winner      string
+	Loser       string // "" if the opponent did not finish / wasn't recorded
 }
 
 // RecentDuels returns the most recent finished duels (newest first), with the
 // winner (rank 1) and loser (rank 2, may be absent).
 func (s *Store) RecentDuels(chatID int64, n int) ([]DuelMatch, error) {
 	rows, err := s.db.Query(`
-		SELECT date(g.completed_at) AS d,
+		SELECT g.completed_at AS d,
 		       MAX(CASE WHEN gr.rank=1 THEN p.name END) AS winner,
 		       MAX(CASE WHEN gr.rank<>1 THEN p.name END) AS loser
 		FROM games g
@@ -82,7 +82,7 @@ func (s *Store) RecentDuels(chatID int64, n int) ([]DuelMatch, error) {
 			m             DuelMatch
 			winner, loser sql.NullString
 		)
-		if err := rows.Scan(&m.Date, &winner, &loser); err != nil {
+		if err := rows.Scan(&m.CompletedAt, &winner, &loser); err != nil {
 			return nil, err
 		}
 		m.Winner = winner.String
