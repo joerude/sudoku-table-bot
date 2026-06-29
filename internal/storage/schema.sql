@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS chats (
     chat_id        INTEGER PRIMARY KEY,
     admin_id       INTEGER,
-    tz             TEXT    NOT NULL DEFAULT 'Asia/Almaty',
+    tz             TEXT    NOT NULL DEFAULT 'Asia/Bishkek',
     daily_reminder INTEGER NOT NULL DEFAULT 1,        -- bool: send daily nudge
     daily_time     TEXT    NOT NULL DEFAULT '21:00',  -- HH:MM local
     min_players    INTEGER NOT NULL DEFAULT 2,        -- min participants for a game to count
