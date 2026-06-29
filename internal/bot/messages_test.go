@@ -103,7 +103,7 @@ func TestDuelsText(t *testing.T) {
 		{Name: "Vasya", Wins: 8, Losses: 2},
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
-	out := duelsText(rows, nil)
+	out := duelsText(rows, nil, "Asia/Bishkek")
 	for _, want := range []string{"🥇", "Vasya", "8–2", "(80%)", "Masha", "(50%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText: want %q in output\ngot: %s", want, out)
@@ -112,7 +112,7 @@ func TestDuelsText(t *testing.T) {
 }
 
 func TestDuelsTextEmpty(t *testing.T) {
-	out := duelsText(nil, nil)
+	out := duelsText(nil, nil, "Asia/Bishkek")
 	if !strings.Contains(out, "Ещё не было дуэлей") {
 		t.Errorf("duelsText empty: want 'Ещё не было дуэлей' in output\ngot: %s", out)
 	}
@@ -123,13 +123,38 @@ func TestDuelsTextWithRecent(t *testing.T) {
 		{Name: "Vasya", Wins: 3, Losses: 1},
 	}
 	recent := []storage.DuelMatch{
-		{Date: "2026-06-22", Winner: "Vasya", Loser: "Petya"},
+		// 12:00 UTC -> Asia/Bishkek (UTC+6) = 18:00, same date.
+		{CompletedAt: "2026-06-22 12:00:00", Winner: "Vasya", Loser: "Petya"},
 	}
-	out := duelsText(rows, recent)
-	for _, want := range []string{"Последние дуэли", "2026-06-22", "Vasya", "обыграл", "Petya"} {
+	out := duelsText(rows, recent, "Asia/Bishkek")
+	for _, want := range []string{"Последние дуэли", "2026-06-22 18:00", "Vasya", "обыграл", "Petya"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText with recent: want %q in output\ngot: %s", want, out)
 		}
+	}
+}
+
+func TestHistoryTextShowsLocalDateAndTime(t *testing.T) {
+	games := []storage.HistoryGame{
+		// 14:37 UTC -> Asia/Bishkek (UTC+6) = 20:37, same date.
+		{ID: 1, CompletedAt: "2026-06-28 14:37:00", Difficulty: "medium",
+			Order: []string{"Nur", "Joe Rude", "mister"}},
+	}
+	out := historyText(games, "Asia/Bishkek")
+	for _, want := range []string{"2026-06-28 20:37", "Medium", "Nur", "Joe Rude", "mister"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("historyText: want %q in output\ngot: %s", want, out)
+		}
+	}
+}
+
+func TestHistoryTextBadTimeFallsBack(t *testing.T) {
+	games := []storage.HistoryGame{
+		{ID: 1, CompletedAt: "garbage", Order: []string{"Nur"}},
+	}
+	out := historyText(games, "Asia/Bishkek")
+	if !strings.Contains(out, "garbage") {
+		t.Errorf("historyText bad time: want raw 'garbage' fallback\ngot: %s", out)
 	}
 }
 

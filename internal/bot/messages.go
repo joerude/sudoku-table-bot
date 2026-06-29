@@ -283,10 +283,11 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 }
 
 // duelsText renders the /duels leaderboard (all-time duel records) and recent log.
-func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch) string {
+func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch, tz string) string {
 	if len(rows) == 0 {
 		return "⚔️ <b>Дуэли</b>\nЕщё не было дуэлей. Вызови кого-нибудь: /duel"
 	}
+	loc := loadLoc(tz)
 	var b strings.Builder
 	b.WriteString("⚔️ <b>Дуэли</b> · рейтинг\n")
 	for i, r := range rows {
@@ -300,10 +301,11 @@ func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch) string {
 	if len(recent) > 0 {
 		b.WriteString("\n<b>Последние дуэли</b>\n")
 		for _, m := range recent {
+			when := fmtLocalDateTime(m.CompletedAt, loc)
 			if m.Loser != "" {
-				fmt.Fprintf(&b, "%s · <b>%s</b> обыграл %s\n", m.Date, esc(m.Winner), esc(m.Loser))
+				fmt.Fprintf(&b, "%s · <b>%s</b> обыграл %s\n", when, esc(m.Winner), esc(m.Loser))
 			} else {
-				fmt.Fprintf(&b, "%s · <b>%s</b> (соперник не финишировал)\n", m.Date, esc(m.Winner))
+				fmt.Fprintf(&b, "%s · <b>%s</b> (соперник не финишировал)\n", when, esc(m.Winner))
 			}
 		}
 	}
@@ -335,10 +337,11 @@ func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.Sp
 	return b.String()
 }
 
-func historyText(games []storage.HistoryGame) string {
+func historyText(games []storage.HistoryGame, tz string) string {
 	if len(games) == 0 {
 		return "История пуста. Запиши первую игру: /result"
 	}
+	loc := loadLoc(tz)
 	var b strings.Builder
 	b.WriteString("📜 <b>Последние игры</b>\n")
 	for _, g := range games {
@@ -350,7 +353,8 @@ func historyText(games []storage.HistoryGame) string {
 		if g.Difficulty != "" {
 			diff = " · " + titleCase(g.Difficulty)
 		}
-		b.WriteString(fmt.Sprintf("%s%s: %s\n", g.Date, diff, strings.Join(order, " ")))
+		when := fmtLocalDateTime(g.CompletedAt, loc)
+		b.WriteString(fmt.Sprintf("%s%s: %s\n", when, diff, strings.Join(order, " ")))
 	}
 	return b.String()
 }
@@ -503,6 +507,15 @@ func loadLoc(tz string) *time.Location {
 // parseDBTime parses a SQLite datetime('now') string (UTC) into a time.Time.
 func parseDBTime(s string) (time.Time, error) {
 	return time.Parse("2006-01-02 15:04:05", s)
+}
+
+// fmtLocalDateTime renders a UTC DB datetime in loc as "2006-01-02 15:04",
+// falling back to the raw string if it can't be parsed.
+func fmtLocalDateTime(s string, loc *time.Location) string {
+	if t, err := parseDBTime(s); err == nil {
+		return t.In(loc).Format("2006-01-02 15:04")
+	}
+	return s
 }
 
 // digestText renders the weekly digest: top-3 standings, the week's fastest

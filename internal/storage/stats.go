@@ -148,17 +148,17 @@ func (s *Store) ExportGames(chatID, seasonID int64) ([]ExportGame, error) {
 
 // HistoryGame summarises a completed game for /history.
 type HistoryGame struct {
-	ID         int64
-	Date       string   // YYYY-MM-DD
-	Difficulty string   // may be empty
-	Order      []string // player names in finish order
-	UsdokuCode string   // may be empty
+	ID          int64
+	CompletedAt string   // UTC datetime "2006-01-02 15:04:05" (render converts to chat TZ)
+	Difficulty  string   // may be empty
+	Order       []string // player names in finish order
+	UsdokuCode  string   // may be empty
 }
 
 // RecentGames returns the last n completed games for a chat, newest first.
 func (s *Store) RecentGames(chatID int64, n int) ([]HistoryGame, error) {
 	rows, err := s.db.Query(`
-		SELECT id, date(completed_at), COALESCE(difficulty,''), COALESCE(usdoku_code,'')
+		SELECT id, completed_at, COALESCE(difficulty,''), COALESCE(usdoku_code,'')
 		FROM games
 		WHERE chat_id=? AND status='completed' AND deleted=0
 		  AND duel_target_id IS NULL
@@ -171,7 +171,7 @@ func (s *Store) RecentGames(chatID int64, n int) ([]HistoryGame, error) {
 	var games []HistoryGame
 	for rows.Next() {
 		var g HistoryGame
-		if err := rows.Scan(&g.ID, &g.Date, &g.Difficulty, &g.UsdokuCode); err != nil {
+		if err := rows.Scan(&g.ID, &g.CompletedAt, &g.Difficulty, &g.UsdokuCode); err != nil {
 			return nil, err
 		}
 		games = append(games, g)

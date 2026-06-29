@@ -154,7 +154,7 @@ func (b *Bot) onDuels(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onDuels.recent", err)
 	}
-	return c.Send(duelsText(rows, recent))
+	return c.Send(duelsText(rows, recent, b.chatTZ(c.Chat().ID)))
 }
 
 func (b *Bot) onDecline(c tele.Context) error {
