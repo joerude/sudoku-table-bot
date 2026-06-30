@@ -616,6 +616,15 @@ func TestRatingDeltaLines(t *testing.T) {
 	if !strings.Contains(got, "👑") || !strings.Contains(got, "Alice") {
 		t.Errorf("missing crown change: %q", got)
 	}
+
+	zero := domain.GameRating{
+		GameID:    2,
+		Delta:     map[int64]int{10: 0},
+		NewRating: map[int64]int{10: 1000},
+	}
+	if got := ratingDeltaLines(zero, map[int64]string{10: "Alice"}); strings.Contains(got, "+0") {
+		t.Errorf("zero delta must not render as +0: %q", got)
+	}
 }
 
 func TestCrownChangeLineNoChange(t *testing.T) {

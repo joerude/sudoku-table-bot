@@ -810,7 +810,7 @@ func ratingDeltaLines(gr domain.GameRating, names map[int64]string) string {
 	parts := make([]string, 0, len(rows))
 	for _, r := range rows {
 		sign := ""
-		if r.d >= 0 {
+		if r.d > 0 {
 			sign = "+"
 		}
 		parts = append(parts, fmt.Sprintf("%s %s%d → %d", esc(names[r.id]), sign, r.d, r.nr))
