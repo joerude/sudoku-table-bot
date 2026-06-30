@@ -11,13 +11,9 @@ func (b *Bot) onRating(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "rating", err)
 	}
-	players, err := b.st.ListPlayers(c.Chat().ID)
+	names, err := b.st.PlayerNames(c.Chat().ID)
 	if err != nil {
 		return b.fail(c, "rating", err)
-	}
-	names := make(map[int64]string, len(players))
-	for _, p := range players {
-		names[p.ID] = p.Name
 	}
 	return c.Send(ratingLadder(domain.ComputeRatings(games), names))
 }
