@@ -67,6 +67,9 @@ func TestDNFvsDNFIgnored(t *testing.T) {
 	if r.Players[20].Rating != r.Players[30].Rating {
 		t.Errorf("DNF-vs-DNF should not move them: 20=%d 30=%d", r.Players[20].Rating, r.Players[30].Rating)
 	}
+	if r.Players[20].Rating != 968 {
+		t.Errorf("DNF loser rating=%d want 968", r.Players[20].Rating)
+	}
 	if r.Players[10].Rating <= 1000 {
 		t.Errorf("finisher should rise: 10=%d", r.Players[10].Rating)
 	}
@@ -121,6 +124,17 @@ func TestDeterministic(t *testing.T) {
 	for id := range a.Players {
 		if a.Players[id] != b.Players[id] {
 			t.Errorf("non-deterministic for %d: %+v vs %+v", id, a.Players[id], b.Players[id])
+		}
+	}
+	if a.Crown != b.Crown {
+		t.Errorf("non-deterministic crown: %d vs %d", a.Crown, b.Crown)
+	}
+	if len(a.Ladder) != len(b.Ladder) {
+		t.Fatalf("ladder length differs: %d vs %d", len(a.Ladder), len(b.Ladder))
+	}
+	for i := range a.Ladder {
+		if a.Ladder[i] != b.Ladder[i] {
+			t.Errorf("non-deterministic ladder[%d]: %+v vs %+v", i, a.Ladder[i], b.Ladder[i])
 		}
 	}
 }
