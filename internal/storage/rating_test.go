@@ -64,3 +64,40 @@ func TestGamesForRating(t *testing.T) {
 		t.Errorf("Carol DNF (rank 0) missing from game1: %+v", games[0].Participants)
 	}
 }
+
+func TestPlayerNames_IncludesSoftRemoved(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-200)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	alice, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	bob, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	carol, _, _ := st.RegisterPlayer(chat, 3, "Carol")
+
+	// Soft-remove Carol via RemovePlayer (sets active=0).
+	n, err := st.RemovePlayer(chat, "Carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("RemovePlayer affected %d rows, want 1", n)
+	}
+
+	names, err := st.PlayerNames(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 3 {
+		t.Fatalf("PlayerNames returned %d entries, want 3 (including soft-removed)", len(names))
+	}
+	if names[alice.ID] != "Alice" {
+		t.Errorf("Alice name wrong: %q", names[alice.ID])
+	}
+	if names[bob.ID] != "Bob" {
+		t.Errorf("Bob name wrong: %q", names[bob.ID])
+	}
+	if names[carol.ID] != "Carol" {
+		t.Errorf("Carol (soft-removed) name wrong: %q", names[carol.ID])
+	}
+}

@@ -599,14 +599,10 @@ func (b *Bot) ratingFooter(game *storage.Game) string {
 	if gr == nil {
 		return ""
 	}
-	players, err := b.st.ListPlayers(game.ChatID)
+	names, err := b.st.PlayerNames(game.ChatID)
 	if err != nil {
 		log.Printf("ratingFooter.players: %v", err)
 		return ""
-	}
-	names := make(map[int64]string, len(players))
-	for _, p := range players {
-		names[p.ID] = p.Name
 	}
 	return ratingDeltaLines(*gr, names)
 }

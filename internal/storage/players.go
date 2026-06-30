@@ -140,6 +140,27 @@ func (s *Store) PlayerByID(playerID int64) (*Player, error) {
 	return &p, nil
 }
 
+// PlayerNames returns id->name for ALL players of a chat (including soft-removed
+// active=0 players), for rating display — the eternal rating includes players
+// who left, so their names must still resolve.
+func (s *Store) PlayerNames(chatID int64) (map[int64]string, error) {
+	rows, err := s.db.Query(`SELECT id, name FROM players WHERE chat_id=?`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}
+
 func nullInt(v int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: v, Valid: true}
 }
