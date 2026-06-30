@@ -157,6 +157,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 			recordKeyboard(game.ID))
 		return
 	}
+	result += b.ratingFooter(game)
 	_, _ = b.tb.Send(to, autoResultHeader()+result, resultKeyboard(game.ID))
 	if seasonEnd != "" {
 		_, _ = b.tb.Send(to, seasonEnd)
