@@ -644,6 +644,34 @@ func TestCrownChangeLineFirstCrown(t *testing.T) {
 	}
 }
 
+func TestRatingLadder(t *testing.T) {
+	names := map[int64]string{10: "Alice", 20: "Bob"}
+	r := domain.Ratings{
+		Crown: 10,
+		Ladder: []domain.PlayerRating{
+			{PlayerID: 10, Rating: 1042, Peak: 1042, Games: 12, Provisional: false},
+			{PlayerID: 20, Rating: 988, Peak: 1010, Games: 4, Provisional: true},
+		},
+	}
+	got := ratingLadder(r, names)
+	if !strings.Contains(got, "Alice") || !strings.Contains(got, "1042") {
+		t.Errorf("missing leader: %q", got)
+	}
+	if !strings.Contains(got, "👑") {
+		t.Errorf("missing crown on leader: %q", got)
+	}
+	if !strings.Contains(got, "калибр") {
+		t.Errorf("missing provisional marker on Bob: %q", got)
+	}
+}
+
+func TestRatingLadderEmpty(t *testing.T) {
+	got := ratingLadder(domain.Ratings{}, map[int64]string{})
+	if !strings.Contains(got, "нет") {
+		t.Errorf("empty ladder should say there are no games: %q", got)
+	}
+}
+
 func TestDigestText(t *testing.T) {
 	se := &storage.Season{Number: 3, Target: 100}
 	top := []storage.Standing{
