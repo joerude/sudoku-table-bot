@@ -18,6 +18,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт ваших игр в с
 <b>Главное</b>
 /play — новая игра, дуэль или позвать всех (кнопки)
 /stats — вся статистика: таблица, моё, скорость, дуэли, история
+/rating — лестница рейтинга (ELO) + корона 👑
 /join [имя] — встать в игру
 /setnick &lt;ник&gt; — привязать ник usdoku (для авто-учёта)
 /players — кто играет
@@ -789,6 +790,29 @@ func progressBar(cur, target int) string {
 		filled = 0
 	}
 	return "[" + strings.Repeat("▰", filled) + strings.Repeat("▱", width-filled) + "]"
+}
+
+// ratingLadder renders the eternal rating ladder: rank, name, rating, peak, with
+// a 👑 on the current crown and a marker on provisional (calibrating) players.
+func ratingLadder(r domain.Ratings, names map[int64]string) string {
+	if len(r.Ladder) == 0 {
+		return "📊 <b>Рейтинг</b>\n\nПока нет сыгранных игр."
+	}
+	var sb strings.Builder
+	sb.WriteString("📊 <b>Рейтинг</b>")
+	for i, p := range r.Ladder {
+		crown := ""
+		if p.PlayerID == r.Crown {
+			crown = " 👑"
+		}
+		prov := ""
+		if p.Provisional {
+			prov = " <i>(калибр.)</i>"
+		}
+		sb.WriteString(fmt.Sprintf("\n%d. <b>%s</b> — %d (пик %d)%s%s",
+			i+1, esc(names[p.PlayerID]), p.Rating, p.Peak, crown, prov))
+	}
+	return sb.String()
 }
 
 // ratingDeltaLines renders a game's rating impact as the result-post footer:
