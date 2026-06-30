@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -788,4 +789,47 @@ func progressBar(cur, target int) string {
 		filled = 0
 	}
 	return "[" + strings.Repeat("▰", filled) + strings.Repeat("▱", width-filled) + "]"
+}
+
+// ratingDeltaLines renders a game's rating impact as the result-post footer:
+// players ordered by delta (biggest gainer first), plus a crown-change line.
+func ratingDeltaLines(gr domain.GameRating, names map[int64]string) string {
+	type row struct {
+		id, d, nr int64
+	}
+	rows := make([]row, 0, len(gr.Delta))
+	for id, d := range gr.Delta {
+		rows = append(rows, row{id: id, d: int64(d), nr: int64(gr.NewRating[id])})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].d != rows[j].d {
+			return rows[i].d > rows[j].d
+		}
+		return rows[i].id < rows[j].id
+	})
+	parts := make([]string, 0, len(rows))
+	for _, r := range rows {
+		sign := ""
+		if r.d >= 0 {
+			sign = "+"
+		}
+		parts = append(parts, fmt.Sprintf("%s %s%d → %d", esc(names[r.id]), sign, r.d, r.nr))
+	}
+	out := "\n\n📊 Рейтинг: " + strings.Join(parts, ", ")
+	if line := crownChangeLine(gr, names); line != "" {
+		out += "\n" + line
+	}
+	return out
+}
+
+// crownChangeLine announces a new #1 after a game (empty when unchanged).
+func crownChangeLine(gr domain.GameRating, names map[int64]string) string {
+	if gr.CrownAfter == 0 || gr.CrownAfter == gr.CrownBefore {
+		return ""
+	}
+	if gr.CrownBefore == 0 {
+		return fmt.Sprintf("👑 %s забирает корону!", esc(names[gr.CrownAfter]))
+	}
+	return fmt.Sprintf("👑 Корона сменилась: %s свергает %s!",
+		esc(names[gr.CrownAfter]), esc(names[gr.CrownBefore]))
 }

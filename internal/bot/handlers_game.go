@@ -9,6 +9,7 @@ import (
 
 	tele "gopkg.in/telebot.v3"
 
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -577,6 +578,39 @@ func (b *Bot) backfillUsdokuTimes(game *storage.Game) []string {
 	return noNick
 }
 
+// ratingFooter computes the rating impact of the just-recorded game and renders
+// the result-post footer (delta lines + optional crown change). Best-effort:
+// returns "" on any error or when the game had no rating impact (solo/all-DNF),
+// so rating never blocks or breaks the result post.
+func (b *Bot) ratingFooter(game *storage.Game) string {
+	games, err := b.st.GamesForRating(game.ChatID)
+	if err != nil {
+		log.Printf("ratingFooter.games: %v", err)
+		return ""
+	}
+	r := domain.ComputeRatings(games)
+	var gr *domain.GameRating
+	for i := range r.PerGame {
+		if r.PerGame[i].GameID == game.ID {
+			gr = &r.PerGame[i]
+			break
+		}
+	}
+	if gr == nil {
+		return ""
+	}
+	players, err := b.st.ListPlayers(game.ChatID)
+	if err != nil {
+		log.Printf("ratingFooter.players: %v", err)
+		return ""
+	}
+	names := make(map[int64]string, len(players))
+	for _, p := range players {
+		names[p.ID] = p.Name
+	}
+	return ratingDeltaLines(*gr, names)
+}
+
 // finalize scores the game and edits the callback's message with the result,
 // rolling the season if needed.
 func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
@@ -589,6 +623,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b> — задайте /setnick",
 			esc(strings.Join(noNick, ", ")))
 	}
+	result += b.ratingFooter(game)
 	if err := c.Edit(result, resultKeyboard(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
 	}

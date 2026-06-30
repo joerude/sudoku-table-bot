@@ -7,6 +7,7 @@ import (
 
 	tele "gopkg.in/telebot.v3"
 
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -593,6 +594,44 @@ func TestClaimNickKeyboardOneButtonPerNick(t *testing.T) {
 		if data[i] != want[i] {
 			t.Errorf("data[%d]=%q want %q", i, data[i], want[i])
 		}
+	}
+}
+
+func TestRatingDeltaLines(t *testing.T) {
+	names := map[int64]string{10: "Alice", 20: "Bob"}
+	gr := domain.GameRating{
+		GameID:      1,
+		Delta:       map[int64]int{10: 14, 20: -9},
+		NewRating:   map[int64]int{10: 1042, 20: 988},
+		CrownBefore: 20,
+		CrownAfter:  10,
+	}
+	got := ratingDeltaLines(gr, names)
+	if !strings.Contains(got, "Alice +14 → 1042") {
+		t.Errorf("missing winner line: %q", got)
+	}
+	if !strings.Contains(got, "Bob -9 → 988") {
+		t.Errorf("missing loser line: %q", got)
+	}
+	if !strings.Contains(got, "👑") || !strings.Contains(got, "Alice") {
+		t.Errorf("missing crown change: %q", got)
+	}
+}
+
+func TestCrownChangeLineNoChange(t *testing.T) {
+	names := map[int64]string{10: "Alice"}
+	gr := domain.GameRating{CrownBefore: 10, CrownAfter: 10}
+	if got := crownChangeLine(gr, names); got != "" {
+		t.Errorf("expected empty when crown unchanged, got %q", got)
+	}
+}
+
+func TestCrownChangeLineFirstCrown(t *testing.T) {
+	names := map[int64]string{10: "Alice"}
+	gr := domain.GameRating{CrownBefore: 0, CrownAfter: 10}
+	got := crownChangeLine(gr, names)
+	if !strings.Contains(got, "Alice") || !strings.Contains(got, "👑") {
+		t.Errorf("first crown line wrong: %q", got)
 	}
 }
 
