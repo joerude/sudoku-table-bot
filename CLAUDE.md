@@ -31,6 +31,11 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
 - Деплой: `docker compose up -d --build --force-recreate`.
   **`just up` / `docker compose up -d --build` без `--force-recreate` НЕ пересоздаёт
   контейнер** — оставляет старый бинарь. Всегда `--force-recreate`.
+- **Build-кэш тоже залипает**: `--build` может взять несвежий кэш и передеплоить
+  старый бинарь (образ не пересобрался, тот же image SHA). Если задеплоил, а нового
+  кода нет — `docker compose build --no-cache bot`, потом `up -d --force-recreate`.
+  Проверка нового бинаря: `docker compose exec -T bot sh -c 'strings /app/sudoku-bot
+  | grep -a "<уникальная-строка>"'` (Go пакует литералы — ищи подстроку, не `^строка$`).
 - После деплоя проверяй `docker compose logs bot | tail` → `bot started`.
 - Прод-БД операции: `docker run --rm -v "$PWD/data":/data ... golang:1.25-alpine`
   с `apk add sqlite`. SQL-литералы — **одинарные кавычки** (двойные SQLite читает
