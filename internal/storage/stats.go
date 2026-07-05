@@ -327,6 +327,87 @@ func (s *Store) SeasonsWon(chatID, playerID int64) (int, error) {
 	return n, err
 }
 
+// BestSecsBefore returns a player's fastest recorded solve in seasonal games
+// strictly before the given game id (0 when none). Empty difficulty means any
+// difficulty. Used to detect personal bests and freshly earned speed badges.
+func (s *Store) BestSecsBefore(chatID, playerID int64, difficulty string, beforeGameID int64) (int, error) {
+	q := `
+		SELECT MIN(gr.duration_secs)
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		WHERE g.chat_id = ? AND gr.player_id = ? AND g.id < ?
+		  AND ` + sqlSeasonalGames + `
+		  AND gr.duration_secs IS NOT NULL`
+	args := []any{chatID, playerID, beforeGameID}
+	if difficulty != "" {
+		q += ` AND g.difficulty = ?`
+		args = append(args, difficulty)
+	}
+	var best sql.NullInt64
+	if err := s.db.QueryRow(q, args...).Scan(&best); err != nil {
+		return 0, err
+	}
+	if !best.Valid {
+		return 0, nil
+	}
+	return int(best.Int64), nil
+}
+
+// FastestInSeason returns the single fastest auto-recorded solve of a season
+// (nil if none) — for the season-end awards.
+func (s *Store) FastestInSeason(chatID, seasonID int64) (*RecordRow, error) {
+	var r RecordRow
+	err := s.db.QueryRow(`
+		SELECT COALESCE(g.difficulty,''), gr.duration_secs, p.name
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		JOIN players p ON p.id = gr.player_id
+		WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames+`
+		  AND gr.duration_secs IS NOT NULL
+		ORDER BY gr.duration_secs ASC LIMIT 1`, chatID, seasonID).
+		Scan(&r.Difficulty, &r.Secs, &r.Name)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// SeasonRank is one player's finishing rank in one game of a season, ordered
+// oldest game first — for computing the season's longest win run.
+type SeasonRank struct {
+	PlayerID int64
+	Name     string
+	Rank     int
+}
+
+// SeasonRanks returns every (player, rank) of a season's completed non-duel
+// games in game order.
+func (s *Store) SeasonRanks(chatID, seasonID int64) ([]SeasonRank, error) {
+	rows, err := s.db.Query(`
+		SELECT gr.player_id, p.name, gr.rank
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		JOIN players p ON p.id = gr.player_id
+		WHERE g.chat_id = ? AND g.season_id = ? AND `+sqlSeasonalGames+`
+		ORDER BY g.id, gr.rank`, chatID, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeasonRank
+	for rows.Next() {
+		var r SeasonRank
+		if err := rows.Scan(&r.PlayerID, &r.Name, &r.Rank); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // PlayerStat is a single player's season summary for /me.
 type PlayerStat struct {
 	Points int
