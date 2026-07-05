@@ -439,9 +439,14 @@ func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch, tz strin
 
 // speedText renders the /speed leaderboard: players ranked by average solve
 // time at a difficulty, with a footer for those below the games threshold.
+// se == nil means the all-time (career) board.
 func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.SpeedRow, minGames int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "⚡ <b>Самые быстрые</b> · %s · сезон %d\n", titleCase(difficulty), se.Number)
+	scope := "все сезоны"
+	if se != nil {
+		scope = fmt.Sprintf("сезон %d", se.Number)
+	}
+	fmt.Fprintf(&b, "⚡ <b>Самые быстрые</b> · %s · %s\n", titleCase(difficulty), scope)
 	if len(ranked) == 0 {
 		fmt.Fprintf(&b, "\nПока мало данных — нужно ≥%d авто-игр на %s.\n"+
 			"Создавай игры через /newgame (и задай /setnick) — время подтянется само.",
@@ -664,10 +669,13 @@ func recordsText(rows []storage.RecordRow) string {
 	return b.String()
 }
 
-// streakBadgeText renders the streak lines + badge row appended to /me. Returns
-// "" when there is nothing noteworthy (streaks < 2 and no badges).
-func streakBadgeText(winStreak, dayStreak int, badges []string) string {
+// streakBadgeText renders the championships, streak lines + badge row appended
+// to /me. Returns "" when there is nothing noteworthy.
+func streakBadgeText(winStreak, dayStreak, seasonsWon int, badges []string) string {
 	var b strings.Builder
+	if seasonsWon >= 1 {
+		fmt.Fprintf(&b, "\n👑 Чемпионств: <b>%d</b>", seasonsWon)
+	}
 	if winStreak >= 2 {
 		fmt.Fprintf(&b, "\n🔥 Серия побед: <b>%d</b>", winStreak)
 	}

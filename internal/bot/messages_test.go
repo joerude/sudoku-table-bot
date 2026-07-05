@@ -472,19 +472,35 @@ func TestRecordsTextRendersHoldersAndEmpty(t *testing.T) {
 }
 
 func TestStreakBadgeText(t *testing.T) {
-	out := streakBadgeText(4, 6, []string{"🔥", "⚡"})
+	out := streakBadgeText(4, 6, 0, []string{"🔥", "⚡"})
 	for _, want := range []string{"Серия побед", "4", "Дней подряд", "6", "🔥", "⚡"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("streakBadgeText: want %q in %q", want, out)
 		}
 	}
 	// zeros + no badges → empty string (nothing appended)
-	if s := streakBadgeText(0, 0, nil); s != "" {
+	if s := streakBadgeText(0, 0, 0, nil); s != "" {
 		t.Errorf("expected empty, got %q", s)
 	}
 	// win streak of 1 is not a "streak" worth showing
-	if s := streakBadgeText(1, 0, nil); s != "" {
+	if s := streakBadgeText(1, 0, 0, nil); s != "" {
 		t.Errorf("streak of 1 should render empty, got %q", s)
+	}
+	// championships render with a crown and the count
+	champ := streakBadgeText(0, 0, 2, nil)
+	if !strings.Contains(champ, "👑") || !strings.Contains(champ, "Чемпионств") || !strings.Contains(champ, "2") {
+		t.Errorf("championships line missing: %q", champ)
+	}
+}
+
+func TestSpeedTextAllSeasons(t *testing.T) {
+	ranked := []storage.SpeedRow{{Name: "Nur", AvgSecs: 300, BestSecs: 228, Games: 40}}
+	out := speedText(nil, "medium", ranked, nil, 3)
+	if !strings.Contains(out, "все сезоны") {
+		t.Errorf("speedText all: want 'все сезоны' in header\ngot: %s", out)
+	}
+	if strings.Contains(out, "сезон ") {
+		t.Errorf("speedText all: must not mention a season number\ngot: %s", out)
 	}
 }
 

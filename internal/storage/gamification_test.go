@@ -156,6 +156,48 @@ func TestSeasonRanks(t *testing.T) {
 	}
 }
 
+func TestSpeedboardAllSeasons(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7008)
+	st.EnsureChat(chat, 1)
+	se1, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// Season 1: one timed medium game, then close the season.
+	g1, _ := st.CreatePendingGame(chat, se1.ID, a.ID, "medium", "hardcore")
+	st.AddPickTimed(g1, a.ID, 200)
+	st.AddPick(g1, b.ID)
+	st.FinalizeGame(g1, se1.PointsTable)
+	se2, err := st.CloseSeason(se1, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Season 2: another timed medium game.
+	g2, _ := st.CreatePendingGame(chat, se2.ID, a.ID, "medium", "hardcore")
+	st.AddPickTimed(g2, a.ID, 100)
+	st.AddPick(g2, b.ID)
+	st.FinalizeGame(g2, se2.PointsTable)
+
+	// Season-scoped: only season 2's game counts.
+	ranked, _, err := st.Speedboard(chat, se2.ID, "medium", 1)
+	if err != nil {
+		t.Fatalf("Speedboard season: %v", err)
+	}
+	if len(ranked) != 1 || ranked[0].Games != 1 || ranked[0].AvgSecs != 100 {
+		t.Errorf("season board: want 1 game avg 100, got %+v", ranked)
+	}
+	// All seasons (seasonID 0): both games aggregate.
+	rankedAll, _, err := st.Speedboard(chat, 0, "medium", 1)
+	if err != nil {
+		t.Fatalf("Speedboard all: %v", err)
+	}
+	if len(rankedAll) != 1 || rankedAll[0].Games != 2 || rankedAll[0].AvgSecs != 150 || rankedAll[0].BestSecs != 100 {
+		t.Errorf("all board: want 2 games avg 150 best 100, got %+v", rankedAll)
+	}
+}
+
 func TestSeasonByNumberAndMeta(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-7007)

@@ -23,7 +23,7 @@ func (b *Bot) meExtra(chatID, playerID int64, tz string) string {
 		log.Printf("meExtra: %v", err)
 		return ""
 	}
-	return streakBadgeText(in.WinStreak, in.DayStreak, domain.Badges(in))
+	return streakBadgeText(in.WinStreak, in.DayStreak, in.SeasonsWon, domain.Badges(in))
 }
 
 // chatTZ returns the chat's timezone string, defaulting to UTC on error.
@@ -480,20 +480,35 @@ func (b *Bot) requireAdmin(c tele.Context) bool {
 // in the "мало игр" footer).
 const speedMinGames = 3
 
+// onSpeed shows the speed leaderboard. Args in any order: a difficulty
+// (default medium) and "all" for the all-seasons career board.
 func (b *Bot) onSpeed(c tele.Context) error {
 	season, err := b.ensure(c)
 	if err != nil {
 		return b.fail(c, "onSpeed.ensure", err)
 	}
-	difficulty := "medium"
-	if a := strings.ToLower(argAt(c.Args(), 0)); validDifficulty[a] {
-		difficulty = a
+	difficulty, all := "medium", false
+	for _, a := range c.Args() {
+		switch low := strings.ToLower(a); {
+		case validDifficulty[low]:
+			difficulty = low
+		case low == "all" || low == "все" || low == "всё":
+			all = true
+		}
 	}
-	ranked, fewer, err := b.st.Speedboard(c.Chat().ID, season.ID, difficulty, speedMinGames)
+	seasonID, se := season.ID, season
+	if all {
+		seasonID, se = 0, nil
+	}
+	ranked, fewer, err := b.st.Speedboard(c.Chat().ID, seasonID, difficulty, speedMinGames)
 	if err != nil {
 		return b.fail(c, "onSpeed.board", err)
 	}
-	return c.Send(speedText(season, difficulty, ranked, fewer, speedMinGames))
+	text := speedText(se, difficulty, ranked, fewer, speedMinGames)
+	if !all && len(ranked) > 0 {
+		text += "\n<i>/speed all — топ за все сезоны</i>"
+	}
+	return c.Send(text)
 }
 
 func argAt(args []string, i int) string {
