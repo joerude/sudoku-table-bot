@@ -47,6 +47,58 @@ func (s *Store) activeSeasonRow(chatID int64) (*Season, error) {
 		 WHERE chat_id=? AND status='active' ORDER BY number DESC LIMIT 1`, chatID))
 }
 
+// SeasonByNumber returns a chat's season with the given display number, any
+// status (nil when absent). Numbers are unique per chat after the legacy
+// import; ORDER BY id DESC picks the newest if history ever produced a dup.
+func (s *Store) SeasonByNumber(chatID int64, number int) (*Season, error) {
+	se, err := s.scanSeason(s.db.QueryRow(
+		`SELECT id, chat_id, number, target, points_table, status FROM seasons
+		 WHERE chat_id=? AND number=? ORDER BY id DESC LIMIT 1`, chatID, number))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return se, err
+}
+
+// SeasonMeta returns a season's completed-game count, first/last game dates
+// (YYYY-MM-DD, empty when no games) and the winner's name ("" when unset).
+func (s *Store) SeasonMeta(chatID, seasonID int64) (games int, first, last, winner string, err error) {
+	err = s.db.QueryRow(`
+		SELECT COUNT(*), COALESCE(MIN(date(g.completed_at)),''), COALESCE(MAX(date(g.completed_at)),'')
+		FROM games g WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames,
+		chatID, seasonID).Scan(&games, &first, &last)
+	if err != nil {
+		return 0, "", "", "", err
+	}
+	var w sql.NullString
+	err = s.db.QueryRow(`
+		SELECT p.name FROM seasons se JOIN players p ON p.id = se.winner_id
+		WHERE se.id=?`, seasonID).Scan(&w)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, "", "", "", err
+	}
+	return games, first, last, w.String, nil
+}
+
+// ArchivedNumbers lists a chat's archived season numbers in ascending order.
+func (s *Store) ArchivedNumbers(chatID int64) ([]int, error) {
+	rows, err := s.db.Query(
+		`SELECT number FROM seasons WHERE chat_id=? AND status='archived' ORDER BY number`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 // SeasonByID fetches a season by id.
 func (s *Store) SeasonByID(id int64) (*Season, error) {
 	return s.scanSeason(s.db.QueryRow(

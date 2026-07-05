@@ -105,7 +105,12 @@ func (b *Bot) onStatus(c tele.Context) error {
 	return c.Send(standingsText(season, standings))
 }
 
+// onSeason without args shows the active season; "/season N" shows any
+// season's summary, including archived ones.
 func (b *Bot) onSeason(c tele.Context) error {
+	if n, err := strconv.Atoi(argAt(c.Args(), 0)); err == nil && n > 0 {
+		return b.seasonSummary(c, n)
+	}
 	season, err := b.ensure(c)
 	if err != nil {
 		return b.fail(c, "onSeason.ensure", err)
@@ -114,7 +119,38 @@ func (b *Bot) onSeason(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onSeason.leader", err)
 	}
-	return c.Send(seasonText(season, leader))
+	text := seasonText(season, leader)
+	if nums, err := b.st.ArchivedNumbers(c.Chat().ID); err == nil {
+		text += archiveHint(nums)
+	}
+	return c.Send(text)
+}
+
+// seasonSummary renders one season (by display number) with its final table,
+// dates, winner, and nominations.
+func (b *Bot) seasonSummary(c tele.Context, number int) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "seasonSummary.ensure", err)
+	}
+	chatID := c.Chat().ID
+	se, err := b.st.SeasonByNumber(chatID, number)
+	if err != nil {
+		return b.fail(c, "seasonSummary.season", err)
+	}
+	if se == nil {
+		nums, _ := b.st.ArchivedNumbers(chatID)
+		return b.ephemeral(c, noSuchSeasonText(number, nums))
+	}
+	standings, err := b.st.Standings(chatID, se.ID)
+	if err != nil {
+		return b.fail(c, "seasonSummary.standings", err)
+	}
+	games, first, last, winner, err := b.st.SeasonMeta(chatID, se.ID)
+	if err != nil {
+		return b.fail(c, "seasonSummary.meta", err)
+	}
+	awards := b.seasonAwards(chatID, se.ID, standings)
+	return c.Send(seasonSummaryText(se, standings, games, first, last, winner, awards))
 }
 
 func (b *Bot) onWeekly(c tele.Context) error {

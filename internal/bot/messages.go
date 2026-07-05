@@ -25,6 +25,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт ваших игр в с
 /result — записать результат вручную (если авто-учёт не сработал)
 /newgame, /duel, /invite — то же, что /play, но командой
 /status, /me, /speed, /duels, /history, /season — то же, что вкладки /stats
+/season &lt;N&gt; — сводка любого сезона, включая архивные
 /weekly — итоги недели сейчас (то же, что авто-пост в пн)
 /export — выгрузить игры сезона в CSV
 
@@ -481,6 +482,61 @@ func historyText(games []storage.HistoryGame, tz string) string {
 		b.WriteString(fmt.Sprintf("%s%s: %s\n", when, diff, strings.Join(order, " ")))
 	}
 	return b.String()
+}
+
+// seasonSummaryText renders the /season N view: final (or current) table of one
+// season with its dates, winner, and nominations. Zero-game rows are hidden so
+// players who joined in later seasons don't clutter old archives.
+func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, first, last, winner string, awards []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🏆 <b>Сезон %d</b>", se.Number)
+	if se.Status == "archived" {
+		b.WriteString(" · завершён")
+	} else {
+		fmt.Fprintf(&b, " · идёт, до %d очков", se.Target)
+	}
+	if first != "" {
+		fmt.Fprintf(&b, "\n📅 %s — %s · игр: <b>%d</b>", first, last, games)
+	}
+	if winner != "" {
+		fmt.Fprintf(&b, "\n👑 Победитель: <b>%s</b>", esc(winner))
+	}
+	b.WriteString("\n\n")
+	shown := 0
+	for _, r := range rows {
+		if r.Games == 0 {
+			continue
+		}
+		shown++
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d игр)</i>\n",
+			medal(shown), esc(r.Name), r.Points, r.Wins, r.Games))
+	}
+	if shown == 0 {
+		b.WriteString("В этом сезоне не было игр.\n")
+	}
+	if len(awards) > 0 {
+		b.WriteString("\n<b>Номинации</b>\n" + strings.Join(awards, "\n"))
+	}
+	return b.String()
+}
+
+// archiveHint appends the archived-season pointer under the /season view.
+func archiveHint(nums []int) string {
+	if len(nums) == 0 {
+		return ""
+	}
+	if len(nums) == 1 {
+		return fmt.Sprintf("\n\n<i>Архив: /season %d</i>", nums[0])
+	}
+	return fmt.Sprintf("\n\n<i>Архив: /season %d…%d</i>", nums[0], nums[len(nums)-1])
+}
+
+// noSuchSeasonText is the ephemeral reply for an unknown season number.
+func noSuchSeasonText(n int, nums []int) string {
+	if len(nums) == 0 {
+		return fmt.Sprintf("Сезона %d нет. Архивных сезонов пока нет.", n)
+	}
+	return fmt.Sprintf("Сезона %d нет. В архиве: %d…%d.", n, nums[0], nums[len(nums)-1])
 }
 
 func seasonEndText(number int, winner string, points int, awards []string, nextTarget, nextNumber int) string {

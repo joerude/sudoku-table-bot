@@ -689,6 +689,43 @@ func TestRemoveOneToday(t *testing.T) {
 	}
 }
 
+func TestSeasonSummaryTextArchived(t *testing.T) {
+	se := &storage.Season{Number: 2, Target: 100, Status: "archived"}
+	rows := []storage.Standing{
+		{PlayerID: 1, Name: "Nur", Points: 100, Wins: 27, Games: 58},
+		{PlayerID: 2, Name: "mister", Points: 80, Wins: 22, Games: 57},
+		{PlayerID: 3, Name: "Later Joiner", Points: 0, Wins: 0, Games: 0},
+	}
+	awards := []string{awardWinsLine("Nur", 27)}
+	out := seasonSummaryText(se, rows, 65, "2025-11-17", "2025-12-02", "Nur", awards)
+	for _, want := range []string{"Сезон 2", "завершён", "2025-11-17", "2025-12-02",
+		"игр: <b>65</b>", "👑", "Nur", "🥇", "🥈", "Номинации", "Больше всех побед"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("seasonSummaryText: want %q in output\ngot: %s", want, out)
+		}
+	}
+	// Zero-game players stay hidden; an active season says "идёт".
+	if strings.Contains(out, "Later Joiner") {
+		t.Errorf("seasonSummaryText: zero-game player must be hidden\ngot: %s", out)
+	}
+	se.Status = "active"
+	if live := seasonSummaryText(se, rows, 65, "", "", "", nil); !strings.Contains(live, "идёт") {
+		t.Errorf("seasonSummaryText active: want 'идёт'\ngot: %s", live)
+	}
+}
+
+func TestArchiveHintAndNoSuchSeason(t *testing.T) {
+	if h := archiveHint([]int{1, 2, 3}); !strings.Contains(h, "/season 1…3") {
+		t.Errorf("archiveHint: want range, got %q", h)
+	}
+	if h := archiveHint(nil); h != "" {
+		t.Errorf("archiveHint empty: want \"\", got %q", h)
+	}
+	if s := noSuchSeasonText(7, []int{1, 3}); !strings.Contains(s, "1…3") {
+		t.Errorf("noSuchSeasonText: want range, got %q", s)
+	}
+}
+
 func TestRecordAndClaimKeyboard(t *testing.T) {
 	m := recordAndClaimKeyboard(42, []string{"joe", "max"})
 	if len(m.InlineKeyboard) != 3 {
