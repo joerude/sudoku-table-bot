@@ -18,41 +18,12 @@ import (
 // meExtra computes a player's streak lines + badge row (best-effort; returns ""
 // on any storage error so the core /me view still renders).
 func (b *Bot) meExtra(chatID, playerID int64, tz string) string {
-	ranks, err := b.st.RecentRanks(chatID, playerID)
+	in, _, _, _, err := b.badgeState(chatID, playerID, tz)
 	if err != nil {
-		log.Printf("meExtra.ranks: %v", err)
+		log.Printf("meExtra: %v", err)
 		return ""
 	}
-	times, err := b.st.PlayedTimes(chatID, playerID)
-	if err != nil {
-		log.Printf("meExtra.times: %v", err)
-		return ""
-	}
-	loc := loadLoc(tz)
-	today := time.Now().In(loc).Format("2006-01-02")
-	dates := make([]string, 0, len(times))
-	for _, t := range times {
-		if parsed, e := parseDBTime(t); e == nil {
-			dates = append(dates, parsed.UTC().In(loc).Format("2006-01-02"))
-		}
-	}
-	wins, games, best, err := b.st.CareerStats(chatID, playerID)
-	if err != nil {
-		log.Printf("meExtra.career: %v", err)
-		return ""
-	}
-	seasonsWon, err := b.st.SeasonsWon(chatID, playerID)
-	if err != nil {
-		log.Printf("meExtra.seasonsWon: %v", err)
-		return ""
-	}
-	ws := domain.WinStreak(ranks)
-	ds := domain.DayStreak(dates, today)
-	badges := domain.Badges(domain.BadgeInput{
-		Wins: wins, Games: games, BestSecs: best,
-		WinStreak: ws, DayStreak: ds, SeasonsWon: seasonsWon,
-	})
-	return streakBadgeText(ws, ds, badges)
+	return streakBadgeText(in.WinStreak, in.DayStreak, domain.Badges(in))
 }
 
 // chatTZ returns the chat's timezone string, defaulting to UTC on error.
@@ -378,7 +349,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		}
 		text = speedText(season, "medium", ranked, fewer, speedMinGames)
 	case "duels":
-		rows, e := b.st.DuelLeaderboard(chatID)
+		rows, e := b.duelStandingsWithElo(chatID)
 		if e != nil {
 			return "", nil, e
 		}

@@ -419,6 +419,19 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 	if err != nil {
 		return "", "", err
 	}
+	_, isDuel, err := b.st.DuelTargetID(game.ID)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Snapshot the table before scoring so overtakes can be shown after.
+	var before []storage.Standing
+	if !isDuel {
+		if before, err = b.st.Standings(game.ChatID, season.ID); err != nil {
+			return "", "", err
+		}
+	}
+
 	if err := b.st.FinalizeGame(game.ID, season.PointsTable); err != nil {
 		return "", "", err
 	}
@@ -427,9 +440,7 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		return "", "", err
 	}
 
-	if _, isDuel, derr := b.st.DuelTargetID(game.ID); derr != nil {
-		return "", "", derr
-	} else if isDuel {
+	if isDuel {
 		return b.duelResult(game, rows), "", nil // duels don't touch the season
 	}
 
@@ -442,14 +453,21 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		leader = &standings[0]
 	}
 	result = resultText(rows, game.Difficulty.String, game.Mode.String, leader, season.Target)
+	if line := movesLine(standingsMoves(before, standings)); line != "" {
+		result += "\n" + line
+	}
+	if lines := b.celebrations(game, rows); len(lines) > 0 {
+		result += "\n\n" + strings.Join(lines, "\n")
+	}
 
 	if len(standings) > 0 && standings[0].Points >= season.Target {
 		newSeason, err := b.st.CloseSeason(season, standings[0].PlayerID)
 		if err != nil {
 			return "", "", err
 		}
+		awards := b.seasonAwards(game.ChatID, season.ID, standings)
 		seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
-			newSeason.Target, newSeason.Number)
+			awards, newSeason.Target, newSeason.Number)
 		log.Printf("🏁 season %d closed, winner=%s (%d pts) → season %d started",
 			season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
 	}
@@ -457,17 +475,26 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 	return result, seasonEnd, nil
 }
 
-// duelResult renders a finished duel: winner, time, and the pair's head-to-head.
+// duelResult renders a finished duel: winner, time, the pair's head-to-head,
+// and the winner's Elo rating change.
 func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 	if len(rows) < 2 {
-		return duelResultText(rows, 0, 0, false)
+		return duelResultText(rows, 0, 0, false, 0, 0)
+	}
+	elo, delta := 0, 0
+	if rows[0].Rank == 1 {
+		if pairs, perr := b.st.DuelPairs(game.ChatID); perr != nil {
+			log.Printf("duelResult.elo: %v", perr)
+		} else if r, d, ok := winnerEloAt(pairs, game.ID, rows[0].PlayerID); ok {
+			elo, delta = r, d
+		}
 	}
 	wWins, lWins, err := b.st.HeadToHead(game.ChatID, rows[0].PlayerID, rows[1].PlayerID)
 	if err != nil {
 		log.Printf("duelResult.h2h: %v", err)
-		return duelResultText(rows, 0, 0, false)
+		return duelResultText(rows, 0, 0, false, elo, delta)
 	}
-	return duelResultText(rows, wWins, lWins, true)
+	return duelResultText(rows, wWins, lWins, true, elo, delta)
 }
 
 // onDoneDNF finalises the game, recording every remaining active player as a

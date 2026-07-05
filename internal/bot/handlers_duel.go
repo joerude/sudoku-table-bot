@@ -146,7 +146,7 @@ func (b *Bot) onDuels(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onDuels.ensure", err)
 	}
-	rows, err := b.st.DuelLeaderboard(c.Chat().ID)
+	rows, err := b.duelStandingsWithElo(c.Chat().ID)
 	if err != nil {
 		return b.fail(c, "onDuels.board", err)
 	}
