@@ -165,6 +165,115 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 	return b.String()
 }
 
+// standingsMove is one player's position change after a recorded game.
+type standingsMove struct {
+	Name  string
+	Delta int // positive = moved up that many places
+}
+
+// standingsMoves diffs two standings snapshots (before → after) into moves.
+// New players (absent from before) never count as a move.
+func standingsMoves(before, after []storage.Standing) []standingsMove {
+	pos := make(map[int64]int, len(before))
+	for i, s := range before {
+		pos[s.PlayerID] = i
+	}
+	var out []standingsMove
+	for i, s := range after {
+		if p, ok := pos[s.PlayerID]; ok && p != i {
+			out = append(out, standingsMove{Name: s.Name, Delta: p - i})
+		}
+	}
+	return out
+}
+
+// movesLine renders position changes as one compact line, climbers first.
+func movesLine(moves []standingsMove) string {
+	if len(moves) == 0 {
+		return ""
+	}
+	sorted := make([]standingsMove, len(moves))
+	copy(sorted, moves)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Delta > sorted[j].Delta })
+	parts := make([]string, 0, len(sorted))
+	for _, m := range sorted {
+		if m.Delta > 0 {
+			parts = append(parts, fmt.Sprintf("↗️ <b>%s</b> +%d", esc(m.Name), m.Delta))
+		} else {
+			parts = append(parts, fmt.Sprintf("↘️ %s %d", esc(m.Name), m.Delta))
+		}
+	}
+	return "📊 " + strings.Join(parts, " · ")
+}
+
+// badgeLabels names each badge emoji for the "new badge" announcement.
+var badgeLabels = map[string]string{
+	"🏅": "чемпион сезона",
+	"🔥": "3 победы подряд",
+	"⚡": "решение быстрее 2:00",
+	"💪": "10 побед",
+	"💯": "50 побед",
+	"🎯": "100 игр",
+	"📅": "7 дней подряд",
+}
+
+// newBadges returns badges present in after but not in before, keeping order.
+func newBadges(before, after []string) []string {
+	had := make(map[string]bool, len(before))
+	for _, b := range before {
+		had[b] = true
+	}
+	var out []string
+	for _, b := range after {
+		if !had[b] {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// badgeLine announces freshly earned badges with their labels.
+func badgeLine(name string, badges []string) string {
+	parts := make([]string, len(badges))
+	for i, bd := range badges {
+		if label, ok := badgeLabels[bd]; ok {
+			parts[i] = bd + " " + label
+		} else {
+			parts[i] = bd
+		}
+	}
+	return fmt.Sprintf("🎖 <b>%s</b> получает бейдж: %s", esc(name), strings.Join(parts, ", "))
+}
+
+// personalBestLine celebrates a new fastest solve at a difficulty.
+func personalBestLine(name, difficulty string, secs, prevSecs int) string {
+	return fmt.Sprintf("🚀 <b>%s</b>: личный рекорд на %s — <b>%s</b> (было %s)",
+		esc(name), titleCase(difficulty), fmtDuration(secs), fmtDuration(prevSecs))
+}
+
+// winStreakLine hypes an ongoing win streak.
+func winStreakLine(name string, n int) string {
+	return fmt.Sprintf("🔥 <b>%s</b>: %d побед подряд!", esc(name), n)
+}
+
+// award*Line renderers build the season-end nomination lines.
+func awardWinsLine(name string, wins int) string {
+	return fmt.Sprintf("🥇 Больше всех побед: <b>%s</b> (%d)", esc(name), wins)
+}
+
+func awardGamesLine(name string, games int) string {
+	return fmt.Sprintf("🎮 Самый активный: <b>%s</b> (%d игр)", esc(name), games)
+}
+
+func awardFastestLine(name string, secs int, difficulty string) string {
+	return fmt.Sprintf("⚡ Быстрейшее решение: <b>%s</b> — %s (%s)",
+		esc(name), fmtDuration(secs), titleCase(difficulty))
+}
+
+func awardStreakLine(name string, n int) string {
+	return fmt.Sprintf("🔥 Лучшая серия побед: <b>%s</b> ×%d", esc(name), n)
+}
+
 // gameTag renders the "Difficulty · Mode" suffix, omitting empty parts.
 func gameTag(difficulty, mode string) string {
 	var parts []string
@@ -202,8 +311,12 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 		return b.String()
 	}
 	for i, r := range rows {
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d игр)</i>\n",
-			medal(i+1), esc(r.Name), r.Points, r.Wins, r.Games))
+		gap := ""
+		if i > 0 && rows[0].Points > r.Points {
+			gap = fmt.Sprintf("-%d · ", rows[0].Points-r.Points)
+		}
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%s%d поб · %d игр)</i>\n",
+			medal(i+1), esc(r.Name), r.Points, gap, r.Wins, r.Games))
 	}
 	if leader := rows[0]; leader.Points > 0 {
 		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
@@ -236,8 +349,9 @@ func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, d
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b,
-		"📊 <b>%s</b> · сезон %d\nМесто: <b>%d</b>\nОчки: <b>%d</b>/%d\nПобед: %d\nИгр: %d",
-		esc(name), se.Number, st.Rank, st.Points, se.Target, st.Wins, st.Games)
+		"📊 <b>%s</b> · сезон %d\nМесто: <b>%d</b>\nОчки: <b>%d</b>/%d %s\nПобед: %d\nИгр: %d",
+		esc(name), se.Number, st.Rank, st.Points, se.Target,
+		progressBar(st.Points, se.Target), st.Wins, st.Games)
 	if sp != nil && sp.Games > 0 {
 		fmt.Fprintf(&b, "\n⏱ Ср. время: <b>%s</b> (по %d, medium)", fmtDuration(sp.AvgSecs), sp.Games)
 		fmt.Fprintf(&b, "\n⚡ Лучшее: <b>%s</b>", fmtDuration(sp.BestSecs))
@@ -252,7 +366,9 @@ func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, d
 
 // duelResultText renders a finished duel. rows are rank-ordered (winner first);
 // winnerWins/loserWins are the pair's head-to-head tally, shown only when h2h.
-func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool) string {
+// elo is the winner's rating right after this duel and eloDelta its change;
+// elo <= 0 hides the rating line.
+func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, elo, eloDelta int) string {
 	var b strings.Builder
 	b.WriteString("⚔️ <b>Дуэль</b>\n")
 	if len(rows) == 0 {
@@ -279,6 +395,9 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 		fmt.Fprintf(&b, "\n\nH2H: <b>%s</b> %d–%d <b>%s</b>",
 			esc(rows[0].Name), winnerWins, loserWins, esc(rows[1].Name))
 	}
+	if elo > 0 {
+		fmt.Fprintf(&b, "\n📈 Рейтинг <b>%s</b>: <b>%d</b> (%+d)", esc(w.Name), elo, eloDelta)
+	}
 	return b.String()
 }
 
@@ -295,8 +414,13 @@ func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch, tz strin
 		if total := r.Wins + r.Losses; total > 0 {
 			pct = r.Wins * 100 / total
 		}
-		fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>\n",
-			medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
+		if r.Elo > 0 {
+			fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> · %d–%d <i>(%d%%)</i>\n",
+				medal(i+1), esc(r.Name), r.Elo, r.Wins, r.Losses, pct)
+		} else {
+			fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>\n",
+				medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
+		}
 	}
 	if len(recent) > 0 {
 		b.WriteString("\n<b>Последние дуэли</b>\n")
@@ -359,11 +483,16 @@ func historyText(games []storage.HistoryGame, tz string) string {
 	return b.String()
 }
 
-func seasonEndText(number int, winner string, points, nextTarget, nextNumber int) string {
-	return fmt.Sprintf(
-		"🎉🏆 <b>Сезон %d завершён!</b>\nПобедитель: <b>%s</b> (%d очков) 👑\n\n"+
-			"Начат <b>сезон %d</b> — все с нуля. Цель: %d очков. Поехали! 🔥",
-		number, esc(winner), points, nextNumber, nextTarget)
+func seasonEndText(number int, winner string, points int, awards []string, nextTarget, nextNumber int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🎉🏆 <b>Сезон %d завершён!</b>\nПобедитель: <b>%s</b> (%d очков) 👑\n",
+		number, esc(winner), points)
+	if len(awards) > 0 {
+		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
+	}
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d очков. Поехали! 🔥",
+		nextNumber, nextTarget)
+	return b.String()
 }
 
 // namesMissingNick returns the names of players with no usdoku nick set, in

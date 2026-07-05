@@ -4,9 +4,11 @@ import "database/sql"
 
 // DuelStanding is one player's all-time duel record.
 type DuelStanding struct {
-	Name   string
-	Wins   int
-	Losses int
+	PlayerID int64
+	Name     string
+	Wins     int
+	Losses   int
+	Elo      int // filled by the bot layer from duel history; 0 = not computed
 }
 
 // DuelRecord returns a player's all-time duel wins (rank 1) and losses (rank > 1)
@@ -25,7 +27,7 @@ func (s *Store) DuelRecord(chatID, playerID int64) (wins, losses int, err error)
 // DuelLeaderboard ranks active players by all-time duel wins (then win rate).
 func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 	rows, err := s.db.Query(`
-		SELECT p.name,
+		SELECT p.id, p.name,
 		       COALESCE(SUM(CASE WHEN gr.rank=1 THEN 1 ELSE 0 END),0) AS wins,
 		       COALESCE(SUM(CASE WHEN gr.rank<>1 THEN 1 ELSE 0 END),0) AS losses
 		FROM players p
@@ -43,10 +45,52 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 	var out []DuelStanding
 	for rows.Next() {
 		var d DuelStanding
-		if err := rows.Scan(&d.Name, &d.Wins, &d.Losses); err != nil {
+		if err := rows.Scan(&d.PlayerID, &d.Name, &d.Wins, &d.Losses); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DuelPair is one finished duel with both participants known, for Elo replay.
+type DuelPair struct {
+	GameID   int64
+	WinnerID int64
+	LoserID  int64
+}
+
+// DuelPairs returns all finished duels of a chat in chronological order
+// (oldest first). Duels where either side is missing from the results (e.g.
+// only the winner was recorded) are skipped — Elo needs both players.
+func (s *Store) DuelPairs(chatID int64) ([]DuelPair, error) {
+	rows, err := s.db.Query(`
+		SELECT g.id,
+		       MAX(CASE WHEN gr.rank=1 THEN gr.player_id END) AS winner,
+		       MAX(CASE WHEN gr.rank<>1 THEN gr.player_id END) AS loser
+		FROM games g
+		JOIN game_results gr ON gr.game_id = g.id
+		WHERE g.chat_id=? AND `+sqlDuelGames+`
+		GROUP BY g.id
+		ORDER BY g.id`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DuelPair
+	for rows.Next() {
+		var (
+			p             DuelPair
+			winner, loser sql.NullInt64
+		)
+		if err := rows.Scan(&p.GameID, &winner, &loser); err != nil {
+			return nil, err
+		}
+		if !winner.Valid || !loser.Valid {
+			continue
+		}
+		p.WinnerID, p.LoserID = winner.Int64, loser.Int64
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

@@ -14,6 +14,23 @@ func WinStreak(ranks []int) int {
 	return n
 }
 
+// LongestWinRun returns the longest run of consecutive wins (rank==1) in a
+// chronologically ordered rank slice — used for the season-end awards.
+func LongestWinRun(ranks []int) int {
+	best, cur := 0, 0
+	for _, r := range ranks {
+		if r != 1 {
+			cur = 0
+			continue
+		}
+		cur++
+		if cur > best {
+			best = cur
+		}
+	}
+	return best
+}
+
 // addDays returns the YYYY-MM-DD date n days from the given date; on parse
 // failure it returns the input unchanged (callers treat that as a broken chain).
 func addDays(date string, n int) string {

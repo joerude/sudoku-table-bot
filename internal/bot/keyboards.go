@@ -10,16 +10,16 @@ import (
 
 // Callback unique ids. Payloads are encoded as plain strings.
 const (
-	cbPick  = "pick"  // payload: "<gameID>:<playerID>"
-	cbDone  = "done"  // payload: "<gameID>"
-	cbReset = "reset" // payload: "<gameID>"
-	cbEdit   = "edit"   // payload: "<gameID>"
-	cbUndo   = "undo"   // payload: "<gameID>" — undo last pick
-	cbCancel = "cancel" // payload: "<gameID>" — cancel recording
-	cbDel    = "del"    // payload: "<gameID>" — asks to confirm deletion
-	cbDelY  = "dely"  // payload: "<gameID>" — confirmed delete
-	cbDelN  = "deln"  // payload: "<gameID>" — cancel delete
-	cbUndel = "undel" // payload: "<gameID>" — restore deleted game
+	cbPick    = "pick"    // payload: "<gameID>:<playerID>"
+	cbDone    = "done"    // payload: "<gameID>"
+	cbReset   = "reset"   // payload: "<gameID>"
+	cbEdit    = "edit"    // payload: "<gameID>"
+	cbUndo    = "undo"    // payload: "<gameID>" — undo last pick
+	cbCancel  = "cancel"  // payload: "<gameID>" — cancel recording
+	cbDel     = "del"     // payload: "<gameID>" — asks to confirm deletion
+	cbDelY    = "dely"    // payload: "<gameID>" — confirmed delete
+	cbDelN    = "deln"    // payload: "<gameID>" — cancel delete
+	cbUndel   = "undel"   // payload: "<gameID>" — restore deleted game
 	cbRec     = "rec"     // payload: "<gameID>"
 	cbDoneDNF = "donednf" // payload: "<gameID>" — finalize, rest = DNF (0)
 
@@ -28,10 +28,10 @@ const (
 	cbQStatus = "qstatus"
 	cbQMe     = "qme"
 
-	cbDuelPick    = "duelpick"    // payload: "<difficulty>:<targetPlayerID>"
-	cbDuelCancel  = "duelcancel" // no payload — dismiss the opponent picker
-	cbAccept      = "accept"     // payload: "<gameID>"
-	cbDecline     = "decline"    // payload: "<gameID>"
+	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>"
+	cbDuelCancel = "duelcancel" // no payload — dismiss the opponent picker
+	cbAccept     = "accept"     // payload: "<gameID>"
+	cbDecline    = "decline"    // payload: "<gameID>"
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
@@ -121,6 +121,24 @@ func restoreKeyboard(gameID int64) *tele.ReplyMarkup {
 func recordKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID))))
+	return m
+}
+
+// recordAndClaimKeyboard combines the "record result" button with one claim-nick
+// button per unrecognised usdoku nick, so the auto-record fallback is a single post.
+// Nicks whose payload would exceed Telegram's 64-byte limit are skipped (listed in
+// the text body for manual /setnick instead).
+func recordAndClaimKeyboard(gameID int64, unknown []string) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	rows := []tele.Row{m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID)))}
+	for _, n := range unknown {
+		data := fmt.Sprintf("%d:%s", gameID, n)
+		if len(data) > 64 {
+			continue
+		}
+		rows = append(rows, m.Row(m.Data("Это я: "+n, cbClaimNick, data)))
+	}
+	m.Inline(rows...)
 	return m
 }
 

@@ -128,13 +128,8 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	if len(unknown) > 0 || len(picks) == 0 {
 		log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
 			game.ID, finisherNicks, unknown, mappedJoined)
-		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown), recordKeyboard(game.ID))
-		if len(unknown) > 0 {
-			if kb := claimNickKeyboard(game.ID, unknown); len(kb.InlineKeyboard) > 0 {
-				_, _ = b.tb.Send(to,
-					"Это твой ник? Привяжу его к тебе одним тапом:", kb)
-			}
-		}
+		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown),
+			recordAndClaimKeyboard(game.ID, unknown))
 		return
 	}
 	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
