@@ -83,7 +83,7 @@ func TestDuelResultText(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 252},
 		{Rank: 2, Name: "Petya"},
 	}
-	out := duelResultText(rows, 4, 2, true)
+	out := duelResultText(rows, 4, 2, true, 0, 0)
 	for _, want := range []string{"Vasya", "побеждает", "Petya", "4:12", "H2H", "4–2"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText: want %q in output\ngot: %s", want, out)
@@ -91,8 +91,25 @@ func TestDuelResultText(t *testing.T) {
 	}
 }
 
+func TestDuelResultTextShowsElo(t *testing.T) {
+	rows := []storage.ResultRow{
+		{Rank: 1, Name: "Vasya", Duration: 252},
+		{Rank: 2, Name: "Petya"},
+	}
+	out := duelResultText(rows, 1, 0, true, 1016, 16)
+	for _, want := range []string{"Рейтинг", "1016", "(+16)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelResultText elo: want %q in output\ngot: %s", want, out)
+		}
+	}
+	// elo == 0 hides the rating line.
+	if plain := duelResultText(rows, 1, 0, true, 0, 0); strings.Contains(plain, "Рейтинг") {
+		t.Errorf("duelResultText elo=0: should NOT contain 'Рейтинг'\ngot: %s", plain)
+	}
+}
+
 func TestDuelResultTextEmpty(t *testing.T) {
-	out := duelResultText(nil, 0, 0, false)
+	out := duelResultText(nil, 0, 0, false, 0, 0)
 	if !strings.Contains(out, "Никто не финишировал") {
 		t.Errorf("duelResultText empty: want 'Никто не финишировал' in output\ngot: %s", out)
 	}
@@ -272,7 +289,7 @@ func TestDuelResultTextAllDNF(t *testing.T) {
 		{Rank: 0, Name: "Vasya"},
 		{Rank: 0, Name: "Petya"},
 	}
-	out := duelResultText(rows, 0, 0, false)
+	out := duelResultText(rows, 0, 0, false, 0, 0)
 	if !strings.Contains(out, "Никто не финишировал") {
 		t.Errorf("duelResultText all-DNF: want 'Никто не финишировал' in output\ngot: %s", out)
 	}
@@ -286,7 +303,7 @@ func TestDuelResultTextWithDNF(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Points: 3, Duration: 180},
 		{Rank: 0, Name: "Petya"},
 	}
-	out := duelResultText(rows, 0, 0, false)
+	out := duelResultText(rows, 0, 0, false, 0, 0)
 	if !strings.Contains(out, "Vasya") || !strings.Contains(out, "побеждает") {
 		t.Errorf("duelResultText DNF: want winner info\ngot: %s", out)
 	}
@@ -504,5 +521,202 @@ func TestDigestText(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("digestText: want %q in\n%s", want, out)
 		}
+	}
+}
+
+func TestDuelsTextShowsElo(t *testing.T) {
+	rows := []storage.DuelStanding{
+		{Name: "Vasya", Wins: 8, Losses: 2, Elo: 1080},
+		{Name: "Masha", Wins: 5, Losses: 5, Elo: 990},
+	}
+	out := duelsText(rows, nil, "Asia/Bishkek")
+	for _, want := range []string{"1080", "990", "8–2", "(80%)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelsText elo: want %q in output\ngot: %s", want, out)
+		}
+	}
+}
+
+func TestStandingsTextShowsGapToLeader(t *testing.T) {
+	se := &storage.Season{Number: 2, Target: 100}
+	rows := []storage.Standing{
+		{PlayerID: 1, Name: "Ann", Points: 20, Wins: 6, Games: 9},
+		{PlayerID: 2, Name: "Joe", Points: 15, Wins: 4, Games: 9},
+	}
+	out := standingsText(se, rows)
+	if !strings.Contains(out, "-5 · 4 поб") {
+		t.Errorf("standingsText: want gap '-5 · 4 поб' for Joe\ngot: %s", out)
+	}
+	// The leader carries no gap marker.
+	if strings.Contains(out, "-0 ·") || strings.Contains(out, "Ann</b> — <b>20</b>   <i>(-") {
+		t.Errorf("standingsText: leader must not show a gap\ngot: %s", out)
+	}
+}
+
+func TestMeTextShowsProgressBar(t *testing.T) {
+	st := &storage.PlayerStat{Games: 10, Wins: 3, Points: 15, Rank: 2}
+	out := meText("Alice", st, &storage.SpeedStat{}, 0, 0, season1())
+	if !strings.Contains(out, "▰") || !strings.Contains(out, "▱") {
+		t.Errorf("meText: want progress bar in output\ngot: %s", out)
+	}
+}
+
+func TestStandingsMoves(t *testing.T) {
+	before := []storage.Standing{
+		{PlayerID: 1, Name: "Ann"}, {PlayerID: 2, Name: "Joe"}, {PlayerID: 3, Name: "Max"},
+	}
+	after := []storage.Standing{
+		{PlayerID: 2, Name: "Joe"}, {PlayerID: 1, Name: "Ann"}, {PlayerID: 3, Name: "Max"},
+	}
+	moves := standingsMoves(before, after)
+	if len(moves) != 2 {
+		t.Fatalf("want 2 moves, got %d: %+v", len(moves), moves)
+	}
+	got := map[string]int{}
+	for _, m := range moves {
+		got[m.Name] = m.Delta
+	}
+	if got["Joe"] != 1 || got["Ann"] != -1 {
+		t.Errorf("want Joe +1, Ann -1, got %v", got)
+	}
+	// No changes → no moves; a new player is not a move.
+	if m := standingsMoves(before, before); len(m) != 0 {
+		t.Errorf("identical standings: want no moves, got %+v", m)
+	}
+	withNew := append([]storage.Standing{{PlayerID: 9, Name: "New"}}, before...)
+	for _, m := range standingsMoves(before, withNew) {
+		if m.Name == "New" {
+			t.Errorf("new player must not be a move: %+v", m)
+		}
+	}
+}
+
+func TestMovesLine(t *testing.T) {
+	out := movesLine([]standingsMove{{Name: "Ann", Delta: -1}, {Name: "Joe", Delta: 1}})
+	for _, want := range []string{"↗️", "Joe", "+1", "↘️", "Ann", "-1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("movesLine: want %q in %q", want, out)
+		}
+	}
+	// Climbers render before fallers.
+	if strings.Index(out, "Joe") > strings.Index(out, "Ann") {
+		t.Errorf("movesLine: climber should come first: %q", out)
+	}
+	if movesLine(nil) != "" {
+		t.Errorf("movesLine(nil) should be empty")
+	}
+}
+
+func TestNewBadges(t *testing.T) {
+	got := newBadges([]string{"🔥"}, []string{"🔥", "💪"})
+	if len(got) != 1 || got[0] != "💪" {
+		t.Errorf("want [💪], got %v", got)
+	}
+	if got := newBadges(nil, nil); len(got) != 0 {
+		t.Errorf("want none, got %v", got)
+	}
+}
+
+func TestCelebrationLines(t *testing.T) {
+	pb := personalBestLine("Joe<b>", "medium", 181, 192)
+	for _, want := range []string{"🚀", "Joe&lt;b&gt;", "Medium", "3:01", "3:12"} {
+		if !strings.Contains(pb, want) {
+			t.Errorf("personalBestLine: want %q in %q", want, pb)
+		}
+	}
+	ws := winStreakLine("Ann", 4)
+	for _, want := range []string{"🔥", "Ann", "4"} {
+		if !strings.Contains(ws, want) {
+			t.Errorf("winStreakLine: want %q in %q", want, ws)
+		}
+	}
+	bl := badgeLine("Ann", []string{"💪"})
+	for _, want := range []string{"🎖", "Ann", "💪", "10 побед"} {
+		if !strings.Contains(bl, want) {
+			t.Errorf("badgeLine: want %q in %q", want, bl)
+		}
+	}
+}
+
+func TestSeasonEndTextWithAwards(t *testing.T) {
+	awards := []string{awardWinsLine("Ann", 9), awardFastestLine("Joe", 118, "medium")}
+	out := seasonEndText(3, "Ann", 101, awards, 100, 4)
+	for _, want := range []string{"Сезон 3 завершён", "Ann", "101", "Номинации",
+		"Больше всех побед", "1:58", "сезон 4", "100"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("seasonEndText awards: want %q in output\ngot: %s", want, out)
+		}
+	}
+	// No awards → no nominations block.
+	if plain := seasonEndText(3, "Ann", 101, nil, 100, 4); strings.Contains(plain, "Номинации") {
+		t.Errorf("seasonEndText no awards: should NOT contain 'Номинации'\ngot: %s", plain)
+	}
+}
+
+func TestWinnerEloAt(t *testing.T) {
+	pairs := []storage.DuelPair{
+		{GameID: 10, WinnerID: 1, LoserID: 2},
+		{GameID: 11, WinnerID: 1, LoserID: 2},
+	}
+	r1, d1, ok := winnerEloAt(pairs, 10, 1)
+	if !ok || r1 != 1016 || d1 != 16 {
+		t.Errorf("first duel: want (1016, +16, ok), got (%d, %d, %v)", r1, d1, ok)
+	}
+	// Second win against a now-weaker opponent pays less.
+	r2, d2, ok := winnerEloAt(pairs, 11, 1)
+	if !ok || d2 >= d1 || r2 != r1+d2 {
+		t.Errorf("second duel: want smaller delta, got (%d, %d, %v)", r2, d2, ok)
+	}
+	// Unknown game or wrong winner → not ok.
+	if _, _, ok := winnerEloAt(pairs, 99, 1); ok {
+		t.Errorf("unknown game must not be ok")
+	}
+	if _, _, ok := winnerEloAt(pairs, 10, 2); ok {
+		t.Errorf("wrong winner must not be ok")
+	}
+}
+
+func TestRemoveOneToday(t *testing.T) {
+	dates := []string{"2026-07-05", "2026-07-04"}
+	got := removeOneToday(dates, "2026-07-05")
+	if len(got) != 1 || got[0] != "2026-07-04" {
+		t.Errorf("single today: want [2026-07-04], got %v", got)
+	}
+	// today twice → unchanged (the set still contains today before the game).
+	twice := []string{"2026-07-05", "2026-07-05", "2026-07-04"}
+	if got := removeOneToday(twice, "2026-07-05"); len(got) != 3 {
+		t.Errorf("double today: want unchanged, got %v", got)
+	}
+}
+
+func TestRecordAndClaimKeyboard(t *testing.T) {
+	m := recordAndClaimKeyboard(42, []string{"joe", "max"})
+	if len(m.InlineKeyboard) != 3 {
+		t.Fatalf("want 3 rows (record + 2 claims), got %d", len(m.InlineKeyboard))
+	}
+	if u := m.InlineKeyboard[0][0].Unique; u != cbRec {
+		t.Errorf("row 0 should be record button (%q), got %q", cbRec, u)
+	}
+	var claims []string
+	for _, row := range m.InlineKeyboard[1:] {
+		for _, btn := range row {
+			if btn.Unique != cbClaimNick {
+				t.Errorf("claim row has wrong unique %q", btn.Unique)
+			}
+			claims = append(claims, btn.Data)
+		}
+	}
+	want := []string{"42:joe", "42:max"}
+	if len(claims) != len(want) {
+		t.Fatalf("want %v claims, got %v", want, claims)
+	}
+	for i := range want {
+		if claims[i] != want[i] {
+			t.Errorf("claim[%d]=%q want %q", i, claims[i], want[i])
+		}
+	}
+	// No unknown nicks → just the record row.
+	if only := recordAndClaimKeyboard(7, nil); len(only.InlineKeyboard) != 1 {
+		t.Errorf("no nicks: want 1 row, got %d", len(only.InlineKeyboard))
 	}
 }
