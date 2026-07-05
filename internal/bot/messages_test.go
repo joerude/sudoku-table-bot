@@ -381,7 +381,7 @@ func TestPlayMenuKeyboardHasThreeModes(t *testing.T) {
 
 func TestDuelChallengeText(t *testing.T) {
 	target := storage.Player{Name: "Petya", TgID: sql.NullInt64{Int64: 7, Valid: true}}
-	out := duelChallengeText("Vasya", target, "medium", "TRPK", false)
+	out := duelChallengeText("Vasya", target, "medium", "TRPK", false, 0, 0, 0, 0)
 	for _, want := range []string{"Vasya", "tg://user?id=7", "usdoku.com/TRPK", "Medium"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelChallengeText: want %q in output\ngot: %s", want, out)
@@ -390,10 +390,80 @@ func TestDuelChallengeText(t *testing.T) {
 	if strings.Contains(out, "⚠️") {
 		t.Errorf("duelChallengeText nickWarn=false: should NOT contain warning\ngot: %s", out)
 	}
+	if strings.Contains(out, "На кону") {
+		t.Errorf("duelChallengeText elo=0: should NOT contain stakes\ngot: %s", out)
+	}
 
-	outWarn := duelChallengeText("Vasya", target, "medium", "TRPK", true)
+	outWarn := duelChallengeText("Vasya", target, "medium", "TRPK", true, 0, 0, 0, 0)
 	if !strings.Contains(outWarn, "setnick") {
 		t.Errorf("duelChallengeText nickWarn=true: want 'setnick' in output\ngot: %s", outWarn)
+	}
+}
+
+func TestDuelChallengeTextStakes(t *testing.T) {
+	target := storage.Player{Name: "Petya"}
+	out := duelChallengeText("Vasya", target, "medium", "", false, 1016, 984, 15, 17)
+	for _, want := range []string{"1016", "984", "На кону", "+15", "+17"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelChallengeText stakes: want %q in output\ngot: %s", want, out)
+		}
+	}
+}
+
+func TestMilestoneLines(t *testing.T) {
+	if !gamesMilestones[250] || gamesMilestones[100] {
+		t.Errorf("gamesMilestones: 250 must be in, 100 must be out (badge covers it)")
+	}
+	if !winsMilestones[100] || winsMilestones[50] {
+		t.Errorf("winsMilestones: 100 must be in, 50 must be out (badge covers it)")
+	}
+	for _, s := range []string{
+		milestoneGamesLine("Joe<b>", 250),
+		milestoneWinsLine("Joe<b>", 100),
+	} {
+		if !strings.Contains(s, "Joe&lt;b&gt;") || !strings.Contains(s, "№") {
+			t.Errorf("milestone line malformed: %q", s)
+		}
+	}
+	if s := milestoneLeagueLine(500); !strings.Contains(s, "500") || !strings.Contains(s, "лиги") {
+		t.Errorf("league milestone malformed: %q", s)
+	}
+}
+
+func TestStatsKeyboardSpeedToggle(t *testing.T) {
+	find := func(m *tele.ReplyMarkup, data string) bool {
+		for _, row := range m.InlineKeyboard {
+			for _, btn := range row {
+				if btn.Data == data {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	season := statsKeyboard("speed")
+	if !find(season, "speed_all") {
+		t.Errorf("speed tab: want all-seasons toggle button")
+	}
+	all := statsKeyboard("speed_all")
+	if !find(all, "speed") {
+		t.Errorf("speed_all: want back-to-season toggle button")
+	}
+	// speed_all must highlight the speed tab.
+	marked := false
+	for _, row := range all.InlineKeyboard {
+		for _, btn := range row {
+			if btn.Data == "speed" && strings.Contains(btn.Text, "•") {
+				marked = true
+			}
+		}
+	}
+	if !marked {
+		t.Errorf("speed_all: speed tab must carry the active marker")
+	}
+	// Other tabs get no toggle row: 6 tab buttons in 2 rows only.
+	if n := len(statsKeyboard("table").InlineKeyboard); n != 2 {
+		t.Errorf("table tab: want 2 rows, got %d", n)
 	}
 }
 

@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"log"
+
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
@@ -84,9 +86,14 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 	}
 	nickWarn := !caller.UsdokuNick.Valid || caller.UsdokuNick.String == "" ||
 		!target.UsdokuNick.Valid || target.UsdokuNick.String == ""
+	eloC, eloT, gainC, gainT, serr := b.duelStakes(c.Chat().ID, caller.ID, targetID)
+	if serr != nil {
+		log.Printf("onDuelPick.stakes: %v", serr)
+		eloC = 0 // hide the stakes block, the challenge still posts
+	}
 	_ = c.Respond()
-	return c.Edit(duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn),
-		duelKeyboard(room.gameID))
+	return c.Edit(duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
+		eloC, eloT, gainC, gainT), duelKeyboard(room.gameID))
 }
 
 // duelTargetGuard returns the duel's target player and whether the presser IS

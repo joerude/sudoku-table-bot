@@ -76,9 +76,19 @@ func removeOneToday(dates []string, today string) []string {
 func (b *Bot) celebrations(game *storage.Game, rows []storage.ResultRow) []string {
 	tz := b.chatTZ(game.ChatID)
 	var lines []string
+	if total, err := b.st.TotalGames(game.ChatID); err != nil {
+		log.Printf("celebrations.total: %v", err)
+	} else if leagueMilestones[total] {
+		lines = append(lines, milestoneLeagueLine(total))
+	}
 	for _, r := range rows {
 		if r.Rank < 1 {
-			continue // DNF: nothing to celebrate
+			// DNF still counts as a played game, so the career-games
+			// milestone applies; badges and streaks do not.
+			if _, games, _, err := b.st.CareerStats(game.ChatID, r.PlayerID); err == nil && gamesMilestones[games] {
+				lines = append(lines, milestoneGamesLine(r.Name, games))
+			}
+			continue
 		}
 		if r.Duration > 0 && game.Difficulty.Valid && game.Difficulty.String != "" {
 			prev, err := b.st.BestSecsBefore(game.ChatID, r.PlayerID, game.Difficulty.String, game.ID)
@@ -113,6 +123,12 @@ func (b *Bot) celebrations(game *storage.Game, rows []storage.ResultRow) []strin
 		}
 		if len(earned) > 0 {
 			lines = append(lines, badgeLine(r.Name, earned))
+		}
+		if gamesMilestones[after.Games] {
+			lines = append(lines, milestoneGamesLine(r.Name, after.Games))
+		}
+		if r.Rank == 1 && winsMilestones[after.Wins] {
+			lines = append(lines, milestoneWinsLine(r.Name, after.Wins))
 		}
 	}
 	return lines
@@ -211,6 +227,30 @@ func (b *Bot) duelStandingsWithElo(chatID int64) ([]storage.DuelStanding, error)
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Elo > rows[j].Elo })
 	return rows, nil
+}
+
+// duelStakes returns both players' current Elo and what each would gain by
+// winning the upcoming duel — the "stakes" shown on a challenge post.
+func (b *Bot) duelStakes(chatID, challengerID, targetID int64) (rc, rt, gainC, gainT int, err error) {
+	pairs, err := b.st.DuelPairs(chatID)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	dp := make([][2]int64, len(pairs))
+	for i, p := range pairs {
+		dp[i] = [2]int64{p.WinnerID, p.LoserID}
+	}
+	ratings := domain.EloRatings(dp)
+	get := func(id int64) int {
+		if v, ok := ratings[id]; ok {
+			return v
+		}
+		return domain.EloStart
+	}
+	rc, rt = get(challengerID), get(targetID)
+	wc, _ := domain.EloUpdate(rc, rt)
+	wt, _ := domain.EloUpdate(rt, rc)
+	return rc, rt, wc - rc, wt - rt, nil
 }
 
 // winnerEloAt replays duel history and returns the winner's rating right after

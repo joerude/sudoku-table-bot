@@ -257,6 +257,26 @@ func winStreakLine(name string, n int) string {
 	return fmt.Sprintf("🔥 <b>%s</b>: %d побед подряд!", esc(name), n)
 }
 
+// Milestone thresholds. The 100-game and 50-win marks are covered by the 🎯/💯
+// badges already, so milestones start above them.
+var (
+	gamesMilestones  = map[int]bool{250: true, 500: true, 1000: true, 2000: true}
+	winsMilestones   = map[int]bool{100: true, 250: true, 500: true, 1000: true}
+	leagueMilestones = map[int]bool{500: true, 1000: true, 2500: true, 5000: true}
+)
+
+func milestoneGamesLine(name string, n int) string {
+	return fmt.Sprintf("🎂 <b>%s</b>: игра №%d в карьере!", esc(name), n)
+}
+
+func milestoneWinsLine(name string, n int) string {
+	return fmt.Sprintf("🏆 <b>%s</b>: победа №%d в карьере!", esc(name), n)
+}
+
+func milestoneLeagueLine(n int) string {
+	return fmt.Sprintf("🎉 Сыграна игра №%d в истории лиги!", n)
+}
+
 // award*Line renderers build the season-end nomination lines.
 func awardWinsLine(name string, wins int) string {
 	return fmt.Sprintf("🥇 Больше всех побед: <b>%s</b> (%d)", esc(name), wins)
@@ -581,12 +601,19 @@ func parseDuelPick(s string) (difficulty string, targetID int64) {
 
 // duelChallengeText is the posted challenge. code may be empty (manual fallback).
 // nickWarn appends a note when a participant has no usdoku nick (no auto-record).
-func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool) string {
+// eloC/eloT are current ratings and gainC/gainT the winner's potential gain;
+// eloC <= 0 hides the stakes block.
+func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool, eloC, eloT, gainC, gainT int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "⚔️ <b>%s</b> вызывает %s на дуэль! · %s\n",
 		esc(challenger), mention(target), titleCase(difficulty))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
+	}
+	if eloC > 0 {
+		fmt.Fprintf(&b, "\n📈 <b>%s</b> %d · <b>%s</b> %d\n⚖️ На кону: +%d против +%d",
+			esc(challenger), eloC, esc(target.Name), eloT, gainC, gainT)
+		b.WriteString("\n")
 	}
 	b.WriteString("\nПринимаешь вызов?")
 	if nickWarn {

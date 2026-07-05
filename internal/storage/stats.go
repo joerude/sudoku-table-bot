@@ -437,6 +437,15 @@ func (s *Store) StatFor(chatID, seasonID, playerID int64) (*PlayerStat, error) {
 	return &PlayerStat{}, nil
 }
 
+// TotalGames counts all completed non-duel games of a chat across all seasons,
+// for league-anniversary announcements.
+func (s *Store) TotalGames(chatID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM games g WHERE g.chat_id=? AND `+sqlSeasonalGames, chatID).Scan(&n)
+	return n, err
+}
+
 // GamesSince counts completed non-duel games on/after a UTC timestamp.
 func (s *Store) GamesSince(chatID int64, sinceUTC string) (int, error) {
 	var n int
