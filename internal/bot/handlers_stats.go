@@ -384,6 +384,12 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = speedText(season, "medium", ranked, fewer, speedMinGames)
+	case "speed_all":
+		ranked, fewer, e := b.st.Speedboard(chatID, 0, "medium", speedMinGames)
+		if e != nil {
+			return "", nil, e
+		}
+		text = speedText(nil, "medium", ranked, fewer, speedMinGames)
 	case "duels":
 		rows, e := b.duelStandingsWithElo(chatID)
 		if e != nil {

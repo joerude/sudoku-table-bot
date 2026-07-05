@@ -244,12 +244,18 @@ func claimNickKeyboard(gameID int64, nicks []string) *tele.ReplyMarkup {
 }
 
 // statsKeyboard renders the dashboard tab row; the active tab gets a "•" marker.
+// The speed tab carries an extra toggle row: current season <-> all seasons
+// (active "speed_all" highlights the speed tab).
 func statsKeyboard(active string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
+	tabActive := active
+	if active == "speed_all" {
+		tabActive = "speed"
+	}
 	var btns []tele.Btn
 	for _, t := range statsTabs {
 		label := t.label
-		if t.id == active {
+		if t.id == tabActive {
 			label = "• " + label
 		}
 		btns = append(btns, m.Data(label, cbStatsTab, t.id))
@@ -261,6 +267,12 @@ func statsKeyboard(active string) *tele.ReplyMarkup {
 			end = len(btns)
 		}
 		rows = append(rows, m.Row(btns[i:end]...))
+	}
+	switch active {
+	case "speed":
+		rows = append(rows, m.Row(m.Data("🌍 Все сезоны", cbStatsTab, "speed_all")))
+	case "speed_all":
+		rows = append(rows, m.Row(m.Data("📅 Текущий сезон", cbStatsTab, "speed")))
 	}
 	m.Inline(rows...)
 	return m
