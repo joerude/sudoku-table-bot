@@ -52,7 +52,14 @@ type SpeedRow struct {
 // with at least one but fewer than minGames timed games are returned as
 // `fewer` so the UI can list them in a footer. Players with no timed games at
 // this difficulty do not appear at all.
+// seasonID <= 0 means all seasons (career speedboard).
 func (s *Store) Speedboard(chatID, seasonID int64, difficulty string, minGames int) (ranked, fewer []SpeedRow, err error) {
+	seasonFilter, args := "", []any{chatID}
+	if seasonID > 0 {
+		seasonFilter = "AND g.season_id = ? "
+		args = append(args, seasonID)
+	}
+	args = append(args, difficulty)
 	rows, err := s.db.Query(`
 		SELECT p.name,
 		       AVG(gr.duration_secs) AS avg_secs,
@@ -62,11 +69,11 @@ func (s *Store) Speedboard(chatID, seasonID int64, difficulty string, minGames i
 		JOIN game_results gr ON gr.player_id = p.id
 		JOIN games g ON g.id = gr.game_id
 		WHERE p.chat_id = ? AND p.active = 1
-		  AND g.season_id = ? AND `+sqlSeasonalGames+`
+		  `+seasonFilter+`AND `+sqlSeasonalGames+`
 		  AND g.difficulty = ? AND gr.duration_secs IS NOT NULL
 		GROUP BY p.id, p.name
 		ORDER BY avg_secs ASC, games DESC, p.name COLLATE NOCASE`,
-		chatID, seasonID, difficulty)
+		args...)
 	if err != nil {
 		return nil, nil, err
 	}
