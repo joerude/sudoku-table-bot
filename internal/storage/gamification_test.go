@@ -156,6 +156,42 @@ func TestSeasonRanks(t *testing.T) {
 	}
 }
 
+func TestSeasonByNumberAndMeta(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7007)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	makeNormalGame(t, st, chat, se.ID, a.ID, b.ID)
+
+	// Close the season -> archived #1 with Alice as winner, new active #2.
+	if _, err := st.CloseSeason(se, a.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	s1, err := st.SeasonByNumber(chat, 1)
+	if err != nil || s1 == nil || s1.Status != "archived" {
+		t.Fatalf("SeasonByNumber(1): %+v err %v", s1, err)
+	}
+	if s9, _ := st.SeasonByNumber(chat, 9); s9 != nil {
+		t.Errorf("SeasonByNumber(9): want nil, got %+v", s9)
+	}
+
+	games, first, last, winner, err := st.SeasonMeta(chat, s1.ID)
+	if err != nil {
+		t.Fatalf("SeasonMeta: %v", err)
+	}
+	if games != 1 || first == "" || first != last || winner != "Alice" {
+		t.Errorf("SeasonMeta: got games=%d first=%q last=%q winner=%q", games, first, last, winner)
+	}
+
+	nums, err := st.ArchivedNumbers(chat)
+	if err != nil || len(nums) != 1 || nums[0] != 1 {
+		t.Errorf("ArchivedNumbers: want [1], got %v err %v", nums, err)
+	}
+}
+
 func TestDuelLeaderboardCarriesPlayerID(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-7006)
