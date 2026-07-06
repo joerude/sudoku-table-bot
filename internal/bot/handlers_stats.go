@@ -106,51 +106,75 @@ func (b *Bot) onStatus(c tele.Context) error {
 }
 
 // onSeason without args shows the active season; "/season N" shows any
-// season's summary, including archived ones.
+// season's summary, including archived ones. Both carry the season buttons.
 func (b *Bot) onSeason(c tele.Context) error {
-	if n, err := strconv.Atoi(argAt(c.Args(), 0)); err == nil && n > 0 {
-		return b.seasonSummary(c, n)
-	}
 	season, err := b.ensure(c)
 	if err != nil {
 		return b.fail(c, "onSeason.ensure", err)
+	}
+	nums, err := b.st.ArchivedNumbers(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onSeason.archived", err)
+	}
+	if n, aerr := strconv.Atoi(argAt(c.Args(), 0)); aerr == nil && n > 0 {
+		text, ok, err := b.seasonSummaryView(c.Chat().ID, n)
+		if err != nil {
+			return b.fail(c, "onSeason.summary", err)
+		}
+		if !ok {
+			return b.ephemeral(c, noSuchSeasonText(n, nums))
+		}
+		return c.Send(text, seasonsKeyboard(nums, season.Number))
 	}
 	leader, err := b.st.Leader(c.Chat().ID, season.ID)
 	if err != nil {
 		return b.fail(c, "onSeason.leader", err)
 	}
-	text := seasonText(season, leader)
-	if nums, err := b.st.ArchivedNumbers(c.Chat().ID); err == nil {
-		text += archiveHint(nums)
-	}
-	return c.Send(text)
+	return c.Send(seasonText(season, leader)+archiveHint(nums), seasonsKeyboard(nums, season.Number))
 }
 
-// seasonSummary renders one season (by display number) with its final table,
-// dates, winner, and nominations.
-func (b *Bot) seasonSummary(c tele.Context, number int) error {
-	if _, err := b.ensure(c); err != nil {
-		return b.fail(c, "seasonSummary.ensure", err)
-	}
-	chatID := c.Chat().ID
+// seasonSummaryView builds season `number`'s summary (final table, dates,
+// winner, nominations); ok=false when the chat has no such season.
+func (b *Bot) seasonSummaryView(chatID int64, number int) (string, bool, error) {
 	se, err := b.st.SeasonByNumber(chatID, number)
-	if err != nil {
-		return b.fail(c, "seasonSummary.season", err)
-	}
-	if se == nil {
-		nums, _ := b.st.ArchivedNumbers(chatID)
-		return b.ephemeral(c, noSuchSeasonText(number, nums))
+	if err != nil || se == nil {
+		return "", false, err
 	}
 	standings, err := b.st.Standings(chatID, se.ID)
 	if err != nil {
-		return b.fail(c, "seasonSummary.standings", err)
+		return "", false, err
 	}
 	games, first, last, winner, err := b.st.SeasonMeta(chatID, se.ID)
 	if err != nil {
-		return b.fail(c, "seasonSummary.meta", err)
+		return "", false, err
 	}
 	awards := b.seasonAwards(chatID, se.ID, standings)
-	return c.Send(seasonSummaryText(se, standings, games, first, last, winner, awards))
+	return seasonSummaryText(se, standings, games, first, last, winner, awards), true, nil
+}
+
+// onSeasonView switches the message to the tapped season's summary in place.
+func (b *Bot) onSeasonView(c tele.Context) error {
+	season, err := b.ensure(c)
+	if err != nil {
+		return b.fail(c, "onSeasonView.ensure", err)
+	}
+	n, aerr := strconv.Atoi(c.Data())
+	if aerr != nil || n < 1 {
+		return c.Respond(&tele.CallbackResponse{Text: "Сезон не найден"})
+	}
+	text, ok, err := b.seasonSummaryView(c.Chat().ID, n)
+	if err != nil {
+		return b.fail(c, "onSeasonView.summary", err)
+	}
+	if !ok {
+		return c.Respond(&tele.CallbackResponse{Text: "Сезон не найден"})
+	}
+	nums, err := b.st.ArchivedNumbers(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onSeasonView.archived", err)
+	}
+	_ = c.Respond()
+	return c.Edit(text, seasonsKeyboard(nums, season.Number))
 }
 
 func (b *Bot) onWeekly(c tele.Context) error {
@@ -423,7 +447,13 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 	if err != nil {
 		return "", nil, err
 	}
-	return text, statsKeyboard(tab), nil
+	var archived []int
+	if tab == "table" {
+		if archived, err = b.st.ArchivedNumbers(chatID); err != nil {
+			return "", nil, err
+		}
+	}
+	return text, statsKeyboard(tab, archived, season.Number), nil
 }
 
 // meTab renders the caller's personal stats, or a join hint if unregistered.

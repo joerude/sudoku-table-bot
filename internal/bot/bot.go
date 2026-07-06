@@ -130,6 +130,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/duels", b.onDuels)
 	b.tb.Handle("/status", b.onStatus)
 	b.tb.Handle("/season", b.onSeason)
+	b.tb.Handle(&tele.Btn{Unique: cbSeasonView}, b.onSeasonView)
 	b.tb.Handle("/me", b.onMe)
 	b.tb.Handle("/rating", b.onRating)
 	b.tb.Handle("/history", b.onHistory)

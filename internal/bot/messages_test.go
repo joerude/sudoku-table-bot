@@ -320,7 +320,7 @@ func TestDuelResultTextWithDNF(t *testing.T) {
 }
 
 func TestStatsKeyboardMarksActive(t *testing.T) {
-	m := statsKeyboard("me")
+	m := statsKeyboard("me", nil, 0)
 	var flat []tele.InlineButton
 	for _, row := range m.InlineKeyboard {
 		flat = append(flat, row...)
@@ -442,11 +442,11 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 		}
 		return false
 	}
-	season := statsKeyboard("speed")
+	season := statsKeyboard("speed", nil, 0)
 	if !find(season, "speed_all") {
 		t.Errorf("speed tab: want all-seasons toggle button")
 	}
-	all := statsKeyboard("speed_all")
+	all := statsKeyboard("speed_all", nil, 0)
 	if !find(all, "speed") {
 		t.Errorf("speed_all: want back-to-season toggle button")
 	}
@@ -463,8 +463,23 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 		t.Errorf("speed_all: speed tab must carry the active marker")
 	}
 	// Other tabs get no toggle row: 6 tab buttons in 2 rows only.
-	if n := len(statsKeyboard("table").InlineKeyboard); n != 2 {
-		t.Errorf("table tab: want 2 rows, got %d", n)
+	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 2 {
+		t.Errorf("table tab without archive: want 2 rows, got %d", n)
+	}
+	// Table tab with archived seasons carries the season row.
+	withSeasons := statsKeyboard("table", []int{1, 2, 3}, 4)
+	if n := len(withSeasons.InlineKeyboard); n != 3 {
+		t.Fatalf("table tab with archive: want 3 rows, got %d", n)
+	}
+	seasonRow := withSeasons.InlineKeyboard[2]
+	if len(seasonRow) != 4 {
+		t.Fatalf("season row: want 4 buttons, got %d", len(seasonRow))
+	}
+	if seasonRow[3].Text != "▶ С4" || seasonRow[3].Unique != cbSeasonView || seasonRow[3].Data != "4" {
+		t.Errorf("active season button wrong: %+v", seasonRow[3])
+	}
+	if seasonRow[0].Text != "С1" || seasonRow[0].Data != "1" {
+		t.Errorf("first season button wrong: %+v", seasonRow[0])
 	}
 }
 
