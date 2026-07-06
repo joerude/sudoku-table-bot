@@ -2,6 +2,8 @@ package bot
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -36,6 +38,8 @@ const (
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
 	cbStatsTab = "ststab" // payload: "<tab>" — table|me|speed|duels|history
+
+	cbSeasonView = "seasview" // payload: "<number>" — render that season's summary
 
 	cbClaimNick = "claim" // payload: "<gameID>:<usdokuNick>" — bind nick to tapper
 
@@ -245,8 +249,9 @@ func claimNickKeyboard(gameID int64, nicks []string) *tele.ReplyMarkup {
 
 // statsKeyboard renders the dashboard tab row; the active tab gets a "•" marker.
 // The speed tab carries an extra toggle row: current season <-> all seasons
-// (active "speed_all" highlights the speed tab).
-func statsKeyboard(active string) *tele.ReplyMarkup {
+// (active "speed_all" highlights the speed tab). The table tab carries a season
+// row when the chat has archived seasons (seasonNumber = the active season).
+func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	tabActive := active
 	if active == "speed_all" {
@@ -273,7 +278,54 @@ func statsKeyboard(active string) *tele.ReplyMarkup {
 		rows = append(rows, m.Row(m.Data("🌍 Все сезоны", cbStatsTab, "speed_all")))
 	case "speed_all":
 		rows = append(rows, m.Row(m.Data("📅 Текущий сезон", cbStatsTab, "speed")))
+	case "table":
+		if len(archived) > 0 {
+			rows = append(rows, seasonButtonRows(m, archived, seasonNumber)...)
+		}
 	}
 	m.Inline(rows...)
+	return m
+}
+
+// seasonNumbers merges archived season numbers with the active one into a
+// sorted, deduplicated list for the /season hub keyboard.
+func seasonNumbers(archived []int, active int) []int {
+	out := make([]int, 0, len(archived)+1)
+	for _, n := range archived {
+		if n != active {
+			out = append(out, n)
+		}
+	}
+	out = append(out, active)
+	sort.Ints(out)
+	return out
+}
+
+// seasonButtonRows renders one button per season in rows of 4; the active
+// season is marked with ▶.
+func seasonButtonRows(m *tele.ReplyMarkup, archived []int, active int) []tele.Row {
+	var rows []tele.Row
+	var btns []tele.Btn
+	for _, n := range seasonNumbers(archived, active) {
+		label := fmt.Sprintf("С%d", n)
+		if n == active {
+			label = "▶ " + label
+		}
+		btns = append(btns, m.Data(label, cbSeasonView, strconv.Itoa(n)))
+		if len(btns) == 4 {
+			rows = append(rows, m.Row(btns...))
+			btns = nil
+		}
+	}
+	if len(btns) > 0 {
+		rows = append(rows, m.Row(btns...))
+	}
+	return rows
+}
+
+// seasonsKeyboard is the /season hub keyboard: just the season buttons.
+func seasonsKeyboard(archived []int, active int) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(seasonButtonRows(m, archived, active)...)
 	return m
 }
