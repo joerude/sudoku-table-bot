@@ -136,6 +136,113 @@ func (s *Store) RecentDuels(chatID int64, n int) ([]DuelMatch, error) {
 	return out, rows.Err()
 }
 
+// H2HPair is one pair's mutual duel record — wins in duels where BOTH played.
+// A is the lower player id, B the higher (deterministic pairing).
+type H2HPair struct {
+	AID, BID     int64
+	AName, BName string
+	AWins, BWins int
+}
+
+// HeadToHeadAll returns the head-to-head record of every pair of active players
+// that has played at least one completed duel against each other. Ordered by
+// games played (desc) then names. Solo duels (only one side recorded) don't
+// contribute — a pair needs both players in the same game.
+func (s *Store) HeadToHeadAll(chatID int64) ([]H2HPair, error) {
+	rows, err := s.db.Query(`
+		SELECT gra.player_id, pa.name, grb.player_id, pb.name,
+		       COALESCE(SUM(CASE WHEN gra.rank=1 THEN 1 ELSE 0 END),0) AS awins,
+		       COALESCE(SUM(CASE WHEN grb.rank=1 THEN 1 ELSE 0 END),0) AS bwins
+		FROM game_results gra
+		JOIN game_results grb ON grb.game_id = gra.game_id AND grb.player_id > gra.player_id
+		JOIN games g   ON g.id = gra.game_id
+		JOIN players pa ON pa.id = gra.player_id
+		JOIN players pb ON pb.id = grb.player_id
+		WHERE g.chat_id=? AND `+sqlDuelGames+`
+		  AND pa.active=1 AND pb.active=1
+		GROUP BY gra.player_id, grb.player_id
+		ORDER BY COUNT(*) DESC, pa.name COLLATE NOCASE, pb.name COLLATE NOCASE`,
+		chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []H2HPair
+	for rows.Next() {
+		var p H2HPair
+		if err := rows.Scan(&p.AID, &p.AName, &p.BID, &p.BName, &p.AWins, &p.BWins); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// DuelSpeed ranks active players by average solve time in duels (auto-recorded
+// only; NULL durations excluded). Fastest first. Players with no timed duel do
+// not appear. Aggregates across difficulties — duels are few.
+func (s *Store) DuelSpeed(chatID int64) ([]SpeedRow, error) {
+	rows, err := s.db.Query(`
+		SELECT p.name,
+		       AVG(gr.duration_secs) AS avg_secs,
+		       MIN(gr.duration_secs) AS best_secs,
+		       COUNT(gr.duration_secs) AS games
+		FROM players p
+		JOIN game_results gr ON gr.player_id = p.id
+		JOIN games g ON g.id = gr.game_id
+		WHERE p.chat_id=? AND p.active=1 AND `+sqlDuelGames+`
+		  AND gr.duration_secs IS NOT NULL
+		GROUP BY p.id, p.name
+		ORDER BY avg_secs ASC, p.name COLLATE NOCASE`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SpeedRow
+	for rows.Next() {
+		var (
+			r    SpeedRow
+			avg  float64
+			best int
+		)
+		if err := rows.Scan(&r.Name, &avg, &best, &r.Games); err != nil {
+			return nil, err
+		}
+		r.AvgSecs = int(avg + 0.5)
+		r.BestSecs = best
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DuelSpeedFor returns one player's duel solve summary (Games == 0 when they
+// have no timed duel).
+func (s *Store) DuelSpeedFor(chatID, playerID int64) (*SpeedStat, error) {
+	var (
+		avg  sql.NullFloat64
+		best sql.NullInt64
+		n    int
+	)
+	err := s.db.QueryRow(`
+		SELECT AVG(gr.duration_secs), MIN(gr.duration_secs), COUNT(gr.duration_secs)
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		WHERE gr.player_id=? AND g.chat_id=? AND `+sqlDuelGames+`
+		  AND gr.duration_secs IS NOT NULL`,
+		playerID, chatID).Scan(&avg, &best, &n)
+	if err != nil {
+		return nil, err
+	}
+	st := &SpeedStat{Games: n}
+	if avg.Valid {
+		st.AvgSecs = int(avg.Float64 + 0.5)
+	}
+	if best.Valid {
+		st.BestSecs = int(best.Int64)
+	}
+	return st, nil
+}
+
 // HeadToHead returns each player's duel wins in games where BOTH played.
 func (s *Store) HeadToHead(chatID, aID, bID int64) (aWins, bWins int, err error) {
 	err = s.db.QueryRow(`

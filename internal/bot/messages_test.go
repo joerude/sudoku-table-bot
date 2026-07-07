@@ -18,7 +18,7 @@ func season1() *storage.Season {
 func TestMeTextWithTimedGames(t *testing.T) {
 	st := &storage.PlayerStat{Games: 10, Wins: 3, Points: 12, Rank: 2}
 	sp := &storage.SpeedStat{AvgSecs: 270, BestSecs: 192, Games: 7}
-	out := meText("Alice", st, sp, 0, 0, season1())
+	out := meText("Alice", st, sp, 0, 0, nil, domain.Streak{}, season1())
 	for _, want := range []string{"4:30", "3:12", "по 7", "⚡ Лучшее"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("meText with timed games: want %q in output\ngot: %s", want, out)
@@ -29,7 +29,7 @@ func TestMeTextWithTimedGames(t *testing.T) {
 func TestMeTextNoTimedGames(t *testing.T) {
 	st := &storage.PlayerStat{Games: 5, Wins: 1, Points: 6, Rank: 3}
 	sp := &storage.SpeedStat{} // Games == 0
-	out := meText("Bob", st, sp, 0, 0, season1())
+	out := meText("Bob", st, sp, 0, 0, nil, domain.Streak{}, season1())
 	if !strings.Contains(out, "Ср. время: —") {
 		t.Errorf("meText no timed games: want 'Ср. время: —' in output\ngot: %s", out)
 	}
@@ -40,7 +40,7 @@ func TestMeTextNoTimedGames(t *testing.T) {
 
 func TestMeTextZeroGames(t *testing.T) {
 	st := &storage.PlayerStat{Games: 0}
-	out := meText("Carol", st, nil, 0, 0, season1())
+	out := meText("Carol", st, nil, 0, 0, nil, domain.Streak{}, season1())
 	if !strings.Contains(out, "пока нет игр") {
 		t.Errorf("meText zero games: want 'пока нет игр' in output\ngot: %s", out)
 	}
@@ -52,7 +52,7 @@ func TestMeTextZeroGames(t *testing.T) {
 func TestMeTextZeroGamesWithDuels(t *testing.T) {
 	st := &storage.PlayerStat{Games: 0}
 	// Games==0 with duel record: must show duel line
-	out := meText("Dave", st, nil, 3, 1, season1())
+	out := meText("Dave", st, nil, 3, 1, nil, domain.Streak{}, season1())
 	if !strings.Contains(out, "Дуэли:") {
 		t.Errorf("meText zero games with duels: want 'Дуэли:' in output\ngot: %s", out)
 	}
@@ -60,7 +60,7 @@ func TestMeTextZeroGamesWithDuels(t *testing.T) {
 		t.Errorf("meText zero games with duels: want '3–1' in output\ngot: %s", out)
 	}
 	// Games==0 with no duels: must NOT show duel line
-	outNoDuel := meText("Dave", st, nil, 0, 0, season1())
+	outNoDuel := meText("Dave", st, nil, 0, 0, nil, domain.Streak{}, season1())
 	if strings.Contains(outNoDuel, "Дуэли") {
 		t.Errorf("meText zero games no duels: should NOT contain 'Дуэли'\ngot: %s", outNoDuel)
 	}
@@ -69,13 +69,32 @@ func TestMeTextZeroGamesWithDuels(t *testing.T) {
 func TestMeTextDuelLine(t *testing.T) {
 	st := &storage.PlayerStat{Games: 5, Wins: 2, Points: 8, Rank: 1}
 	sp := &storage.SpeedStat{}
-	out := meText("Vasya", st, sp, 4, 2, season1())
+	out := meText("Vasya", st, sp, 4, 2, nil, domain.Streak{}, season1())
 	if !strings.Contains(out, "Дуэли:") || !strings.Contains(out, "4–2") {
 		t.Errorf("meText duel line: want 'Дуэли:' and '4–2' in output\ngot: %s", out)
 	}
-	outNoDuel := meText("Vasya", st, sp, 0, 0, season1())
+	outNoDuel := meText("Vasya", st, sp, 0, 0, nil, domain.Streak{}, season1())
 	if strings.Contains(outNoDuel, "Дуэли") {
 		t.Errorf("meText no duel: should NOT contain 'Дуэли'\ngot: %s", outNoDuel)
+	}
+}
+
+func TestMeTextDuelDetails(t *testing.T) {
+	st := &storage.PlayerStat{Games: 5, Wins: 2, Points: 8, Rank: 1}
+	duelSp := &storage.SpeedStat{AvgSecs: 240, BestSecs: 180, Games: 4}
+	out := meText("Nur", st, nil, 6, 2, duelSp, domain.Streak{Current: 3, Best: 5}, season1())
+	for _, want := range []string{"В дуэлях", "4:00", "3:00", "Серия дуэлей: <b>3</b>", "лучшая <b>5</b>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("meText duel details: want %q in output\ngot: %s", want, out)
+		}
+	}
+	// No timed duels and a short streak → both extra lines omitted.
+	out2 := meText("Nur", st, nil, 6, 2, &storage.SpeedStat{}, domain.Streak{Current: 1, Best: 1}, season1())
+	if strings.Contains(out2, "В дуэлях") {
+		t.Errorf("meText: should omit duel time when no timed duels\ngot: %s", out2)
+	}
+	if strings.Contains(out2, "Серия дуэлей") {
+		t.Errorf("meText: should omit streak when best<2\ngot: %s", out2)
 	}
 }
 
@@ -121,7 +140,7 @@ func TestDuelsText(t *testing.T) {
 		{Name: "Vasya", Wins: 8, Losses: 2},
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
-	out := duelsText(rows, nil, "Asia/Bishkek")
+	out := duelsText(rows, nil, nil, nil, nil, "Asia/Bishkek")
 	for _, want := range []string{"🥇", "Vasya", "8–2", "(80%)", "Masha", "(50%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText: want %q in output\ngot: %s", want, out)
@@ -130,7 +149,7 @@ func TestDuelsText(t *testing.T) {
 }
 
 func TestDuelsTextEmpty(t *testing.T) {
-	out := duelsText(nil, nil, "Asia/Bishkek")
+	out := duelsText(nil, nil, nil, nil, nil, "Asia/Bishkek")
 	if !strings.Contains(out, "Ещё не было дуэлей") {
 		t.Errorf("duelsText empty: want 'Ещё не было дуэлей' in output\ngot: %s", out)
 	}
@@ -144,10 +163,27 @@ func TestDuelsTextWithRecent(t *testing.T) {
 		// 12:00 UTC -> Asia/Bishkek (UTC+6) = 18:00, same date.
 		{CompletedAt: "2026-06-22 12:00:00", Winner: "Vasya", Loser: "Petya"},
 	}
-	out := duelsText(rows, recent, "Asia/Bishkek")
+	out := duelsText(rows, nil, nil, nil, recent, "Asia/Bishkek")
 	for _, want := range []string{"Последние дуэли", "2026-06-22 18:00", "Vasya", "обыграл", "Petya"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText with recent: want %q in output\ngot: %s", want, out)
+		}
+	}
+}
+
+// TestDuelsTextNewBlocks: head-to-head, duel solve-time, and win-streak marker.
+func TestDuelsTextNewBlocks(t *testing.T) {
+	rows := []storage.DuelStanding{
+		{PlayerID: 1, Name: "Vasya", Wins: 5, Losses: 1, Elo: 1100},
+		{PlayerID: 2, Name: "Masha", Wins: 1, Losses: 5, Elo: 950},
+	}
+	h2h := []storage.H2HPair{{AID: 1, BID: 2, AName: "Vasya", BName: "Masha", AWins: 4, BWins: 1}}
+	speed := []storage.SpeedRow{{Name: "Vasya", AvgSecs: 200, BestSecs: 150, Games: 6}}
+	streaks := map[int64]domain.Streak{1: {Current: 3, Best: 3}, 2: {Current: 0, Best: 1}}
+	out := duelsText(rows, h2h, speed, streaks, nil, "Asia/Bishkek")
+	for _, want := range []string{"🔥3", "Личные встречи", "4–1", "Время в дуэлях", "3:20", "2:30"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelsText new blocks: want %q in output\ngot: %s", want, out)
 		}
 	}
 }
@@ -706,7 +742,7 @@ func TestDuelsTextShowsElo(t *testing.T) {
 		{Name: "Vasya", Wins: 8, Losses: 2, Elo: 1080},
 		{Name: "Masha", Wins: 5, Losses: 5, Elo: 990},
 	}
-	out := duelsText(rows, nil, "Asia/Bishkek")
+	out := duelsText(rows, nil, nil, nil, nil, "Asia/Bishkek")
 	for _, want := range []string{"1080", "990", "8–2", "(80%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText elo: want %q in output\ngot: %s", want, out)
@@ -732,7 +768,7 @@ func TestStandingsTextShowsGapToLeader(t *testing.T) {
 
 func TestMeTextShowsProgressBar(t *testing.T) {
 	st := &storage.PlayerStat{Games: 10, Wins: 3, Points: 15, Rank: 2}
-	out := meText("Alice", st, &storage.SpeedStat{}, 0, 0, season1())
+	out := meText("Alice", st, &storage.SpeedStat{}, 0, 0, nil, domain.Streak{}, season1())
 	if !strings.Contains(out, "▰") || !strings.Contains(out, "▱") {
 		t.Errorf("meText: want progress bar in output\ngot: %s", out)
 	}

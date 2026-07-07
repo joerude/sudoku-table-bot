@@ -416,3 +416,130 @@ func TestHeadToHead(t *testing.T) {
 		t.Errorf("HeadToHead(A,B): want (2,1), got (%d,%d)", aWins, bWins)
 	}
 }
+
+// TestHeadToHeadAll: every pair reported once (lower id = A); solo duels and
+// third-player duels are handled correctly.
+func TestHeadToHeadAll(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-2104)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	c, _, _ := st.RegisterPlayer(chat, 3, "Carol")
+
+	// A beats B x2, B beats A x1  → pair (A,B): 2–1
+	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
+	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
+	makeDuelGame(t, st, chat, se.ID, b.ID, b.ID, a.ID, a.ID)
+	// A beats C x1 → pair (A,C): 1–0
+	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, c.ID, c.ID)
+	// Solo duel (only winner recorded) must NOT create a phantom pair.
+	makeSoloDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID)
+
+	pairs, err := st.HeadToHeadAll(chat)
+	if err != nil {
+		t.Fatalf("HeadToHeadAll: %v", err)
+	}
+	idx := map[[2]int64]H2HPair{}
+	for _, p := range pairs {
+		idx[[2]int64{p.AID, p.BID}] = p
+	}
+	ab, ok := idx[[2]int64{a.ID, b.ID}]
+	if !ok {
+		t.Fatalf("A-B pair missing: %+v", pairs)
+	}
+	if ab.AName != "Alice" || ab.BName != "Bob" || ab.AWins != 2 || ab.BWins != 1 {
+		t.Errorf("A-B: want Alice 2 / Bob 1, got %+v", ab)
+	}
+	ac, ok := idx[[2]int64{a.ID, c.ID}]
+	if !ok {
+		t.Fatalf("A-C pair missing: %+v", pairs)
+	}
+	if ac.AWins != 1 || ac.BWins != 0 {
+		t.Errorf("A-C: want 1–0, got %+v", ac)
+	}
+	if len(pairs) != 2 {
+		t.Errorf("want exactly 2 pairs (A-B, A-C), got %d: %+v", len(pairs), pairs)
+	}
+}
+
+// makeTimedDuelGame: winner finishes in winnerSecs, loser DNF (NULL duration).
+func makeTimedDuelGame(t *testing.T, st *Store, chatID, seasonID, winnerID, winnerSecs, loserID int64) int64 {
+	t.Helper()
+	gid, err := st.CreatePendingGame(chatID, seasonID, winnerID, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame: %v", err)
+	}
+	if err := st.SetDuelTarget(gid, loserID); err != nil {
+		t.Fatalf("SetDuelTarget: %v", err)
+	}
+	if err := st.AddPickTimed(gid, winnerID, winnerSecs); err != nil {
+		t.Fatalf("AddPickTimed: %v", err)
+	}
+	if err := st.AddDNF(gid, loserID); err != nil {
+		t.Fatalf("AddDNF: %v", err)
+	}
+	se, err := st.ActiveSeason(chatID)
+	if err != nil {
+		t.Fatalf("ActiveSeason: %v", err)
+	}
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatalf("FinalizeGame: %v", err)
+	}
+	return gid
+}
+
+// TestDuelSpeedAndSpeedFor: duel solve times aggregate per player; normal games
+// and NULL durations are excluded; fastest-first ordering.
+func TestDuelSpeedAndSpeedFor(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-2105)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// Alice wins two timed duels (50, 100); Bob wins one (200).
+	makeTimedDuelGame(t, st, chat, se.ID, a.ID, 50, b.ID)
+	makeTimedDuelGame(t, st, chat, se.ID, a.ID, 100, b.ID)
+	makeTimedDuelGame(t, st, chat, se.ID, b.ID, 200, a.ID)
+	// A normal timed game must NOT count toward duel speed.
+	gNorm, _ := st.CreatePendingGame(chat, se.ID, a.ID, "medium", "hardcore")
+	st.AddPickTimed(gNorm, a.ID, 5)
+	st.FinalizeGame(gNorm, se.PointsTable)
+
+	board, err := st.DuelSpeed(chat)
+	if err != nil {
+		t.Fatalf("DuelSpeed: %v", err)
+	}
+	if len(board) != 2 {
+		t.Fatalf("DuelSpeed: want 2 rows, got %d: %+v", len(board), board)
+	}
+	if board[0].Name != "Alice" || board[0].AvgSecs != 75 || board[0].BestSecs != 50 || board[0].Games != 2 {
+		t.Errorf("board[0]: want Alice avg75 best50 games2, got %+v", board[0])
+	}
+	if board[1].Name != "Bob" || board[1].AvgSecs != 200 || board[1].Games != 1 {
+		t.Errorf("board[1]: want Bob avg200 games1, got %+v", board[1])
+	}
+
+	sp, err := st.DuelSpeedFor(chat, a.ID)
+	if err != nil {
+		t.Fatalf("DuelSpeedFor: %v", err)
+	}
+	if sp.Games != 2 || sp.AvgSecs != 75 || sp.BestSecs != 50 {
+		t.Errorf("DuelSpeedFor(Alice): want games2 avg75 best50, got %+v", sp)
+	}
+
+	// A player with no timed duel → Games 0.
+	c, _, _ := st.RegisterPlayer(chat, 3, "Carol")
+	spC, err := st.DuelSpeedFor(chat, c.ID)
+	if err != nil {
+		t.Fatalf("DuelSpeedFor Carol: %v", err)
+	}
+	if spC.Games != 0 {
+		t.Errorf("DuelSpeedFor(Carol): want games0, got %+v", spC)
+	}
+}

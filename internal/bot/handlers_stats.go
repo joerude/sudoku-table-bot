@@ -218,7 +218,11 @@ func (b *Bot) onMe(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onMe.duel", err)
 	}
-	return c.Send(meText(player.Name, stat, sp, duelW, duelL, season) +
+	duelSp, duelStreak, err := b.duelExtras(c.Chat().ID, player.ID)
+	if err != nil {
+		return b.fail(c, "onMe.duelExtras", err)
+	}
+	return c.Send(meText(player.Name, stat, sp, duelW, duelL, duelSp, duelStreak, season) +
 		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)))
 }
 
@@ -415,15 +419,10 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		}
 		text = speedText(nil, "medium", ranked, fewer, speedMinGames)
 	case "duels":
-		rows, e := b.duelStandingsWithElo(chatID)
-		if e != nil {
-			return "", nil, e
+		text, err = b.duelsPanel(chatID)
+		if err != nil {
+			return "", nil, err
 		}
-		recent, e := b.st.RecentDuels(chatID, 8)
-		if e != nil {
-			return "", nil, e
-		}
-		text = duelsText(rows, recent, b.chatTZ(chatID))
 	case "history":
 		games, e := b.st.RecentGames(chatID, 8)
 		if e != nil {
@@ -481,7 +480,11 @@ func (b *Bot) meTab(c tele.Context, season *storage.Season) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return meText(player.Name, stat, sp, duelW, duelL, season) +
+	duelSp, duelStreak, err := b.duelExtras(c.Chat().ID, player.ID)
+	if err != nil {
+		return "", err
+	}
+	return meText(player.Name, stat, sp, duelW, duelL, duelSp, duelStreak, season) +
 		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)), nil
 }
 

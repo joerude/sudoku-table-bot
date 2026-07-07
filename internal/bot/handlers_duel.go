@@ -153,15 +153,11 @@ func (b *Bot) onDuels(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onDuels.ensure", err)
 	}
-	rows, err := b.duelStandingsWithElo(c.Chat().ID)
+	text, err := b.duelsPanel(c.Chat().ID)
 	if err != nil {
-		return b.fail(c, "onDuels.board", err)
+		return b.fail(c, "onDuels.panel", err)
 	}
-	recent, err := b.st.RecentDuels(c.Chat().ID, 8)
-	if err != nil {
-		return b.fail(c, "onDuels.recent", err)
-	}
-	return c.Send(duelsText(rows, recent, b.chatTZ(c.Chat().ID)))
+	return c.Send(text)
 }
 
 func (b *Bot) onDecline(c tele.Context) error {
