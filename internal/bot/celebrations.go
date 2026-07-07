@@ -202,22 +202,23 @@ func (b *Bot) longestSeasonRun(chatID, seasonID int64) (string, int, error) {
 	return bestName, best, nil
 }
 
-// duelStandingsWithElo returns the duel leaderboard with Elo ratings filled in,
-// sorted by rating (highest first).
-func (b *Bot) duelStandingsWithElo(chatID int64) ([]storage.DuelStanding, error) {
+// duelsPanel builds the full duels view: leaderboard (Elo-sorted) with
+// head-to-head, duel solve-time, win-streak markers, and the recent log.
+func (b *Bot) duelsPanel(chatID int64) (string, error) {
 	rows, err := b.st.DuelLeaderboard(chatID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	pairs, err := b.st.DuelPairs(chatID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	dp := make([][2]int64, len(pairs))
 	for i, p := range pairs {
 		dp[i] = [2]int64{p.WinnerID, p.LoserID}
 	}
 	ratings := domain.EloRatings(dp)
+	streaks := domain.DuelStreaks(dp)
 	for i := range rows {
 		if r, ok := ratings[rows[i].PlayerID]; ok {
 			rows[i].Elo = r
@@ -226,7 +227,36 @@ func (b *Bot) duelStandingsWithElo(chatID int64) ([]storage.DuelStanding, error)
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Elo > rows[j].Elo })
-	return rows, nil
+	h2h, err := b.st.HeadToHeadAll(chatID)
+	if err != nil {
+		return "", err
+	}
+	speed, err := b.st.DuelSpeed(chatID)
+	if err != nil {
+		return "", err
+	}
+	recent, err := b.st.RecentDuels(chatID, 8)
+	if err != nil {
+		return "", err
+	}
+	return duelsText(rows, h2h, speed, streaks, recent, b.chatTZ(chatID)), nil
+}
+
+// duelExtras returns a player's duel solve summary and win-streak, for /me.
+func (b *Bot) duelExtras(chatID, playerID int64) (*storage.SpeedStat, domain.Streak, error) {
+	sp, err := b.st.DuelSpeedFor(chatID, playerID)
+	if err != nil {
+		return nil, domain.Streak{}, err
+	}
+	pairs, err := b.st.DuelPairs(chatID)
+	if err != nil {
+		return nil, domain.Streak{}, err
+	}
+	dp := make([][2]int64, len(pairs))
+	for i, p := range pairs {
+		dp[i] = [2]int64{p.WinnerID, p.LoserID}
+	}
+	return sp, domain.DuelStreaks(dp)[playerID], nil
 }
 
 // duelStakes returns both players' current Elo and what each would gain by

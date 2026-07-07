@@ -362,11 +362,13 @@ func seasonText(se *storage.Season, leader *storage.Standing) string {
 	return b.String()
 }
 
-func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, duelL int, se *storage.Season) string {
+func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, duelL int,
+	duelSp *storage.SpeedStat, duelStreak domain.Streak, se *storage.Season) string {
 	if st.Games == 0 {
 		base := fmt.Sprintf("📊 <b>%s</b>\nВ сезоне %d пока нет игр. Сыграй и запиши: /result", esc(name), se.Number)
 		if duelW+duelL > 0 {
 			base += fmt.Sprintf("\n⚔️ Дуэли: <b>%d–%d</b>", duelW, duelL)
+			base += duelDetailLines(duelSp, duelStreak)
 		}
 		return base
 	}
@@ -383,6 +385,21 @@ func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, d
 	}
 	if duelW+duelL > 0 {
 		fmt.Fprintf(&b, "\n⚔️ Дуэли: <b>%d–%d</b>", duelW, duelL)
+		b.WriteString(duelDetailLines(duelSp, duelStreak))
+	}
+	return b.String()
+}
+
+// duelDetailLines renders a player's optional duel solve-time and win-streak
+// lines for /me (empty string when there's nothing to show).
+func duelDetailLines(sp *storage.SpeedStat, s domain.Streak) string {
+	var b strings.Builder
+	if sp != nil && sp.Games > 0 {
+		fmt.Fprintf(&b, "\n⏱ В дуэлях: <b>%s</b> (лучшее <b>%s</b>)",
+			fmtDuration(sp.AvgSecs), fmtDuration(sp.BestSecs))
+	}
+	if s.Best >= 2 {
+		fmt.Fprintf(&b, "\n🔥 Серия дуэлей: <b>%d</b> (лучшая <b>%d</b>)", s.Current, s.Best)
 	}
 	return b.String()
 }
@@ -424,8 +441,11 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 	return b.String()
 }
 
-// duelsText renders the /duels leaderboard (all-time duel records) and recent log.
-func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch, tz string) string {
+// duelsText renders the /duels leaderboard (all-time duel records) with per-pair
+// head-to-head, duel solve-time, current win-streak markers, and the recent log.
+// streaks is keyed by player id (from domain.DuelStreaks).
+func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []storage.SpeedRow,
+	streaks map[int64]domain.Streak, recent []storage.DuelMatch, tz string) string {
 	if len(rows) == 0 {
 		return "⚔️ <b>Дуэли</b>\nЕщё не было дуэлей. Вызови кого-нибудь: /duel"
 	}
@@ -438,11 +458,28 @@ func duelsText(rows []storage.DuelStanding, recent []storage.DuelMatch, tz strin
 			pct = r.Wins * 100 / total
 		}
 		if r.Elo > 0 {
-			fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> · %d–%d <i>(%d%%)</i>\n",
+			fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> · %d–%d <i>(%d%%)</i>",
 				medal(i+1), esc(r.Name), r.Elo, r.Wins, r.Losses, pct)
 		} else {
-			fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>\n",
+			fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>",
 				medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
+		}
+		if s := streaks[r.PlayerID]; s.Current >= 2 {
+			fmt.Fprintf(&b, " 🔥%d", s.Current)
+		}
+		b.WriteByte('\n')
+	}
+	if len(h2h) > 0 {
+		b.WriteString("\n<b>Личные встречи</b>\n")
+		for _, p := range h2h {
+			fmt.Fprintf(&b, "%s <b>%d–%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
+		}
+	}
+	if len(speed) > 0 {
+		b.WriteString("\n<b>⏱ Время в дуэлях</b>\n")
+		for _, r := range speed {
+			fmt.Fprintf(&b, "%s — <b>%s</b> <i>(лучшее %s · %d)</i>\n",
+				esc(r.Name), fmtDuration(r.AvgSecs), fmtDuration(r.BestSecs), r.Games)
 		}
 	}
 	if len(recent) > 0 {
