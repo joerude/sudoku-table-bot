@@ -115,6 +115,7 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbPlayInvite}, b.onPlayInvite)
 
 	b.tb.Handle("/newgame", b.onNewGame)
+	b.tb.Handle("/code", b.onSetCode)
 	b.tb.Handle("/result", b.onResult)
 	b.tb.Handle("/duel", b.onDuel)
 	b.tb.Handle(&tele.Btn{Unique: cbDuelPick}, b.onDuelPick)

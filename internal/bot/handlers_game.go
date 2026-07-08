@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -106,7 +107,7 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom
 		return nil, err
 	}
 	room := &gameRoom{gameID: gameID}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	code, err := b.ud.Create(ctx, difficulty, mode, "private")
 	if err != nil {
@@ -133,6 +134,44 @@ func (b *Bot) pendingConflict(c tele.Context, pending *storage.Game) error {
 	}
 	return c.Send(pendingConflictText(pending, creator, b.chatTZ(pending.ChatID)),
 		pendingConflictKeyboard(pending.ID))
+}
+
+// codeRe matches a usdoku room code (short alphanumeric, e.g. LOVI, QPHA).
+var codeRe = regexp.MustCompile(`^[A-Za-z0-9]{3,8}$`)
+
+// onSetCode attaches a manually created usdoku room to the pending game and
+// starts watching it, so auto-record works even when the bot couldn't create
+// the room itself (usdoku down at game creation).
+func (b *Bot) onSetCode(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onSetCode.ensure", err)
+	}
+	args := c.Args()
+	if len(args) != 1 || !codeRe.MatchString(args[0]) {
+		return b.ephemeral(c, "Пришли код комнаты, например: <code>/code LOVI</code>")
+	}
+	code := strings.ToUpper(args[0])
+	chatID := c.Chat().ID
+	pending, err := b.st.ActivePendingGame(chatID)
+	if err != nil {
+		return b.fail(c, "onSetCode.pending", err)
+	}
+	if pending == nil {
+		return b.ephemeral(c, "Нет незакрытой игры — сначала создай её: /play")
+	}
+	if pending.UsdokuCode.String != "" {
+		return b.ephemeral(c, fmt.Sprintf(
+			"У игры #%d уже есть комната: https://www.usdoku.com/%s",
+			pending.ID, pending.UsdokuCode.String))
+	}
+	if err := b.st.SetUsdokuCode(pending.ID, code); err != nil {
+		return b.fail(c, "onSetCode.set", err)
+	}
+	go b.watchGame(pending.ID, chatID, code)
+	return c.Send(fmt.Sprintf(
+		"🔗 Комната привязана к игре #%d: https://www.usdoku.com/%s\n"+
+			"🤖 Слежу за ней — результат подтянется автоматически (у кого задан /setnick).",
+		pending.ID, code))
 }
 
 // startNewGame creates a usdoku game (or falls back to a link) and posts it.

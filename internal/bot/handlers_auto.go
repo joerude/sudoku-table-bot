@@ -49,7 +49,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		info, err := b.ud.Info(ctx, code)
 		cancel()
 		if err != nil {
