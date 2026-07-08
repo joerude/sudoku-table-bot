@@ -25,6 +25,7 @@ const helpText = `🧩 <b>Sudoku League</b> — учёт ваших игр в с
 
 <b>Ещё</b>
 /result — записать результат вручную (если авто-учёт не сработал)
+/code &lt;КОД&gt; — привязать вручную созданную usdoku-комнату к текущей игре
 /newgame, /duel, /invite — то же, что /play, но командой
 /status, /me, /speed, /duels, /history, /season — то же, что вкладки /stats
 /season &lt;N&gt; — сводка любого сезона, включая архивные
@@ -84,8 +85,9 @@ func newGameText(difficulty, mode string) string {
 		"🧩 <b>Новая игра</b> · %s · %s\n\n"+
 			"1. Открой и создай комнату:\n%s\n"+
 			"2. Выбери <b>%s</b> и <b>%s</b> → <b>Create</b>\n"+
-			"3. Скинь ссылку друзьям и играйте\n\n"+
-			"Когда доиграете — жми «📝 Записать результат».",
+			"3. Скинь ссылку друзьям и играйте\n"+
+			"4. Пришли мне код комнаты: <code>/code LOVI</code> — включу авто-запись\n\n"+
+			"Или когда доиграете — жми «📝 Записать результат».",
 		titleCase(difficulty), titleCase(mode), usdokuCreateURL, titleCase(difficulty), titleCase(mode))
 }
 
@@ -670,7 +672,8 @@ func duelChallengeText(challenger string, target storage.Player, difficulty, cod
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
 	} else {
-		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную: %s\n", usdokuCreateURL)
+		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную (%s) "+
+			"и пришлите код: <code>/code LOVI</code>\n", usdokuCreateURL)
 	}
 	if eloC > 0 {
 		fmt.Fprintf(&b, "\n📈 <b>%s</b> %d · <b>%s</b> %d\n⚖️ На кону: +%d против +%d",
@@ -690,8 +693,9 @@ func duelAcceptText(target storage.Player, code string) string {
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s", code)
 	} else {
-		fmt.Fprintf(&b, "⚠️ Комнаты на usdoku нет (сайт не ответил) — создайте вручную: %s\n"+
-			"Результат запишите через «📝 Записать результат».", usdokuCreateURL)
+		fmt.Fprintf(&b, "⚠️ Комнаты на usdoku нет (сайт не ответил) — создайте вручную (%s) "+
+			"и пришлите код: <code>/code LOVI</code>.\n"+
+			"Или запишите результат через «📝 Записать результат».", usdokuCreateURL)
 	}
 	return b.String()
 }
@@ -721,7 +725,8 @@ func inviteText(difficulty, code string, pings, roster []storage.Player) string 
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
 	} else {
-		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную: %s\n", usdokuCreateURL)
+		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную (%s) "+
+			"и пришлите код: <code>/code LOVI</code>\n", usdokuCreateURL)
 	}
 	b.WriteString("\nЖми «Я в деле», если играешь 👇")
 	if len(roster) > 0 {

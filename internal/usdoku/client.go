@@ -33,9 +33,13 @@ type Client struct {
 }
 
 // New returns a client with a freshly generated device id.
+// The API has been observed to stall on TLS handshakes (default transport caps
+// them at 10s), so both the handshake and overall timeouts are generous.
 func New() *Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSHandshakeTimeout = 20 * time.Second
 	return &Client{
-		httpc:    &http.Client{Timeout: 15 * time.Second},
+		httpc:    &http.Client{Timeout: 30 * time.Second, Transport: tr},
 		baseURL:  DefaultBaseURL,
 		deviceID: newDeviceID(),
 		version:  defaultVersion,
