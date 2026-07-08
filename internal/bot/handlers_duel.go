@@ -146,7 +146,13 @@ func (b *Bot) onAccept(c tele.Context) error {
 		return nil
 	}
 	_ = c.Respond()
-	return c.Edit(duelAcceptText(*target, game.UsdokuCode.String), recordKeyboard(gameID))
+	text := duelAcceptText(*target, game.UsdokuCode.String)
+	kb := recordKeyboard(gameID)
+	err = c.Edit(text, kb)
+	if err == nil && game.UsdokuCode.String != "" {
+		registerLive(gameID, c.Message(), text, kb)
+	}
+	return err
 }
 
 // onDuelCancel dismisses the opponent picker (no game was created yet).

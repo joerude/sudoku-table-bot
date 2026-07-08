@@ -15,7 +15,10 @@ import (
 
 const (
 	watchInterval = 25 * time.Second
-	watchTimeout  = 3 * time.Hour
+	// watchHotInterval is used while a round is live (players joined, not all
+	// finished) so finish lines land in the chat within seconds.
+	watchHotInterval = 7 * time.Second
+	watchTimeout     = 3 * time.Hour
 )
 
 // resumeWatches restarts pollers for pending games that have a usdoku code,
@@ -36,9 +39,13 @@ func (b *Bot) resumeWatches() {
 
 // watchGame polls usdoku for a game's result and auto-records it once finished.
 // It stops if the game is recorded manually, deleted, or the deadline passes.
+// While the round is live it polls faster and mirrors each finish into the
+// game's chat post (liveUpdate).
 func (b *Bot) watchGame(gameID, chatID int64, code string) {
+	defer dropLive(gameID)
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
+	lastFinishers := 0
 	for {
 		g, err := b.st.GameByID(gameID)
 		if err != nil {
@@ -49,6 +56,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 			return
 		}
 
+		interval := watchInterval
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		info, err := b.ud.Info(ctx, code)
 		cancel()
@@ -57,13 +65,21 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		} else if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
 			b.autoRecord(g, info)
 			return
+		} else {
+			if n := len(info.FinishOrder()); n > lastFinishers {
+				lastFinishers = n
+				b.liveUpdate(gameID, info)
+			}
+			if len(info.Players) > 0 && !info.Finished() {
+				interval = watchHotInterval
+			}
 		}
 
 		if time.Now().After(deadline) {
 			log.Printf("watchGame %s: gave up after %s", code, watchTimeout)
 			return
 		}
-		time.Sleep(watchInterval)
+		time.Sleep(interval)
 	}
 }
 
