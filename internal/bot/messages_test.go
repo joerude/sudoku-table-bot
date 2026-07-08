@@ -202,6 +202,26 @@ func TestHistoryTextShowsLocalDateAndTime(t *testing.T) {
 	}
 }
 
+func TestHistoryTextSeasonSeparators(t *testing.T) {
+	games := []storage.HistoryGame{ // newest first, spanning two seasons
+		{ID: 3, SeasonNumber: 5, CompletedAt: "2026-07-08 10:39:00", Order: []string{"Joe Rude"}},
+		{ID: 2, SeasonNumber: 5, CompletedAt: "2026-07-08 06:47:00", Order: []string{"mister"}},
+		{ID: 1, SeasonNumber: 4, CompletedAt: "2026-07-07 14:05:00", Order: []string{"Nur"}},
+	}
+	out := historyText(games, "UTC")
+	for _, want := range []string{"— Сезон 5 —", "— Сезон 4 —"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("historyText: want separator %q\ngot: %s", want, out)
+		}
+	}
+	if n := strings.Count(out, "— Сезон 5 —"); n != 1 {
+		t.Errorf("season 5 separator should appear once, got %d\n%s", n, out)
+	}
+	if strings.Index(out, "— Сезон 5 —") > strings.Index(out, "— Сезон 4 —") {
+		t.Errorf("season 5 block should come first (newest first)\n%s", out)
+	}
+}
+
 func TestHistoryTextBadTimeFallsBack(t *testing.T) {
 	games := []storage.HistoryGame{
 		{ID: 1, CompletedAt: "garbage", Order: []string{"Nur"}},

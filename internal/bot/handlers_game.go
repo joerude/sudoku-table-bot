@@ -167,11 +167,17 @@ func (b *Bot) onSetCode(c tele.Context) error {
 	if err := b.st.SetUsdokuCode(pending.ID, code); err != nil {
 		return b.fail(c, "onSetCode.set", err)
 	}
-	go b.watchGame(pending.ID, chatID, code)
-	return c.Send(fmt.Sprintf(
+	text := fmt.Sprintf(
 		"🔗 Комната привязана к игре #%d: https://www.usdoku.com/%s\n"+
 			"🤖 Слежу за ней — результат подтянется автоматически (у кого задан /setnick).",
-		pending.ID, code))
+		pending.ID, code)
+	kb := recordKeyboard(pending.ID)
+	msg, err := b.tb.Send(c.Chat(), text, kb)
+	if err == nil {
+		registerLive(pending.ID, msg, text, kb)
+	}
+	go b.watchGame(pending.ID, chatID, code)
+	return err
 }
 
 // startNewGame creates a usdoku game (or falls back to a link) and posts it.
@@ -196,7 +202,12 @@ func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
 				esc(strings.Join(missing, ", ")))
 		}
 	}
-	return c.Send(text, recordKeyboard(room.gameID))
+	kb := recordKeyboard(room.gameID)
+	msg, err := b.tb.Send(c.Chat(), text, kb)
+	if err == nil && room.code != "" {
+		registerLive(room.gameID, msg, text, kb)
+	}
+	return err
 }
 
 func (b *Bot) onResult(c tele.Context) error {

@@ -556,7 +556,12 @@ func historyText(games []storage.HistoryGame, tz string) string {
 	loc := loadLoc(tz)
 	var b strings.Builder
 	b.WriteString("📜 <b>Последние игры</b>\n")
+	season := -1 // sentinel: first game always opens a season block
 	for _, g := range games {
+		if g.SeasonNumber != season {
+			season = g.SeasonNumber
+			fmt.Fprintf(&b, "\n<b>— Сезон %d —</b>\n", season)
+		}
 		var order []string
 		for i, name := range g.Order {
 			order = append(order, medal(i+1)+esc(name))
