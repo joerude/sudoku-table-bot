@@ -147,22 +147,12 @@ func containsBadge(badges []string, badge string) bool {
 // standings. Champion is announced separately, so it is skipped here.
 func (b *Bot) seasonAwards(chatID, seasonID int64, standings []storage.Standing) []string {
 	var out []string
-	if len(standings) > 0 {
-		mw, mg := standings[0], standings[0]
-		for _, s := range standings[1:] {
-			if s.Wins > mw.Wins {
-				mw = s
-			}
-			if s.Games > mg.Games {
-				mg = s
-			}
-		}
-		if mw.Wins > 0 {
-			out = append(out, awardWinsLine(mw.Name, mw.Wins))
-		}
-		if mg.Games > 0 {
-			out = append(out, awardGamesLine(mg.Name, mg.Games))
-		}
+	// Wins award only when a single player holds the top count — a tie would
+	// otherwise silently go to standings[0] (the champion). "Самый активный"
+	// (games) is dropped: in a fixed group everyone plays the same games, so it
+	// never discriminates.
+	if name, wins, ok := uniqueTopWins(standings); ok {
+		out = append(out, awardWinsLine(name, wins))
 	}
 	if fastest, err := b.st.FastestInSeason(chatID, seasonID); err != nil {
 		log.Printf("seasonAwards.fastest: %v", err)
@@ -175,6 +165,21 @@ func (b *Bot) seasonAwards(chatID, seasonID int64, standings []storage.Standing)
 		out = append(out, awardStreakLine(name, n))
 	}
 	return out
+}
+
+// uniqueTopWins returns the sole wins leader when exactly one player holds the
+// season's top win count (>0). On a tie it returns ok=false so the award is
+// skipped instead of defaulting to standings[0].
+func uniqueTopWins(standings []storage.Standing) (name string, wins int, ok bool) {
+	for _, s := range standings {
+		switch {
+		case s.Wins > wins:
+			wins, name, ok = s.Wins, s.Name, true
+		case s.Wins == wins && wins > 0:
+			ok = false
+		}
+	}
+	return name, wins, ok
 }
 
 // longestSeasonRun finds the season's longest consecutive-wins run and its holder.
