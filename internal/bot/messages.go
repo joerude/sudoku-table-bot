@@ -100,6 +100,31 @@ func newGameWithCodeText(difficulty, mode, code string) string {
 		titleCase(difficulty), titleCase(mode), "https://www.usdoku.com", code, code)
 }
 
+// pendingConflictText warns that an unfinished game blocks a new one, showing
+// the pending game's metadata so players can tell which game it is. creator is
+// the resolved player name of who started it ("" hides the byline part).
+func pendingConflictText(g *storage.Game, creator, tz string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ <b>Уже есть незакрытая игра</b> · #%d\n", g.ID)
+	if g.Difficulty.String != "" {
+		fmt.Fprintf(&b, "🧩 %s", titleCase(g.Difficulty.String))
+		if g.Mode.String != "" {
+			fmt.Fprintf(&b, " · %s", titleCase(g.Mode.String))
+		}
+		b.WriteString("\n")
+	}
+	fmt.Fprintf(&b, "🕐 Создана: %s", fmtLocalDateTime(g.CreatedAt, loadLoc(tz)))
+	if creator != "" {
+		fmt.Fprintf(&b, " · %s", esc(creator))
+	}
+	b.WriteString("\n")
+	if g.UsdokuCode.String != "" {
+		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", g.UsdokuCode.String)
+	}
+	b.WriteString("\nСначала запиши её результат или отмени:")
+	return b.String()
+}
+
 // autoResultHeader prefixes an auto-captured result.
 func autoResultHeader() string {
 	return "🤖 <b>Результат подтянут с usdoku</b>\n"
@@ -282,10 +307,6 @@ func milestoneLeagueLine(n int) string {
 // award*Line renderers build the season-end nomination lines.
 func awardWinsLine(name string, wins int) string {
 	return fmt.Sprintf("🥇 Больше всех побед: <b>%s</b> (%d)", esc(name), wins)
-}
-
-func awardGamesLine(name string, games int) string {
-	return fmt.Sprintf("🎮 Самый активный: <b>%s</b> (%d игр)", esc(name), games)
 }
 
 func awardFastestLine(name string, secs int, difficulty string) string {
@@ -648,6 +669,8 @@ func duelChallengeText(challenger string, target storage.Player, difficulty, cod
 		esc(challenger), mention(target), titleCase(difficulty))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
+	} else {
+		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную: %s\n", usdokuCreateURL)
 	}
 	if eloC > 0 {
 		fmt.Fprintf(&b, "\n📈 <b>%s</b> %d · <b>%s</b> %d\n⚖️ На кону: +%d против +%d",
@@ -666,6 +689,9 @@ func duelAcceptText(target storage.Player, code string) string {
 	fmt.Fprintf(&b, "🔥 %s принял вызов! Поехали.\n", mention(target))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s", code)
+	} else {
+		fmt.Fprintf(&b, "⚠️ Комнаты на usdoku нет (сайт не ответил) — создайте вручную: %s\n"+
+			"Результат запишите через «📝 Записать результат».", usdokuCreateURL)
 	}
 	return b.String()
 }
@@ -694,6 +720,8 @@ func inviteText(difficulty, code string, pings, roster []storage.Player) string 
 	}
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
+	} else {
+		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную: %s\n", usdokuCreateURL)
 	}
 	b.WriteString("\nЖми «Я в деле», если играешь 👇")
 	if len(roster) > 0 {

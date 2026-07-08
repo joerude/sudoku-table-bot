@@ -970,3 +970,33 @@ func TestRecordAndClaimKeyboard(t *testing.T) {
 		t.Errorf("no nicks: want 1 row, got %d", len(only.InlineKeyboard))
 	}
 }
+
+func TestPendingConflictText(t *testing.T) {
+	g := &storage.Game{
+		ID:         42,
+		Difficulty: sql.NullString{String: "medium", Valid: true},
+		Mode:       sql.NullString{String: "hardcore", Valid: true},
+		UsdokuCode: sql.NullString{String: "ABCD", Valid: true},
+		CreatedBy:  sql.NullInt64{Int64: 5, Valid: true},
+		CreatedAt:  "2026-07-08 10:00:00",
+	}
+	text := pendingConflictText(g, "Nur", "UTC")
+	for _, want := range []string{
+		"незакрытая игра", "#42", "Medium", "Hardcore",
+		"2026-07-08 10:00", "Nur", "usdoku.com/ABCD",
+		"запиши её результат или отмени",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text missing %q:\n%s", want, text)
+		}
+	}
+
+	// Bare game (manual /result leftover): no difficulty, code, or creator.
+	bare := pendingConflictText(&storage.Game{ID: 7, CreatedAt: "2026-07-08 10:00:00"}, "", "UTC")
+	if strings.Contains(bare, "usdoku.com") || strings.Contains(bare, "·  ·") {
+		t.Errorf("bare game should omit empty metadata:\n%s", bare)
+	}
+	if !strings.Contains(bare, "#7") {
+		t.Errorf("bare game should still show id:\n%s", bare)
+	}
+}

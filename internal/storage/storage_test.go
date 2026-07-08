@@ -414,3 +414,42 @@ func TestSeasonRollover(t *testing.T) {
 		}
 	}
 }
+
+func TestActivePendingGameMetadata(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-200)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid, err := st.CreatePendingGame(chat, se.ID, 77, "hard", "hardcore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := st.ActivePendingGame(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g == nil || g.ID != gid {
+		t.Fatalf("pending game not found: %+v", g)
+	}
+	if !g.CreatedBy.Valid || g.CreatedBy.Int64 != 77 {
+		t.Errorf("CreatedBy = %+v, want 77", g.CreatedBy)
+	}
+	if g.CreatedAt == "" {
+		t.Fatal("CreatedAt empty")
+	}
+	if _, err := time.Parse("2006-01-02 15:04:05", g.CreatedAt); err != nil {
+		t.Errorf("CreatedAt %q not parseable: %v", g.CreatedAt, err)
+	}
+	byID, err := st.GameByID(gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byID.CreatedAt != g.CreatedAt || byID.CreatedBy != g.CreatedBy {
+		t.Errorf("GameByID metadata mismatch: %+v vs %+v", byID, g)
+	}
+}

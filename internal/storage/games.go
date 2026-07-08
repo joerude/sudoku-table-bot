@@ -15,6 +15,8 @@ type Game struct {
 	Difficulty sql.NullString
 	Mode       sql.NullString
 	UsdokuCode sql.NullString
+	CreatedBy  sql.NullInt64 // tg id of who started the game
+	CreatedAt  string        // UTC datetime "2006-01-02 15:04:05"
 	Deleted    bool
 }
 
@@ -34,10 +36,11 @@ func (s *Store) CreatePendingGame(chatID, seasonID, createdBy int64, difficulty,
 func (s *Store) ActivePendingGame(chatID int64) (*Game, error) {
 	var g Game
 	err := s.db.QueryRow(
-		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code
+		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by, created_at
 		 FROM games WHERE chat_id=? AND status='pending' AND deleted=0
 		 ORDER BY id DESC LIMIT 1`, chatID).
-		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode)
+		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode,
+			&g.CreatedBy, &g.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -52,9 +55,10 @@ func (s *Store) GameByID(id int64) (*Game, error) {
 	var g Game
 	var deleted int
 	err := s.db.QueryRow(
-		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code, deleted
+		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by, created_at, deleted
 		 FROM games WHERE id=?`, id).
-		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode, &deleted)
+		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode,
+			&g.CreatedBy, &g.CreatedAt, &deleted)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

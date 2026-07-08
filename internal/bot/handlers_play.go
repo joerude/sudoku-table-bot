@@ -2,10 +2,19 @@ package bot
 
 import tele "gopkg.in/telebot.v3"
 
-// onPlay posts the play hub: normal game / duel / invite.
+// onPlay posts the play hub: normal game / duel / invite. An unfinished game
+// blocks the hub up front (createGameRoom would refuse anyway, but only after
+// the user has already picked a mode and difficulty).
 func (b *Bot) onPlay(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onPlay.ensure", err)
+	}
+	pending, err := b.st.ActivePendingGame(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onPlay.pending", err)
+	}
+	if pending != nil {
+		return b.pendingConflict(c, pending)
 	}
 	return c.Send("🎮 <b>Что играем?</b>", playMenuKeyboard())
 }

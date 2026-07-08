@@ -17,6 +17,13 @@ func (b *Bot) onDuel(c tele.Context) error {
 	if !b.enoughPlayers(c, chatID) {
 		return nil
 	}
+	pending, err := b.st.ActivePendingGame(chatID)
+	if err != nil {
+		return b.fail(c, "onDuel.pending", err)
+	}
+	if pending != nil { // don't offer opponents for a challenge that can't start
+		return b.pendingConflict(c, pending)
+	}
 	me := realSender(c)
 	if me == nil {
 		return b.ephemeral(c, anonMsg)

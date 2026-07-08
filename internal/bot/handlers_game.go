@@ -94,8 +94,7 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom
 		return nil, err
 	}
 	if pending != nil {
-		_ = c.Send("⚠️ Уже есть незакрытая игра. Сначала запиши её результат или отмени:",
-			pendingConflictKeyboard(pending.ID))
+		_ = b.pendingConflict(c, pending)
 		return nil, nil
 	}
 	var createdBy int64
@@ -121,6 +120,19 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom
 	log.Printf("🎮 game %d created on usdoku: %s (%s/%s)", gameID, code, difficulty, mode)
 	go b.watchGame(gameID, chatID, code)
 	return room, nil
+}
+
+// pendingConflict posts the "unfinished game" warning with the pending game's
+// metadata and its record/cancel buttons.
+func (b *Bot) pendingConflict(c tele.Context, pending *storage.Game) error {
+	creator := ""
+	if pending.CreatedBy.Valid {
+		if p, err := b.st.PlayerByTg(pending.ChatID, pending.CreatedBy.Int64); err == nil && p != nil {
+			creator = p.Name
+		}
+	}
+	return c.Send(pendingConflictText(pending, creator, b.chatTZ(pending.ChatID)),
+		pendingConflictKeyboard(pending.ID))
 }
 
 // startNewGame creates a usdoku game (or falls back to a link) and posts it.
