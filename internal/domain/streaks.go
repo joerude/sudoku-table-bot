@@ -75,29 +75,39 @@ type BadgeInput struct {
 	SeasonsWon int
 }
 
+// BadgeStatus is one badge's earned state and progress toward its threshold.
+// Cur/Target drive the "cur/target" progress hint on locked badges. Time is set
+// only for the ⚡ speed badge, where lower is better and Cur/Target don't apply.
+type BadgeStatus struct {
+	Emoji  string
+	Earned bool
+	Cur    int
+	Target int
+	Time   bool
+}
+
+// BadgeProgress returns every badge with its earned state and progress toward
+// its threshold, in the fixed display order. Badges() is derived from this so
+// thresholds and order live in exactly one place.
+func BadgeProgress(in BadgeInput) []BadgeStatus {
+	return []BadgeStatus{
+		{Emoji: "🏅", Earned: in.SeasonsWon >= 1, Cur: in.SeasonsWon, Target: 1}, // season champion
+		{Emoji: "🔥", Earned: in.WinStreak >= 3, Cur: in.WinStreak, Target: 3},   // hot streak
+		{Emoji: "⚡", Earned: in.BestSecs > 0 && in.BestSecs < 120, Cur: in.BestSecs, Target: 120, Time: true}, // sub-2:00 solve
+		{Emoji: "💪", Earned: in.Wins >= 10, Cur: in.Wins, Target: 10},   // 10+ wins
+		{Emoji: "💯", Earned: in.Wins >= 50, Cur: in.Wins, Target: 50},   // 50+ wins
+		{Emoji: "🎯", Earned: in.Games >= 100, Cur: in.Games, Target: 100}, // 100+ games
+		{Emoji: "📅", Earned: in.DayStreak >= 7, Cur: in.DayStreak, Target: 7}, // week-long play streak
+	}
+}
+
 // Badges returns the emoji badges a player has earned, in a fixed display order.
 func Badges(in BadgeInput) []string {
 	var b []string
-	if in.SeasonsWon >= 1 {
-		b = append(b, "🏅") // season champion
-	}
-	if in.WinStreak >= 3 {
-		b = append(b, "🔥") // hot streak
-	}
-	if in.BestSecs > 0 && in.BestSecs < 120 {
-		b = append(b, "⚡") // sub-2:00 solve
-	}
-	if in.Wins >= 10 {
-		b = append(b, "💪") // 10+ wins
-	}
-	if in.Wins >= 50 {
-		b = append(b, "💯") // 50+ wins
-	}
-	if in.Games >= 100 {
-		b = append(b, "🎯") // 100+ games
-	}
-	if in.DayStreak >= 7 {
-		b = append(b, "📅") // week-long play streak
+	for _, s := range BadgeProgress(in) {
+		if s.Earned {
+			b = append(b, s.Emoji)
+		}
 	}
 	return b
 }

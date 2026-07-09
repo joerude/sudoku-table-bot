@@ -23,7 +23,7 @@ func (b *Bot) meExtra(chatID, playerID int64, tz string) string {
 		log.Printf("meExtra: %v", err)
 		return ""
 	}
-	return streakBadgeText(in.WinStreak, in.DayStreak, in.SeasonsWon, domain.Badges(in))
+	return badgeCollectionText(domain.BadgeProgress(in))
 }
 
 // chatTZ returns the chat's timezone string, defaulting to UTC on error.
@@ -434,7 +434,11 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = recordsText(recs)
+		titles, e := b.st.TitlesBoard(chatID)
+		if e != nil {
+			return "", nil, e
+		}
+		text = recordsText(recs, titles)
 	default:
 		tab = "table"
 		standings, e := b.st.Standings(chatID, season.ID)

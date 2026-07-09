@@ -602,36 +602,48 @@ func TestRecordsTextRendersHoldersAndEmpty(t *testing.T) {
 		{Difficulty: "easy", Secs: 72, Name: "Ann"},
 		{Difficulty: "medium", Secs: 118, Name: "Joe<b>"},
 	}
-	out := recordsText(rows)
+	out := recordsText(rows, nil)
 	for _, want := range []string{"1:12", "Ann", "1:58", "Easy", "Medium", "Joe&lt;b&gt;"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("recordsText: want %q in\n%s", want, out)
 		}
 	}
-	if empty := recordsText(nil); !strings.Contains(empty, "Пока нет") {
+	if empty := recordsText(nil, nil); !strings.Contains(empty, "Пока нет") {
 		t.Errorf("empty recordsText should hint, got: %s", empty)
+	}
+	// Titles section renders when only titles exist (no time records).
+	titles := recordsText(nil, []storage.TitleRow{{Name: "Bob<b>", Count: 3}})
+	for _, want := range []string{"Титулы", "Bob&lt;b&gt;", "×3"} {
+		if !strings.Contains(titles, want) {
+			t.Errorf("recordsText titles: want %q in\n%s", want, titles)
+		}
 	}
 }
 
-func TestStreakBadgeText(t *testing.T) {
-	out := streakBadgeText(4, 6, 0, []string{"🔥", "⚡"})
-	for _, want := range []string{"Серия побед", "4", "Дней подряд", "6", "🔥", "⚡"} {
+func TestBadgeCollectionText(t *testing.T) {
+	// Two championships, 34 wins (💪 earned, 💯 locked), no timed solves.
+	in := domain.BadgeInput{Wins: 34, Games: 120, BestSecs: 0, WinStreak: 3, DayStreak: 2, SeasonsWon: 2}
+	out := badgeCollectionText(domain.BadgeProgress(in))
+	for _, want := range []string{
+		"🏆", "Бейджи", "(4/7)", // header with earned count
+		"чемпион сезона ×2", // 🏅 folds in the title count
+		"💯 50 побед — 34/50", // locked count badge shows progress
+		"🔒 ⚡ решение быстрее 2:00", // locked speed badge, no best time
+		"📅 7 дней подряд — 2/7", // locked streak badge
+	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("streakBadgeText: want %q in %q", want, out)
+			t.Errorf("badgeCollectionText: want %q in\n%s", want, out)
 		}
 	}
-	// zeros + no badges → empty string (nothing appended)
-	if s := streakBadgeText(0, 0, 0, nil); s != "" {
-		t.Errorf("expected empty, got %q", s)
+	// A locked speed badge with a recorded (but slow) best shows the time.
+	slow := badgeCollectionText(domain.BadgeProgress(domain.BadgeInput{BestSecs: 134}))
+	if !strings.Contains(slow, "🔒 ⚡ решение быстрее 2:00 — лучшее 2:14") {
+		t.Errorf("speed badge best-time hint missing:\n%s", slow)
 	}
-	// win streak of 1 is not a "streak" worth showing
-	if s := streakBadgeText(1, 0, 0, nil); s != "" {
-		t.Errorf("streak of 1 should render empty, got %q", s)
-	}
-	// championships render with a crown and the count
-	champ := streakBadgeText(0, 0, 2, nil)
-	if !strings.Contains(champ, "👑") || !strings.Contains(champ, "Чемпионств") || !strings.Contains(champ, "2") {
-		t.Errorf("championships line missing: %q", champ)
+	// A single championship shows the label without a ×N suffix.
+	one := badgeCollectionText(domain.BadgeProgress(domain.BadgeInput{SeasonsWon: 1}))
+	if strings.Contains(one, "чемпион сезона ×") {
+		t.Errorf("single title should not show ×N:\n%s", one)
 	}
 }
 
