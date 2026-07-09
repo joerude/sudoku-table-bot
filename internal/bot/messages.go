@@ -747,47 +747,78 @@ func inviteText(difficulty, code string, pings, roster []storage.Player) string 
 // difficultyRank orders records easy < medium < hard < extreme < other.
 var difficultyRank = map[string]int{"easy": 0, "medium": 1, "hard": 2, "extreme": 3}
 
-// recordsText renders the all-time fastest solve per difficulty.
-func recordsText(rows []storage.RecordRow) string {
-	if len(rows) == 0 {
+// recordsText renders the all-time fastest solve per difficulty plus the
+// championship-title tally. Empty only when there is neither.
+func recordsText(rows []storage.RecordRow, titles []storage.TitleRow) string {
+	if len(rows) == 0 && len(titles) == 0 {
 		return "🏆 <b>Рекорды</b>\nПока нет рекордов — сыграйте авто-игру (нужен /setnick), и время попадёт сюда."
 	}
-	sorted := make([]storage.RecordRow, len(rows))
-	copy(sorted, rows)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		ri, ok := difficultyRank[sorted[i].Difficulty]
-		if !ok {
-			ri = 99
-		}
-		rj, ok := difficultyRank[sorted[j].Difficulty]
-		if !ok {
-			rj = 99
-		}
-		return ri < rj
-	})
 	var b strings.Builder
 	b.WriteString("🏆 <b>Рекорды</b> · лучшее время\n")
-	for _, r := range sorted {
-		fmt.Fprintf(&b, "<b>%s</b> — %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
+	if len(rows) == 0 {
+		b.WriteString("Пока нет рекордов по времени.\n")
+	} else {
+		sorted := make([]storage.RecordRow, len(rows))
+		copy(sorted, rows)
+		sort.SliceStable(sorted, func(i, j int) bool {
+			ri, ok := difficultyRank[sorted[i].Difficulty]
+			if !ok {
+				ri = 99
+			}
+			rj, ok := difficultyRank[sorted[j].Difficulty]
+			if !ok {
+				rj = 99
+			}
+			return ri < rj
+		})
+		for _, r := range sorted {
+			fmt.Fprintf(&b, "<b>%s</b> — %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
+		}
+	}
+	if len(titles) > 0 {
+		b.WriteString("\n👑 <b>Титулы</b>\n")
+		for _, t := range titles {
+			fmt.Fprintf(&b, "%s ×%d\n", esc(t.Name), t.Count)
+		}
 	}
 	return b.String()
 }
 
-// streakBadgeText renders the championships, streak lines + badge row appended
-// to /me. Returns "" when there is nothing noteworthy.
-func streakBadgeText(winStreak, dayStreak, seasonsWon int, badges []string) string {
+// badgeCollectionText renders the full badge collection appended to /me: an
+// "N/total" header, then every badge in catalog order — earned ones with their
+// label (🏅 carries a ×N title count), locked ones with a 🔒 and a progress
+// hint. Returns "" only when the catalog is empty (defensive).
+func badgeCollectionText(statuses []domain.BadgeStatus) string {
+	if len(statuses) == 0 {
+		return ""
+	}
+	earned := 0
+	for _, s := range statuses {
+		if s.Earned {
+			earned++
+		}
+	}
 	var b strings.Builder
-	if seasonsWon >= 1 {
-		fmt.Fprintf(&b, "\n👑 Чемпионств: <b>%d</b>", seasonsWon)
-	}
-	if winStreak >= 2 {
-		fmt.Fprintf(&b, "\n🔥 Серия побед: <b>%d</b>", winStreak)
-	}
-	if dayStreak >= 2 {
-		fmt.Fprintf(&b, "\n📅 Дней подряд: <b>%d</b>", dayStreak)
-	}
-	if len(badges) > 0 {
-		b.WriteString("\n🏆 " + strings.Join(badges, " "))
+	fmt.Fprintf(&b, "\n\n🏆 <b>Бейджи</b> (%d/%d)", earned, len(statuses))
+	for _, s := range statuses {
+		name := badgeLabels[s.Emoji]
+		switch {
+		case s.Earned && s.Emoji == "🏅" && s.Cur > 1:
+			fmt.Fprintf(&b, "\n%s %s ×%d", s.Emoji, name, s.Cur)
+		case s.Earned:
+			fmt.Fprintf(&b, "\n%s %s", s.Emoji, name)
+		case s.Time:
+			// Speed badge: no cur/target — show best time when there is one.
+			b.WriteString("\n🔒 " + s.Emoji + " " + name)
+			if s.Cur > 0 {
+				fmt.Fprintf(&b, " — лучшее %s", fmtDuration(s.Cur))
+			}
+		case s.Target > 1:
+			fmt.Fprintf(&b, "\n🔒 %s %s — %d/%d", s.Emoji, name, s.Cur, s.Target)
+		default:
+			// Binary locked (target 1, e.g. 🏅 with no titles).
+			fmt.Fprintf(&b, "\n🔒 %s %s", s.Emoji, name)
+		}
 	}
 	return b.String()
 }

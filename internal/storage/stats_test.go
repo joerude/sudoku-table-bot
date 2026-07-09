@@ -383,3 +383,43 @@ func TestSpeedboardIgnoresDeletedGames(t *testing.T) {
 		t.Errorf("Bob.Games after delete: want 2, got %d", fewer[0].Games)
 	}
 }
+
+func TestTitlesBoard(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-9100)
+	st.EnsureChat(chat, 1)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	// No archived seasons yet → empty board.
+	if tb, err := st.TitlesBoard(chat); err != nil || len(tb) != 0 {
+		t.Fatalf("empty TitlesBoard: got %v err %v", tb, err)
+	}
+
+	win := func(w int64) {
+		se, err := st.ActiveSeason(chat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.CloseSeason(se, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	win(b.ID) // Bob
+	win(a.ID) // Alice
+	win(b.ID) // Bob → 2 titles, leads
+
+	tb, err := st.TitlesBoard(chat)
+	if err != nil {
+		t.Fatalf("TitlesBoard: %v", err)
+	}
+	if len(tb) != 2 {
+		t.Fatalf("want 2 rows, got %+v", tb)
+	}
+	if tb[0].Name != "Bob" || tb[0].Count != 2 {
+		t.Errorf("row0: want Bob x2, got %+v", tb[0])
+	}
+	if tb[1].Name != "Alice" || tb[1].Count != 1 {
+		t.Errorf("row1: want Alice x1, got %+v", tb[1])
+	}
+}

@@ -63,3 +63,39 @@ func TestBadges(t *testing.T) {
 		t.Errorf("BestSecs 0 should grant nothing, got %v", b)
 	}
 }
+
+func TestBadgeProgress(t *testing.T) {
+	ps := BadgeProgress(BadgeInput{Wins: 34, Games: 60, BestSecs: 0, WinStreak: 2, DayStreak: 3, SeasonsWon: 2})
+	by := map[string]BadgeStatus{}
+	for _, p := range ps {
+		by[p.Emoji] = p
+	}
+	// 🏅 earned with the actual championship count carried in Cur.
+	if c := by["🏅"]; !c.Earned || c.Cur != 2 {
+		t.Errorf("🏅: want earned cur=2, got %+v", c)
+	}
+	// 💯 locked, progress 34/50.
+	if c := by["💯"]; c.Earned || c.Cur != 34 || c.Target != 50 {
+		t.Errorf("💯: want locked 34/50, got %+v", c)
+	}
+	// ⚡ locked and flagged as a time badge (Cur==0 means no timed solves yet).
+	if c := by["⚡"]; c.Earned || !c.Time {
+		t.Errorf("⚡: want locked time badge, got %+v", c)
+	}
+	// Badges() must agree with BadgeProgress earned flags, same order.
+	var earned []string
+	for _, p := range ps {
+		if p.Earned {
+			earned = append(earned, p.Emoji)
+		}
+	}
+	got := Badges(BadgeInput{Wins: 34, Games: 60, BestSecs: 0, WinStreak: 2, DayStreak: 3, SeasonsWon: 2})
+	if len(got) != len(earned) {
+		t.Fatalf("Badges vs BadgeProgress mismatch: %v vs %v", got, earned)
+	}
+	for i := range got {
+		if got[i] != earned[i] {
+			t.Errorf("order mismatch at %d: %q vs %q", i, got[i], earned[i])
+		}
+	}
+}

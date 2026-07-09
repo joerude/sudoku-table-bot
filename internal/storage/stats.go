@@ -326,6 +326,37 @@ func (s *Store) CareerStats(chatID, playerID int64) (wins, games, bestSecs int, 
 	return wins, games, bestSecs, nil
 }
 
+// TitleRow is a player's tally of season championships.
+type TitleRow struct {
+	Name  string
+	Count int
+}
+
+// TitlesBoard returns championship counts per player (archived seasons with a
+// winner), most titles first, ties broken by name.
+func (s *Store) TitlesBoard(chatID int64) ([]TitleRow, error) {
+	rows, err := s.db.Query(`
+		SELECT p.name, COUNT(*) AS titles
+		FROM seasons se
+		JOIN players p ON p.id = se.winner_id
+		WHERE se.chat_id = ? AND se.status = 'archived' AND se.winner_id IS NOT NULL
+		GROUP BY se.winner_id
+		ORDER BY titles DESC, p.name`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TitleRow
+	for rows.Next() {
+		var r TitleRow
+		if err := rows.Scan(&r.Name, &r.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // SeasonsWon counts archived seasons this player won.
 func (s *Store) SeasonsWon(chatID, playerID int64) (int, error) {
 	var n int
