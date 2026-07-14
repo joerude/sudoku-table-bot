@@ -104,14 +104,25 @@ func resultKeyboard(gameID int64) *tele.ReplyMarkup {
 	return m
 }
 
-// confirmDeleteKeyboard asks the user to confirm deletion.
-func confirmDeleteKeyboard(gameID int64) *tele.ReplyMarkup {
+// confirmDeleteKeyboard asks the user to confirm deletion. origin (may be
+// empty) rides along so a confirmed delete can resume the blocked command.
+func confirmDeleteKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
+	payload := delPayload(gameID, origin)
 	m.Inline(m.Row(
-		m.Data("✅ Да, удалить", cbDelY, gid(gameID)),
-		m.Data("↩️ Отмена", cbDelN, gid(gameID)),
+		m.Data("✅ Да, удалить", cbDelY, payload),
+		m.Data("↩️ Отмена", cbDelN, payload),
 	))
 	return m
+}
+
+// delPayload encodes a delete-chain callback payload: bare game id, or
+// "<gameID>:<origin>" when the delete should resume a blocked command.
+func delPayload(gameID int64, origin string) string {
+	if origin == "" {
+		return gid(gameID)
+	}
+	return gid(gameID) + ":" + origin
 }
 
 // restoreKeyboard offers to undo a soft-delete.
@@ -183,12 +194,14 @@ func inviteKeyboard(gameID int64, count int) *tele.ReplyMarkup {
 	return m
 }
 
-// pendingConflictKeyboard is shown when a new game is requested while one is open.
-func pendingConflictKeyboard(gameID int64) *tele.ReplyMarkup {
+// pendingConflictKeyboard is shown when a new game is requested while one is
+// open. origin encodes the blocked command (e.g. "duel:medium") so deleting
+// the stale game flows straight back into it.
+func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
 		m.Data("📝 Записать результат", cbRec, gid(gameID)),
-		m.Data("🗑 Отменить игру", cbDel, gid(gameID)),
+		m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)),
 	))
 	return m
 }

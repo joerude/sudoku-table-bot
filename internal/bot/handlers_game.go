@@ -80,8 +80,9 @@ type gameRoom struct {
 // createGameRoom runs the shared setup for /newgame, /duel and /invite: guards,
 // creates the pending game, tries to open a usdoku room, starts the watcher. It
 // does NOT post a chat message. Returns (nil, nil) when a guard already replied
-// to the user (caller should just return nil).
-func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom, error) {
+// to the user (caller should just return nil). origin names the caller's flow
+// for the pending-conflict continuation (see resumeAfterDelete).
+func (b *Bot) createGameRoom(c tele.Context, difficulty, mode, origin string) (*gameRoom, error) {
 	season, err := b.ensure(c)
 	if err != nil {
 		return nil, err
@@ -95,7 +96,7 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom
 		return nil, err
 	}
 	if pending != nil {
-		_ = b.pendingConflict(c, pending)
+		_ = b.pendingConflict(c, pending, origin)
 		return nil, nil
 	}
 	var createdBy int64
@@ -124,8 +125,9 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode string) (*gameRoom
 }
 
 // pendingConflict posts the "unfinished game" warning with the pending game's
-// metadata and its record/cancel buttons.
-func (b *Bot) pendingConflict(c tele.Context, pending *storage.Game) error {
+// metadata and its record/cancel buttons. origin (may be empty) is the command
+// that got blocked; deleting the game then resumes it (resumeAfterDelete).
+func (b *Bot) pendingConflict(c tele.Context, pending *storage.Game, origin string) error {
 	creator := ""
 	if pending.CreatedBy.Valid {
 		if p, err := b.st.PlayerByTg(pending.ChatID, pending.CreatedBy.Int64); err == nil && p != nil {
@@ -133,7 +135,7 @@ func (b *Bot) pendingConflict(c tele.Context, pending *storage.Game) error {
 		}
 	}
 	return c.Send(pendingConflictText(pending, creator, b.chatTZ(pending.ChatID)),
-		pendingConflictKeyboard(pending.ID))
+		pendingConflictKeyboard(pending.ID, origin))
 }
 
 // codeRe matches a usdoku room code (short alphanumeric, e.g. LOVI, QPHA).
@@ -182,7 +184,7 @@ func (b *Bot) onSetCode(c tele.Context) error {
 
 // startNewGame creates a usdoku game (or falls back to a link) and posts it.
 func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
-	room, err := b.createGameRoom(c, difficulty, mode)
+	room, err := b.createGameRoom(c, difficulty, mode, "game:"+difficulty+":"+mode)
 	if err != nil {
 		return b.fail(c, "startNewGame", err)
 	}
@@ -394,7 +396,7 @@ func (b *Bot) onEdit(c tele.Context) error {
 
 // onDeleteAsk swaps the keyboard for a confirmation prompt (text is preserved).
 func (b *Bot) onDeleteAsk(c tele.Context) error {
-	gameID := parseID(c.Data())
+	gameID, origin := parseIDOrigin(c.Data())
 	game, err := b.st.GameByID(gameID)
 	if err != nil {
 		return b.fail(c, "onDeleteAsk.game", err)
@@ -403,22 +405,97 @@ func (b *Bot) onDeleteAsk(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
 	}
 	_ = c.Respond()
-	return c.Edit(confirmDeleteKeyboard(gameID))
+	return c.Edit(confirmDeleteKeyboard(gameID, origin))
 }
 
-// onDeleteConfirm soft-deletes the game and offers to restore it.
+// onDeleteConfirm soft-deletes the game. With no origin it offers to restore;
+// with one (delete came from a pending-conflict post) it resumes that flow.
 func (b *Bot) onDeleteConfirm(c tele.Context) error {
-	gameID := parseID(c.Data())
+	gameID, origin := parseIDOrigin(c.Data())
 	if err := b.st.SoftDeleteGame(gameID); err != nil {
 		return b.fail(c, "onDeleteConfirm.delete", err)
+	}
+	if origin != "" {
+		return b.resumeAfterDelete(c, origin)
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
 	return c.Edit("🗑 Игра удалена, таблица пересчитана.\nМожно вернуть:", restoreKeyboard(gameID))
 }
 
-// onDeleteCancel keeps the game and restores its normal keyboard.
+// deletedNote closes out a pending-conflict post whose game was just deleted.
+const deletedNote = "🗑 Игра удалена."
+
+// originArgs extracts difficulty/mode from origin parts ("game:<diff>:<mode>"),
+// falling back to the parseNewGameArgs defaults on anything unexpected.
+func originArgs(parts []string) (difficulty, mode string) {
+	difficulty, mode = "medium", "hardcore"
+	if len(parts) > 1 && validDifficulty[parts[1]] {
+		difficulty = parts[1]
+	}
+	if len(parts) > 2 && (parts[2] == "hardcore" || parts[2] == "original") {
+		mode = parts[2]
+	}
+	return
+}
+
+// resumeAfterDelete continues the command that hit the pending-game conflict,
+// so deleting the stale game flows straight into what the user asked for
+// (the presser becomes the caller). Unknown origins degrade to a plain note.
+func (b *Bot) resumeAfterDelete(c tele.Context, origin string) error {
+	parts := strings.Split(origin, ":")
+	switch parts[0] {
+	case "play":
+		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
+		return c.Edit(deletedNote+"\n\n🎮 <b>Что играем?</b>", playMenuKeyboard())
+	case "duel":
+		difficulty, _ := originArgs(parts)
+		me := realSender(c)
+		if me == nil {
+			_ = c.Respond(&tele.CallbackResponse{Text: "Не вижу кто ты"})
+			return c.Edit(deletedNote)
+		}
+		caller, err := b.st.PlayerByTg(c.Chat().ID, me.ID)
+		if err != nil {
+			return b.fail(c, "resumeAfterDelete.caller", err)
+		}
+		if caller == nil {
+			_ = c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
+			return c.Edit(deletedNote)
+		}
+		others, err := b.opponents(c.Chat().ID, caller.ID)
+		if err != nil {
+			return b.fail(c, "resumeAfterDelete.opponents", err)
+		}
+		if len(others) == 0 {
+			_ = c.Respond(&tele.CallbackResponse{Text: "Нет соперников"})
+			return c.Edit(deletedNote)
+		}
+		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
+		return c.Edit(deletedNote+"\n\n⚔️ Кого вызываешь на дуэль?",
+			duelPickKeyboard(difficulty, others))
+	case "game":
+		difficulty, mode := originArgs(parts)
+		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
+		if err := c.Edit(deletedNote); err != nil {
+			log.Printf("resumeAfterDelete.edit: %v", err)
+		}
+		return b.startNewGame(c, difficulty, mode)
+	case "inv":
+		difficulty, mode := originArgs(parts)
+		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
+		if err := c.Edit(deletedNote); err != nil {
+			log.Printf("resumeAfterDelete.edit: %v", err)
+		}
+		return b.startInvite(c, difficulty, mode)
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
+	return c.Edit(deletedNote)
+}
+
+// onDeleteCancel keeps the game and restores its normal keyboard (the
+// conflict keyboard, origin intact, when the delete came from one).
 func (b *Bot) onDeleteCancel(c tele.Context) error {
-	gameID := parseID(c.Data())
+	gameID, origin := parseIDOrigin(c.Data())
 	game, err := b.st.GameByID(gameID)
 	if err != nil {
 		return b.fail(c, "onDeleteCancel.game", err)
@@ -426,6 +503,9 @@ func (b *Bot) onDeleteCancel(c tele.Context) error {
 	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
 	if game != nil && game.Status == "completed" {
 		return c.Edit(resultKeyboard(gameID))
+	}
+	if origin != "" {
+		return c.Edit(pendingConflictKeyboard(gameID, origin))
 	}
 	return c.Edit(recordKeyboard(gameID))
 }

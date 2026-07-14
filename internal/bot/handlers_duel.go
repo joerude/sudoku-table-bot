@@ -17,12 +17,13 @@ func (b *Bot) onDuel(c tele.Context) error {
 	if !b.enoughPlayers(c, chatID) {
 		return nil
 	}
+	difficulty, _ := parseNewGameArgs(c.Args())
 	pending, err := b.st.ActivePendingGame(chatID)
 	if err != nil {
 		return b.fail(c, "onDuel.pending", err)
 	}
 	if pending != nil { // don't offer opponents for a challenge that can't start
-		return b.pendingConflict(c, pending)
+		return b.pendingConflict(c, pending, "duel:"+difficulty)
 	}
 	me := realSender(c)
 	if me == nil {
@@ -35,21 +36,29 @@ func (b *Bot) onDuel(c tele.Context) error {
 	if caller == nil {
 		return b.ephemeral(c, "Сначала зарегистрируйся: /join")
 	}
-	players, err := b.st.ListPlayers(chatID)
+	others, err := b.opponents(chatID, caller.ID)
 	if err != nil {
 		return b.fail(c, "onDuel.players", err)
-	}
-	var others []storage.Player
-	for _, p := range players {
-		if p.ID != caller.ID {
-			others = append(others, p)
-		}
 	}
 	if len(others) == 0 {
 		return b.ephemeral(c, "Нет соперников. Пусть кто-то ещё сделает /join.")
 	}
-	difficulty, _ := parseNewGameArgs(c.Args())
 	return c.Send("⚔️ Кого вызываешь на дуэль?", duelPickKeyboard(difficulty, others))
+}
+
+// opponents lists the chat's active players except the caller.
+func (b *Bot) opponents(chatID, callerID int64) ([]storage.Player, error) {
+	players, err := b.st.ListPlayers(chatID)
+	if err != nil {
+		return nil, err
+	}
+	var others []storage.Player
+	for _, p := range players {
+		if p.ID != callerID {
+			others = append(others, p)
+		}
+	}
+	return others, nil
 }
 
 // onDuelPick issues the challenge: creates the room, tags the target, posts
@@ -80,7 +89,7 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 	if target == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
 	}
-	room, err := b.createGameRoom(c, difficulty, "hardcore")
+	room, err := b.createGameRoom(c, difficulty, "hardcore", "duel:"+difficulty)
 	if err != nil {
 		return b.fail(c, "onDuelPick.room", err)
 	}

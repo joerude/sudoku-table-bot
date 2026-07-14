@@ -14,7 +14,7 @@ func (b *Bot) onPlay(c tele.Context) error {
 		return b.fail(c, "onPlay.pending", err)
 	}
 	if pending != nil {
-		return b.pendingConflict(c, pending)
+		return b.pendingConflict(c, pending, "play")
 	}
 	return c.Send("🎮 <b>Что играем?</b>", playMenuKeyboard())
 }

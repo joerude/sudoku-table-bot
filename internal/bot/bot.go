@@ -242,6 +242,17 @@ func parseID(s string) int64 {
 	return v
 }
 
+// parseIDOrigin reads "<gameID>" or "<gameID>:<origin>" from a callback
+// payload, where origin is the pending-conflict continuation (e.g. "duel:hard").
+func parseIDOrigin(s string) (int64, string) {
+	parts := strings.SplitN(s, ":", 2)
+	id, _ := strconv.ParseInt(parts[0], 10, 64)
+	if len(parts) == 2 {
+		return id, parts[1]
+	}
+	return id, ""
+}
+
 // parsePair reads "<a>:<b>" from a callback payload.
 func parsePair(s string) (int64, int64) {
 	parts := strings.SplitN(s, ":", 2)
