@@ -140,7 +140,7 @@ func TestDuelsText(t *testing.T) {
 		{Name: "Vasya", Wins: 8, Losses: 2},
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
-	out := duelsText(rows, nil, nil, nil, nil, "Asia/Bishkek")
+	out := duelsText(rows, nil, nil, nil, nil, nil, "Asia/Bishkek")
 	for _, want := range []string{"🥇", "Vasya", "8–2", "(80%)", "Masha", "(50%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText: want %q in output\ngot: %s", want, out)
@@ -149,7 +149,7 @@ func TestDuelsText(t *testing.T) {
 }
 
 func TestDuelsTextEmpty(t *testing.T) {
-	out := duelsText(nil, nil, nil, nil, nil, "Asia/Bishkek")
+	out := duelsText(nil, nil, nil, nil, nil, nil, "Asia/Bishkek")
 	if !strings.Contains(out, "Ещё не было дуэлей") {
 		t.Errorf("duelsText empty: want 'Ещё не было дуэлей' in output\ngot: %s", out)
 	}
@@ -163,7 +163,7 @@ func TestDuelsTextWithRecent(t *testing.T) {
 		// 12:00 UTC -> Asia/Bishkek (UTC+6) = 18:00, same date.
 		{CompletedAt: "2026-06-22 12:00:00", Winner: "Vasya", Loser: "Petya"},
 	}
-	out := duelsText(rows, nil, nil, nil, recent, "Asia/Bishkek")
+	out := duelsText(rows, nil, nil, nil, recent, nil, "Asia/Bishkek")
 	for _, want := range []string{"Последние дуэли", "2026-06-22 18:00", "Vasya", "обыграл", "Petya"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText with recent: want %q in output\ngot: %s", want, out)
@@ -180,11 +180,59 @@ func TestDuelsTextNewBlocks(t *testing.T) {
 	h2h := []storage.H2HPair{{AID: 1, BID: 2, AName: "Vasya", BName: "Masha", AWins: 4, BWins: 1}}
 	speed := []storage.SpeedRow{{Name: "Vasya", AvgSecs: 200, BestSecs: 150, Games: 6}}
 	streaks := map[int64]domain.Streak{1: {Current: 3, Best: 3}, 2: {Current: 0, Best: 1}}
-	out := duelsText(rows, h2h, speed, streaks, nil, "Asia/Bishkek")
+	out := duelsText(rows, h2h, speed, streaks, nil, nil, "Asia/Bishkek")
 	for _, want := range []string{"🔥3", "Личные встречи", "4–1", "Время в дуэлях", "3:20", "2:30"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText new blocks: want %q in output\ngot: %s", want, out)
 		}
+	}
+}
+
+// TestDuelsTextChallenges: the «Вызовы» block shows issued/received, declines
+// only when non-zero, and the 🙈 marker on the top decliner (≥2, unique max).
+func TestDuelsTextChallenges(t *testing.T) {
+	rows := []storage.DuelStanding{{PlayerID: 1, Name: "Vasya", Wins: 1, Losses: 0}}
+	ch := []storage.ChallengeStat{
+		{PlayerID: 1, Name: "Vasya", Issued: 7, Received: 3},
+		{PlayerID: 2, Name: "Masha", Issued: 3, Received: 7, Declined: 4},
+	}
+	out := duelsText(rows, nil, nil, nil, nil, ch, "Asia/Bishkek")
+	for _, want := range []string{"Вызовы", "бросил <b>7</b>", "получил <b>3</b>",
+		"отказов <b>4</b>", "🙈"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelsText challenges: want %q in output\ngot: %s", want, out)
+		}
+	}
+	vasyaLine := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "бросил <b>7</b>") {
+			vasyaLine = line
+		}
+	}
+	if strings.Contains(vasyaLine, "отказов") || strings.Contains(vasyaLine, "🙈") {
+		t.Errorf("Vasya (0 declines): line must have no отказов/🙈, got %q", vasyaLine)
+	}
+}
+
+// TestDuelsTextChallengesNoDuckUnderTwo: one decline doesn't earn the 🙈.
+func TestDuelsTextChallengesNoDuckUnderTwo(t *testing.T) {
+	ch := []storage.ChallengeStat{{PlayerID: 2, Name: "Masha", Issued: 1, Received: 2, Declined: 1}}
+	out := duelsText(nil, nil, nil, nil, nil, ch, "Asia/Bishkek")
+	if strings.Contains(out, "🙈") {
+		t.Errorf("single decline must not get 🙈:\n%s", out)
+	}
+}
+
+// TestDuelsTextChallengesOnly: no finished duels yet but challenges exist —
+// the panel must show the block instead of the empty-state message.
+func TestDuelsTextChallengesOnly(t *testing.T) {
+	ch := []storage.ChallengeStat{{PlayerID: 2, Name: "Masha", Issued: 2, Received: 0}}
+	out := duelsText(nil, nil, nil, nil, nil, ch, "Asia/Bishkek")
+	if strings.Contains(out, "Ещё не было дуэлей") {
+		t.Errorf("challenges exist — empty-state message must not show:\n%s", out)
+	}
+	if !strings.Contains(out, "Вызовы") {
+		t.Errorf("want Вызовы block:\n%s", out)
 	}
 }
 
@@ -774,7 +822,7 @@ func TestDuelsTextShowsElo(t *testing.T) {
 		{Name: "Vasya", Wins: 8, Losses: 2, Elo: 1080},
 		{Name: "Masha", Wins: 5, Losses: 5, Elo: 990},
 	}
-	out := duelsText(rows, nil, nil, nil, nil, "Asia/Bishkek")
+	out := duelsText(rows, nil, nil, nil, nil, nil, "Asia/Bishkek")
 	for _, want := range []string{"1080", "990", "8–2", "(80%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText elo: want %q in output\ngot: %s", want, out)

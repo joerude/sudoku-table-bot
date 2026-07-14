@@ -1,6 +1,9 @@
 package storage
 
-import "testing"
+import (
+	"database/sql"
+	"testing"
+)
 
 // makeDuelGame creates a completed duel game between winner (rank 1) and loser (rank 2).
 func makeDuelGame(t *testing.T, st *Store, chatID, seasonID, creatorID, winnerID, loserID, targetID int64) int64 {
@@ -462,6 +465,93 @@ func TestHeadToHeadAll(t *testing.T) {
 	}
 	if len(pairs) != 2 {
 		t.Errorf("want exactly 2 pairs (A-B, A-C), got %d: %+v", len(pairs), pairs)
+	}
+}
+
+// TestChallengeStats: issued/received count live+completed+declined duels;
+// challenger-cancelled duels don't count; declines need the declined_at stamp;
+// all-zero players are omitted.
+func TestChallengeStats(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6001)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 101, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 102, "Bob")
+	c, _, _ := st.RegisterPlayer(chat, 103, "Carol")
+
+	// 1. Completed duel: Alice (tg 101) challenges Bob.
+	makeDuelGame(t, st, chat, se.ID, 101, a.ID, b.ID, b.ID)
+
+	// 2. Declined duel: Alice challenges Bob, Bob declines.
+	g2, err := st.CreatePendingGame(chat, se.ID, 101, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame declined: %v", err)
+	}
+	st.SetDuelTarget(g2, b.ID)
+	if err := st.MarkDuelDeclined(g2); err != nil {
+		t.Fatalf("MarkDuelDeclined: %v", err)
+	}
+	st.SoftDeleteGame(g2)
+
+	// 3. Live pending duel: Bob (tg 102) challenges Alice.
+	g3, err := st.CreatePendingGame(chat, se.ID, 102, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame pending: %v", err)
+	}
+	st.SetDuelTarget(g3, a.ID)
+
+	// 4. Cancelled duel: Alice challenges Carol, then deletes it herself —
+	// must not count anywhere.
+	g4, err := st.CreatePendingGame(chat, se.ID, 101, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame cancelled: %v", err)
+	}
+	st.SetDuelTarget(g4, c.ID)
+	st.SoftDeleteGame(g4)
+
+	stats, err := st.ChallengeStats(chat)
+	if err != nil {
+		t.Fatalf("ChallengeStats: %v", err)
+	}
+	idx := map[string]ChallengeStat{}
+	for _, s := range stats {
+		idx[s.Name] = s
+	}
+	if got := idx["Alice"]; got.Issued != 2 || got.Received != 1 || got.Declined != 0 {
+		t.Errorf("Alice: want issued=2 received=1 declined=0, got %+v", got)
+	}
+	if got := idx["Bob"]; got.Issued != 1 || got.Received != 2 || got.Declined != 1 {
+		t.Errorf("Bob: want issued=1 received=2 declined=1, got %+v", got)
+	}
+	if _, ok := idx["Carol"]; ok {
+		t.Errorf("Carol has only a cancelled duel — must be omitted, got %+v", idx["Carol"])
+	}
+}
+
+// TestMarkDuelAccepted: stamps once, keeps the first timestamp.
+func TestMarkDuelAccepted(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6002)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	st.RegisterPlayer(chat, 201, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
+	gid, err := st.CreatePendingGame(chat, se.ID, 201, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame: %v", err)
+	}
+	st.SetDuelTarget(gid, b.ID)
+	if err := st.MarkDuelAccepted(gid); err != nil {
+		t.Fatalf("MarkDuelAccepted: %v", err)
+	}
+	var accepted sql.NullString
+	if err := st.db.QueryRow(`SELECT accepted_at FROM games WHERE id=?`, gid).Scan(&accepted); err != nil {
+		t.Fatalf("read accepted_at: %v", err)
+	}
+	if !accepted.Valid || accepted.String == "" {
+		t.Errorf("accepted_at not stamped: %+v", accepted)
 	}
 }
 

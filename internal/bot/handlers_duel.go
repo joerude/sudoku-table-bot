@@ -154,6 +154,9 @@ func (b *Bot) onAccept(c tele.Context) error {
 	if !ok {
 		return nil
 	}
+	if err := b.st.MarkDuelAccepted(gameID); err != nil {
+		log.Printf("onAccept.mark: %v", err) // stats-only stamp, never blocks the duel
+	}
 	_ = c.Respond()
 	text := duelAcceptText(*target, game.UsdokuCode.String)
 	kb := recordKeyboard(gameID)
@@ -194,6 +197,9 @@ func (b *Bot) onDecline(c tele.Context) error {
 	target, ok := b.duelTargetGuard(c, gameID)
 	if !ok {
 		return nil
+	}
+	if err := b.st.MarkDuelDeclined(gameID); err != nil {
+		log.Printf("onDecline.mark: %v", err) // the stamp tells a decline from a cancel
 	}
 	if err := b.st.SoftDeleteGame(gameID); err != nil {
 		return b.fail(c, "onDecline.cancel", err)
