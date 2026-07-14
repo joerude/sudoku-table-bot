@@ -244,7 +244,11 @@ func (b *Bot) duelsPanel(chatID int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return duelsText(rows, h2h, speed, streaks, recent, b.chatTZ(chatID)), nil
+	challenges, err := b.st.ChallengeStats(chatID)
+	if err != nil {
+		return "", err
+	}
+	return duelsText(rows, h2h, speed, streaks, recent, challenges, b.chatTZ(chatID)), nil
 }
 
 // duelExtras returns a player's duel solve summary and win-streak, for /me.

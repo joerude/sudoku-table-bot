@@ -53,6 +53,71 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 	return out, rows.Err()
 }
 
+// MarkDuelAccepted stamps when the target accepted the challenge. Keeps the
+// first stamp — re-taps and later edits don't move it.
+func (s *Store) MarkDuelAccepted(gameID int64) error {
+	_, err := s.db.Exec(
+		`UPDATE games SET accepted_at=datetime('now') WHERE id=? AND accepted_at IS NULL`, gameID)
+	return err
+}
+
+// MarkDuelDeclined stamps when the target declined the challenge (the game is
+// soft-deleted right after; the stamp is what tells a decline from a cancel).
+func (s *Store) MarkDuelDeclined(gameID int64) error {
+	_, err := s.db.Exec(
+		`UPDATE games SET declined_at=datetime('now') WHERE id=? AND declined_at IS NULL`, gameID)
+	return err
+}
+
+// ChallengeStat is one player's duel challenge behaviour. Issued/Received
+// count live, completed and declined challenges (challenger-cancelled ones
+// don't count); Declined counts challenges the player turned down.
+type ChallengeStat struct {
+	PlayerID int64
+	Name     string
+	Issued   int
+	Received int
+	Declined int
+}
+
+// sqlChallenge: a duel challenge that was really made — anything except a
+// challenge its creator deleted before an answer (deleted without a decline).
+const sqlChallenge = `g.duel_target_id IS NOT NULL AND (g.deleted=0 OR g.declined_at IS NOT NULL)`
+
+// ChallengeStats returns per-player challenge behaviour for a chat's active
+// players, most challenges issued first. Players with no counted challenge
+// are omitted. Issued matches on created_by (a Telegram id), so challenges
+// created before created_by existed count only toward Received.
+func (s *Store) ChallengeStats(chatID int64) ([]ChallengeStat, error) {
+	rows, err := s.db.Query(`
+		SELECT p.id, p.name,
+		       (SELECT COUNT(*) FROM games g WHERE g.chat_id=p.chat_id
+		          AND g.created_by=p.tg_id AND `+sqlChallenge+`) AS issued,
+		       (SELECT COUNT(*) FROM games g WHERE g.chat_id=p.chat_id
+		          AND g.duel_target_id=p.id AND `+sqlChallenge+`) AS received,
+		       (SELECT COUNT(*) FROM games g WHERE g.chat_id=p.chat_id
+		          AND g.duel_target_id=p.id AND g.declined_at IS NOT NULL) AS declined
+		FROM players p
+		WHERE p.chat_id=? AND p.active=1
+		ORDER BY issued DESC, p.name COLLATE NOCASE`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ChallengeStat
+	for rows.Next() {
+		var c ChallengeStat
+		if err := rows.Scan(&c.PlayerID, &c.Name, &c.Issued, &c.Received, &c.Declined); err != nil {
+			return nil, err
+		}
+		if c.Issued == 0 && c.Received == 0 && c.Declined == 0 {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // DuelPair is one finished duel with both participants known, for Elo replay.
 type DuelPair struct {
 	GameID   int64

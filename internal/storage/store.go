@@ -69,6 +69,8 @@ func migrate(db *sql.DB) {
 		     ON seasons(chat_id) WHERE status='active'`,
 		`ALTER TABLE chats ADD COLUMN weekly_digest INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE chats ADD COLUMN last_weekly TEXT`,
+		`ALTER TABLE games ADD COLUMN accepted_at TEXT`, // duel: target pressed «Принять»
+		`ALTER TABLE games ADD COLUMN declined_at TEXT`, // duel: target pressed «Отказ»
 	} {
 		_, _ = db.Exec(stmt)
 	}
