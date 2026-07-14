@@ -71,6 +71,10 @@ func learnTierMsg(t domain.Tier) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<b>%s</b>\n\n", esc(tierTitle(t)))
 	for _, tech := range domain.TechniquesByTier(t) {
+		if tech.Alias == tech.Name {
+			fmt.Fprintf(&b, "• <b>%s</b>\n", esc(tech.Name))
+			continue
+		}
 		fmt.Fprintf(&b, "• <b>%s</b> — %s\n", esc(tech.Name), esc(tech.Alias))
 	}
 	b.WriteString("\nЖми технику, чтобы прочитать разбор.")
@@ -79,7 +83,11 @@ func learnTierMsg(t domain.Tier) string {
 
 func learnTechMsg(t domain.Technique) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<b>%s</b> · <i>%s</i>\n", esc(t.Name), esc(t.Alias))
+	if t.Alias == t.Name {
+		fmt.Fprintf(&b, "<b>%s</b>\n", esc(t.Name))
+	} else {
+		fmt.Fprintf(&b, "<b>%s</b> · <i>%s</i>\n", esc(t.Name), esc(t.Alias))
+	}
 	fmt.Fprintf(&b, "<i>%s</i>\n\n", esc(tierTitle(t.Tier)))
 	b.WriteString(esc(t.Blurb))
 	return b.String()

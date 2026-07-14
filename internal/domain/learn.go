@@ -110,14 +110,15 @@ var techniques = []Technique{
 		URL:   "https://www.sudokuwiki.org/Jelly_Fish_Strategy",
 	},
 	{
-		Key: "simple-coloring", Name: "Простая раскраска", Alias: "Simple Colouring", Tier: TierAdv,
-		Blurb: "Берём цифру, у которой в областях ровно по две позиции, и красим цепочку в два цвета: соседи по звену всегда разного цвета. Если один цвет дважды попал в одну область — он ложный, ставим весь другой. Клетки, видящие оба цвета, теряют кандидата.",
+		Key: "simple-coloring", Name: "Простая раскраска", Alias: "Simple Colouring (Singles Chains)", Tier: TierAdv,
+		Blurb: "Берём цифру, у которой в областях ровно по две позиции, и красим цепочку в два цвета: соседи по звену всегда разного цвета. Если один цвет дважды попал в одну область — он ложный, ставим весь другой. Клетки, видящие оба цвета, теряют кандидата. Основа всех цепочечных техник: дальше идут 3D Medusa и X-Cycles.",
 		URL:   "https://www.sudokuwiki.org/Simple_Colouring",
+		Wiki:  "https://www.sudokuwiki.org/Singles_Chains",
 	},
 	{
-		Key: "singles-chain", Name: "Цепочки одиночек", Alias: "Singles Chains", Tier: TierAdv,
-		Blurb: "Формализованная двухцветная логика: сильные связи (ровно две позиции в области) чередуются, и правила раскраски снимают кандидатов. Основа всех цепочечных техник — дальше идут 3D Medusa и X-Cycles.",
-		URL:   "https://www.sudokuwiki.org/Singles_Chains",
+		Key: "wxyz-wing", Name: "WXYZ-Wing", Alias: "WXYZ-Wing", Tier: TierAdv,
+		Blurb: "Расширение XYZ-Wing на четыре клетки: вместе они держат четыре кандидата WXYZ, и только одна цифра Z встречается во всех «крыльях». Клетки, которые видят все Z конструкции, теряют этот кандидат.",
+		URL:   "https://www.sudokuwiki.org/WXYZ_wing",
 	},
 	{
 		Key: "xy-chain", Name: "XY-Chains", Alias: "XY-Chains", Tier: TierAdv,
