@@ -7,7 +7,13 @@ import (
 // onInvite opens a room and pings everyone to join, with an RSVP roster button.
 func (b *Bot) onInvite(c tele.Context) error {
 	difficulty, mode := parseNewGameArgs(c.Args())
-	room, err := b.createGameRoom(c, difficulty, mode)
+	return b.startInvite(c, difficulty, mode)
+}
+
+// startInvite runs the invite flow for an explicit difficulty/mode, so both
+// /invite and the pending-conflict continuation can use it.
+func (b *Bot) startInvite(c tele.Context, difficulty, mode string) error {
+	room, err := b.createGameRoom(c, difficulty, mode, "inv:"+difficulty+":"+mode)
 	if err != nil {
 		return b.fail(c, "onInvite", err)
 	}
