@@ -7,6 +7,7 @@ import (
 
 	tele "gopkg.in/telebot.v3"
 
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -47,6 +48,11 @@ const (
 	cbPlayDuel   = "pduel" // no payload — routes to duel flow
 	cbPlayInvite = "pinv"  // no payload — routes to invite flow
 	cbPlayDiff   = "pdiff" // payload: "<difficulty>" — creates a normal game
+
+	cbLearnRoot = "lroot" // no payload — back to the tier chooser
+	cbLearnTier = "ltier" // payload: "<tier>" — lists that tier's techniques
+	cbLearnTech = "ltech" // payload: "<techniqueKey>" — renders one technique
+	cbLearnRand = "lrand" // no payload — random technique
 )
 
 // quickMenuKeyboard offers one-tap shortcuts for the most common actions.
@@ -239,6 +245,52 @@ func playDiffKeyboard() *tele.ReplyMarkup {
 			m.Data("🔴 Hard", cbPlayDiff, "hard"),
 			m.Data("💀 Extreme", cbPlayDiff, "extreme"),
 		),
+	)
+	return m
+}
+
+// learnRootKeyboard is the /learn hub: three tiers plus a random pick.
+func learnRootKeyboard() *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(
+		m.Row(
+			m.Data("🟢 Базовые", cbLearnTier, string(domain.TierBasic)),
+			m.Data("🔵 Средние", cbLearnTier, string(domain.TierMid)),
+			m.Data("🔴 Продвинутые", cbLearnTier, string(domain.TierAdv)),
+		),
+		m.Row(m.Data("🎲 Случайная", cbLearnRand)),
+	)
+	return m
+}
+
+// learnTierKeyboard lists a tier's techniques two per row, plus a way back.
+func learnTierKeyboard(tier domain.Tier) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	list := domain.TechniquesByTier(tier)
+	for i := 0; i < len(list); i += 2 {
+		row := tele.Row{m.Data(list[i].Name, cbLearnTech, list[i].Key)}
+		if i+1 < len(list) {
+			row = append(row, m.Data(list[i+1].Name, cbLearnTech, list[i+1].Key))
+		}
+		rows = append(rows, row)
+	}
+	rows = append(rows, m.Row(m.Data("⬅️ Назад", cbLearnRoot)))
+	m.Inline(rows...)
+	return m
+}
+
+// learnTechKeyboard links out to the article (and the deep wiki one, if any) and
+// returns to the technique's own tier.
+func learnTechKeyboard(t domain.Technique) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	links := tele.Row{m.URL("🔗 Разбор с картинками", t.URL)}
+	if t.Wiki != "" {
+		links = append(links, m.URL("📖 sudokuwiki", t.Wiki))
+	}
+	m.Inline(
+		links,
+		m.Row(m.Data("⬅️ Назад", cbLearnTier, string(t.Tier))),
 	)
 	return m
 }

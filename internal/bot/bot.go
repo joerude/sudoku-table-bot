@@ -125,6 +125,12 @@ func (b *Bot) routes() {
 	b.tb.Handle("/invite", b.onInvite)
 	b.tb.Handle(&tele.Btn{Unique: cbJoinIn}, b.onJoinIn)
 
+	b.tb.Handle("/learn", b.onLearn)
+	b.tb.Handle(&tele.Btn{Unique: cbLearnRoot}, b.onLearnRoot)
+	b.tb.Handle(&tele.Btn{Unique: cbLearnTier}, b.onLearnTier)
+	b.tb.Handle(&tele.Btn{Unique: cbLearnTech}, b.onLearnTech)
+	b.tb.Handle(&tele.Btn{Unique: cbLearnRand}, b.onLearnRandom)
+
 	b.tb.Handle("/stats", b.onStats)
 	b.tb.Handle(&tele.Btn{Unique: cbStatsTab}, b.onStatsTab)
 
