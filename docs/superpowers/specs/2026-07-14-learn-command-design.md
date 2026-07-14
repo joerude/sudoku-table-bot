@@ -70,8 +70,8 @@ func RandomTechnique(r *rand.Rand) Technique
 **Продвинутые** (только sudokuwiki.org — на sudoku.com этих техник нет):
 13. `xyz-wing` XYZ-Wing — /XYZ_Wing
 14. `jellyfish` Jellyfish — /Jelly_Fish_Strategy
-15. `simple-coloring` Простая раскраска — /Simple_Colouring
-16. `singles-chain` Цепочки одиночек — /Singles_Chains
+15. `simple-coloring` Простая раскраска — /Simple_Colouring (wiki: /Singles_Chains — это та же техника, отдельной статьи не делаем)
+16. `wxyz-wing` WXYZ-Wing — /WXYZ_wing
 17. `xy-chain` XY-Chains — /XY_Chains
 18. `unique-rect` Уникальный прямоугольник — /Unique_Rectangles
 
