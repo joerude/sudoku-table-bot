@@ -430,8 +430,8 @@ func TestStatsKeyboardMarksActive(t *testing.T) {
 	for _, row := range m.InlineKeyboard {
 		flat = append(flat, row...)
 	}
-	if len(flat) != 6 {
-		t.Fatalf("want 6 tab buttons, got %d", len(flat))
+	if len(flat) != 7 {
+		t.Fatalf("want 7 tab buttons, got %d", len(flat))
 	}
 	ids := map[string]string{} // data -> text
 	for _, btn := range flat {
@@ -440,7 +440,7 @@ func TestStatsKeyboardMarksActive(t *testing.T) {
 		}
 		ids[btn.Data] = btn.Text
 	}
-	for _, want := range []string{"table", "me", "speed", "duels", "history", "records"} {
+	for _, want := range []string{"table", "me", "speed", "duels", "history", "records", "activity"} {
 		if _, ok := ids[want]; !ok {
 			t.Errorf("missing tab %q", want)
 		}
@@ -567,16 +567,16 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 	if !marked {
 		t.Errorf("speed_all: speed tab must carry the active marker")
 	}
-	// Other tabs get no toggle row: 6 tab buttons in 2 rows only.
-	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 2 {
-		t.Errorf("table tab without archive: want 2 rows, got %d", n)
+	// Other tabs get no toggle row: 7 tab buttons in 3 rows only.
+	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 3 {
+		t.Errorf("table tab without archive: want 3 rows, got %d", n)
 	}
 	// Table tab with archived seasons carries the season row.
 	withSeasons := statsKeyboard("table", []int{1, 2, 3}, 4)
-	if n := len(withSeasons.InlineKeyboard); n != 3 {
-		t.Fatalf("table tab with archive: want 3 rows, got %d", n)
+	if n := len(withSeasons.InlineKeyboard); n != 4 {
+		t.Fatalf("table tab with archive: want 4 rows, got %d", n)
 	}
-	seasonRow := withSeasons.InlineKeyboard[2]
+	seasonRow := withSeasons.InlineKeyboard[3]
 	if len(seasonRow) != 4 {
 		t.Fatalf("season row: want 4 buttons, got %d", len(seasonRow))
 	}
@@ -1178,5 +1178,39 @@ func TestSeasonDeadlineLineUnset(t *testing.T) {
 	se := &storage.Season{Number: 5}
 	if got := seasonDeadlineLine(se, time.Now(), time.UTC); got != "" {
 		t.Errorf("no deadline: line = %q, want empty", got)
+	}
+}
+
+func TestActivityText(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	rows := []storage.InitiativeRow{
+		{Name: "Joe Rude", GamesAll: 47, DuelsAll: 39, Games30: 12, Duels30: 8,
+			LastPlayed: "2026-07-20 08:00:00"},
+		{Name: "mister", GamesAll: 14, DuelsAll: 7, Games30: 0, Duels30: 0,
+			LastPlayed: "2026-07-14 08:00:00"},
+		{Name: "Ghost", LastPlayed: ""},
+	}
+	got := activityText(rows, now)
+
+	for _, want := range []string{
+		"Актив",
+		"Joe Rude",
+		"47", "39", "12",
+		"сегодня",
+		"mister",
+		"6 дн",
+		"Ghost",
+		"ещё не играл",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("activityText missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestActivityTextEmpty(t *testing.T) {
+	got := activityText(nil, time.Now())
+	if !strings.Contains(got, "/join") {
+		t.Errorf("empty roster should hint at /join, got:\n%s", got)
 	}
 }
