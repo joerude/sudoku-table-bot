@@ -15,6 +15,9 @@ type Season struct {
 	Target      int
 	PointsTable []int
 	Status      string
+	// Deadline is when the season ends by the calendar (UTC "2006-01-02 15:04:05").
+	// Invalid = not assigned yet; the bot's reminder tick fills it in.
+	Deadline sql.NullString
 }
 
 // ActiveSeason returns the chat's current active season, creating season #1 if
@@ -43,7 +46,7 @@ func (s *Store) ActiveSeason(chatID int64) (*Season, error) {
 // activeSeasonRow reads the chat's active season (sql.ErrNoRows if none).
 func (s *Store) activeSeasonRow(chatID int64) (*Season, error) {
 	return s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status FROM seasons
+		`SELECT id, chat_id, number, target, points_table, status, deadline FROM seasons
 		 WHERE chat_id=? AND status='active' ORDER BY number DESC LIMIT 1`, chatID))
 }
 
@@ -52,7 +55,7 @@ func (s *Store) activeSeasonRow(chatID int64) (*Season, error) {
 // import; ORDER BY id DESC picks the newest if history ever produced a dup.
 func (s *Store) SeasonByNumber(chatID int64, number int) (*Season, error) {
 	se, err := s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status FROM seasons
+		`SELECT id, chat_id, number, target, points_table, status, deadline FROM seasons
 		 WHERE chat_id=? AND number=? ORDER BY id DESC LIMIT 1`, chatID, number))
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -102,7 +105,7 @@ func (s *Store) ArchivedNumbers(chatID int64) ([]int, error) {
 // SeasonByID fetches a season by id.
 func (s *Store) SeasonByID(id int64) (*Season, error) {
 	return s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status FROM seasons WHERE id=?`, id))
+		`SELECT id, chat_id, number, target, points_table, status, deadline FROM seasons WHERE id=?`, id))
 }
 
 // CreateSeason inserts a new active season.
@@ -143,6 +146,13 @@ func (s *Store) UpdateSeasonTarget(seasonID int64, target int) error {
 	return err
 }
 
+// SetSeasonDeadline stores when the season ends by the calendar (UTC
+// "2006-01-02 15:04:05").
+func (s *Store) SetSeasonDeadline(seasonID int64, deadline string) error {
+	_, err := s.db.Exec(`UPDATE seasons SET deadline=? WHERE id=?`, deadline, seasonID)
+	return err
+}
+
 // UpdateSeasonPoints changes the active season's points table.
 func (s *Store) UpdateSeasonPoints(seasonID int64, table []int) error {
 	pts, _ := json.Marshal(table)
@@ -153,7 +163,7 @@ func (s *Store) UpdateSeasonPoints(seasonID int64, table []int) error {
 func (s *Store) scanSeason(row *sql.Row) (*Season, error) {
 	var se Season
 	var ptsJSON string
-	if err := row.Scan(&se.ID, &se.ChatID, &se.Number, &se.Target, &ptsJSON, &se.Status); err != nil {
+	if err := row.Scan(&se.ID, &se.ChatID, &se.Number, &se.Target, &ptsJSON, &se.Status, &se.Deadline); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal([]byte(ptsJSON), &se.PointsTable); err != nil {

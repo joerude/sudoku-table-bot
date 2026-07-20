@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS seasons (
     status       TEXT    NOT NULL DEFAULT 'active',    -- active | archived
     winner_id    INTEGER,
     started_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    deadline     TEXT,                            -- UTC; season also ends when this passes
     ended_at     TEXT
 );
 
