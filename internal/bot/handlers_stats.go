@@ -130,7 +130,10 @@ func (b *Bot) onSeason(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onSeason.leader", err)
 	}
-	return c.Send(seasonText(season, leader)+archiveHint(nums), seasonsKeyboard(nums, season.Number))
+	text := seasonText(season, leader) +
+		seasonDeadlineLine(season, time.Now(), loadLoc(b.chatTZ(c.Chat().ID))) +
+		archiveHint(nums)
+	return c.Send(text, seasonsKeyboard(nums, season.Number))
 }
 
 // seasonSummaryView builds season `number`'s summary (final table, dates,
@@ -445,7 +448,8 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = standingsText(season, standings)
+		text = standingsText(season, standings) +
+			seasonDeadlineLine(season, time.Now(), loadLoc(b.chatTZ(chatID)))
 	}
 	if err != nil {
 		return "", nil, err
