@@ -608,6 +608,10 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		if err != nil {
 			return "", "", err
 		}
+		if derr := b.st.SetSeasonDeadline(newSeason.ID,
+			fmtDBTime(domain.SeasonDeadline(time.Now(), loadLoc(b.chatTZ(game.ChatID))))); derr != nil {
+			log.Printf("scoreAndCheck.setdeadline: %v", derr) // the reminder tick fills it in
+		}
 		awards := b.seasonAwards(game.ChatID, season.ID, standings)
 		seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
 			awards, newSeason.Target, newSeason.Number)

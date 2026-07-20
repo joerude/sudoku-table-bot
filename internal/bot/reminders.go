@@ -7,6 +7,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
+	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
 // stalePendingMinutes is how long a pending game waits before the bot nudges.
@@ -20,6 +21,7 @@ func (b *Bot) runReminders() {
 		b.remindStalePending()
 		b.remindDaily()
 		b.remindWeekly()
+		b.closeExpiredSeasons()
 	}
 }
 
@@ -168,4 +170,71 @@ func (b *Bot) longestWinStreak(chatID int64) (name string, length int) {
 		}
 	}
 	return name, length
+}
+
+// closeExpiredSeasons ends seasons whose calendar deadline has passed, and
+// assigns a deadline to seasons that have none yet (older rows, and the season
+// opened by CloseSeason). A season whose month produced no points is extended
+// silently instead of crowning a champion with nothing — that also keeps the
+// bot quiet in chats that no longer play.
+func (b *Bot) closeExpiredSeasons() {
+	chats, err := b.st.AllChats()
+	if err != nil {
+		log.Printf("closeExpiredSeasons: %v", err)
+		return
+	}
+	for _, ch := range chats {
+		if err := b.closeExpiredSeason(ch); err != nil {
+			log.Printf("closeExpiredSeasons %d: %v", ch.ChatID, err)
+		}
+	}
+}
+
+// closeExpiredSeason handles one chat; separated so a failure in one chat
+// doesn't skip the others.
+func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
+	season, err := b.st.ActiveSeason(ch.ChatID)
+	if err != nil {
+		return err
+	}
+	loc := loadLoc(ch.TZ)
+	now := time.Now()
+
+	if !season.Deadline.Valid || season.Deadline.String == "" {
+		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(domain.SeasonDeadline(now, loc)))
+	}
+	deadline, err := parseDBTime(season.Deadline.String)
+	if err != nil { // unreadable value: rewrite it rather than retry every minute
+		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(domain.SeasonDeadline(now, loc)))
+	}
+	if now.UTC().Before(deadline) {
+		return nil
+	}
+
+	standings, err := b.st.Standings(ch.ChatID, season.ID)
+	if err != nil {
+		return err
+	}
+	if len(standings) == 0 || standings[0].Points == 0 {
+		// Nothing was played (or nothing scored): roll the deadline forward.
+		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
+		log.Printf("📅 chat %d: empty season %d extended to %s", ch.ChatID, season.Number, ext)
+		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext))
+	}
+
+	awards := b.seasonAwards(ch.ChatID, season.ID, standings)
+	newSeason, err := b.st.CloseSeason(season, standings[0].PlayerID)
+	if err != nil {
+		return err
+	}
+	nextDeadline := domain.SeasonDeadline(now, loc)
+	if err := b.st.SetSeasonDeadline(newSeason.ID, fmtDBTime(nextDeadline)); err != nil {
+		log.Printf("closeExpiredSeason.setdeadline: %v", err) // next tick fills it in
+	}
+	log.Printf("🏁 season %d closed by deadline, winner=%s (%d pts) → season %d",
+		season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
+	_, err = b.tb.Send(tele.ChatID(ch.ChatID),
+		seasonDeadlineEndText(season.Number, standings[0].Name, standings[0].Points,
+			awards, newSeason.Number, newSeason.Target, nextDeadline, loc))
+	return err
 }
