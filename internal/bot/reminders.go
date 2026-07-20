@@ -13,6 +13,10 @@ import (
 // stalePendingMinutes is how long a pending game waits before the bot nudges.
 const stalePendingMinutes = 45
 
+// minSeasonPointsToClose is the leader's point floor for a calendar-deadline
+// close. Below it, the month is treated as too quiet to crown anyone.
+const minSeasonPointsToClose = 10
+
 // runReminders ticks once a minute, sending event-driven and daily nudges.
 func (b *Bot) runReminders() {
 	ticker := time.NewTicker(time.Minute)
@@ -215,10 +219,14 @@ func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
 	if err != nil {
 		return err
 	}
-	if len(standings) == 0 || standings[0].Points == 0 {
-		// Nothing was played (or nothing scored): roll the deadline forward.
+	if len(standings) == 0 || standings[0].Points < minSeasonPointsToClose {
+		// Too quiet to crown anyone: roll the deadline forward instead. Historical
+		// seasons in this chat ran 65-84 games and hit the 100-point target on
+		// their own in 15-30 days, so a leader still under the threshold at
+		// deadline means the month was effectively dead, not just slow.
 		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
-		log.Printf("📅 chat %d: empty season %d extended to %s", ch.ChatID, season.Number, ext)
+		log.Printf("📅 chat %d: quiet season %d (leader %d pts) extended to %s",
+			ch.ChatID, season.Number, standings[0].Points, ext)
 		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext))
 	}
 

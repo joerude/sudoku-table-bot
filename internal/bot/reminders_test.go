@@ -187,3 +187,73 @@ func TestCloseExpiredSeason_ExtendsWhenExpiredAndNothingScored(t *testing.T) {
 		t.Errorf("extended deadline = %s, want %s (or %s if a month rolled over mid-call)", dl, want1, want2)
 	}
 }
+
+// TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold covers the
+// nonzero-but-quiet case the old `Points == 0` check missed: a couple of
+// games did happen, the leader has some points, but still under
+// minSeasonPointsToClose — still too quiet to crown anyone.
+func TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold(t *testing.T) {
+	st := openTempStore(t)
+	const chat = int64(-9004)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatalf("EnsureChat: %v", err)
+	}
+	se, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatalf("ActiveSeason: %v", err)
+	}
+	alice, _, err := st.RegisterPlayer(chat, 1, "Alice")
+	if err != nil {
+		t.Fatalf("RegisterPlayer Alice: %v", err)
+	}
+	bob, _, err := st.RegisterPlayer(chat, 2, "Bob")
+	if err != nil {
+		t.Fatalf("RegisterPlayer Bob: %v", err)
+	}
+	// Two games, Alice wins both: 3 + 3 = 6 points — nonzero, still < 10.
+	for i := 0; i < 2; i++ {
+		gid, err := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+		if err != nil {
+			t.Fatalf("CreatePendingGame: %v", err)
+		}
+		if err := st.AddPick(gid, alice.ID); err != nil {
+			t.Fatalf("AddPick alice: %v", err)
+		}
+		if err := st.AddPick(gid, bob.ID); err != nil {
+			t.Fatalf("AddPick bob: %v", err)
+		}
+		if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+			t.Fatalf("FinalizeGame: %v", err)
+		}
+	}
+	standings, err := st.Standings(chat, se.ID)
+	if err != nil {
+		t.Fatalf("Standings: %v", err)
+	}
+	if len(standings) == 0 || standings[0].Points == 0 || standings[0].Points >= minSeasonPointsToClose {
+		t.Fatalf("test setup: leader has %v points, want a nonzero value below %d",
+			standings, minSeasonPointsToClose)
+	}
+
+	staleDeadline := "2020-01-01 00:00:00"
+	if err := st.SetSeasonDeadline(se.ID, staleDeadline); err != nil {
+		t.Fatalf("SetSeasonDeadline: %v", err)
+	}
+
+	b := &Bot{st: st}
+	ch := storage.ChatSettings{ChatID: chat, TZ: "UTC"}
+	if err := b.closeExpiredSeason(ch); err != nil {
+		t.Fatalf("closeExpiredSeason: %v", err)
+	}
+
+	got, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatalf("ActiveSeason after: %v", err)
+	}
+	if got.ID != se.ID {
+		t.Fatalf("below-threshold leader must not close the season: got id %d, want %d", got.ID, se.ID)
+	}
+	if got.Deadline.String == staleDeadline {
+		t.Errorf("deadline was not extended, still %q", got.Deadline.String)
+	}
+}
