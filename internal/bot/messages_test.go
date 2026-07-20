@@ -1122,3 +1122,39 @@ func TestSeasonDeadlineEndTextNoAwards(t *testing.T) {
 		t.Errorf("winner name not escaped:\n%s", got)
 	}
 }
+
+func TestSeasonDeadlineLine(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	se := &storage.Season{
+		Number:   5,
+		Deadline: sql.NullString{String: "2026-07-31 18:00:00", Valid: true}, // 1 Aug 00:00 +06
+	}
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, loc)
+	got := seasonDeadlineLine(se, now, loc)
+	if !strings.Contains(got, "31 июля") {
+		t.Errorf("line = %q, want the last playable day (31 июля)", got)
+	}
+	if !strings.Contains(got, "11 дн") {
+		t.Errorf("line = %q, want 11 days left", got)
+	}
+}
+
+func TestSeasonDeadlineLineLastDay(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	se := &storage.Season{
+		Number:   5,
+		Deadline: sql.NullString{String: "2026-07-31 18:00:00", Valid: true},
+	}
+	now := time.Date(2026, 7, 31, 20, 0, 0, 0, loc)
+	got := seasonDeadlineLine(se, now, loc)
+	if !strings.Contains(got, "сегодня") {
+		t.Errorf("line = %q, want it to say the season ends today", got)
+	}
+}
+
+func TestSeasonDeadlineLineUnset(t *testing.T) {
+	se := &storage.Season{Number: 5}
+	if got := seasonDeadlineLine(se, time.Now(), time.UTC); got != "" {
+		t.Errorf("no deadline: line = %q, want empty", got)
+	}
+}

@@ -416,6 +416,30 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 	return b.String()
 }
 
+// seasonDeadlineLine renders when the season ends by the calendar, as a block
+// to append to a season panel. Empty when the season has no deadline yet.
+func seasonDeadlineLine(se *storage.Season, now time.Time, loc *time.Location) string {
+	if se == nil || !se.Deadline.Valid || se.Deadline.String == "" {
+		return ""
+	}
+	deadline, err := parseDBTime(se.Deadline.String)
+	if err != nil {
+		return ""
+	}
+	// The deadline is midnight opening the next month, so the last playable
+	// day is the one before it.
+	last := deadline.Add(-time.Second)
+	days := int(last.Sub(now.UTC()).Hours() / 24)
+	switch {
+	case days < 0:
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s", fmtRuDate(last, loc))
+	case days == 0:
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s — <b>сегодня!</b>", fmtRuDate(last, loc))
+	default:
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s (через %d дн)", fmtRuDate(last, loc), days)
+	}
+}
+
 // seasonText summarises the active season and the leader's progress.
 func seasonText(se *storage.Season, leader *storage.Standing) string {
 	var b strings.Builder
