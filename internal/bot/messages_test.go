@@ -112,6 +112,30 @@ func TestDuelResultText(t *testing.T) {
 	}
 }
 
+func TestDuelResultTextShowsLoserTime(t *testing.T) {
+	rows := []storage.ResultRow{
+		{Rank: 1, Name: "Vasya", Duration: 264}, // 4:24
+		{Rank: 2, Name: "Petya", Duration: 279}, // 4:39
+	}
+	out := duelResultText(rows, 0, 0, false, 0, 0)
+	for _, want := range []string{"4:24", "vs 4:39", "+0:15"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("duelResultText loser time: want %q in output\ngot: %s", want, out)
+		}
+	}
+}
+
+func TestDuelResultTextHidesLoserTimeWhenUnknown(t *testing.T) {
+	rows := []storage.ResultRow{
+		{Rank: 1, Name: "Vasya", Duration: 264},
+		{Rank: 2, Name: "Petya"}, // Duration 0: manual entry, no solve time
+	}
+	out := duelResultText(rows, 0, 0, false, 0, 0)
+	if strings.Contains(out, "vs") {
+		t.Errorf("duelResultText: loser has no duration, must not show 'vs'\ngot: %s", out)
+	}
+}
+
 func TestDuelResultTextShowsElo(t *testing.T) {
 	rows := []storage.ResultRow{
 		{Rank: 1, Name: "Vasya", Duration: 252},
