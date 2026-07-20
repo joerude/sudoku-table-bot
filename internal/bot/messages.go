@@ -1105,3 +1105,41 @@ func crownChangeLine(gr domain.GameRating, names map[int64]string) string {
 	return fmt.Sprintf("👑 Корона сменилась: %s свергает %s!",
 		esc(names[gr.CrownAfter]), esc(names[gr.CrownBefore]))
 }
+
+// activityText renders the "who calls the games" tab: rounds started per
+// player (all-time and last 30 days) and how long since they last played.
+func activityText(rows []storage.InitiativeRow, now time.Time) string {
+	var b strings.Builder
+	b.WriteString("🎯 <b>Актив</b> · кто зовёт играть\n\n")
+	if len(rows) == 0 {
+		b.WriteString("Пока нет игроков. /join")
+		return b.String()
+	}
+	for i, r := range rows {
+		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> игр · <b>%d</b> дуэлей\n",
+			medal(i+1), esc(r.Name), r.GamesAll, r.DuelsAll)
+		fmt.Fprintf(&b, "   <i>за 30 дн: %d · %d · %s</i>\n",
+			r.Games30, r.Duels30, lastPlayedPhrase(r.LastPlayed, now))
+	}
+	b.WriteString("\n<i>Считаются только созданные игры: /play, /duel, /invite.</i>")
+	return b.String()
+}
+
+// lastPlayedPhrase renders how long ago a player last played a recorded game.
+func lastPlayedPhrase(lastPlayed string, now time.Time) string {
+	if lastPlayed == "" {
+		return "ещё не играл"
+	}
+	t, err := parseDBTime(lastPlayed)
+	if err != nil {
+		return "ещё не играл"
+	}
+	switch days := int(now.UTC().Sub(t).Hours() / 24); {
+	case days <= 0:
+		return "играл сегодня"
+	case days == 1:
+		return "не играл 1 дн"
+	default:
+		return fmt.Sprintf("не играл %d дн", days)
+	}
+}

@@ -442,6 +442,13 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = recordsText(recs, titles)
+	case "activity":
+		since := time.Now().UTC().AddDate(0, 0, -30).Format("2006-01-02 15:04:05")
+		init, e := b.st.InitiativeStats(chatID, since)
+		if e != nil {
+			return "", nil, e
+		}
+		text = activityText(init, time.Now())
 	default:
 		tab = "table"
 		standings, e := b.st.Standings(chatID, season.ID)
