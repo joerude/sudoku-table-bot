@@ -297,6 +297,28 @@ func (s *Store) SetDuelTarget(gameID, targetPlayerID int64) error {
 	return err
 }
 
+// DuelPlayerIDs resolves a duel's two participants: the creator (created_by
+// tg id → player) first, then the challenge target. Returns nil when the game
+// is not a duel, or when the creator can't be mapped to a player (old rows) —
+// callers then treat the game as open to everyone.
+func (s *Store) DuelPlayerIDs(gameID int64) ([]int64, error) {
+	var target, creator sql.NullInt64
+	err := s.db.QueryRow(`
+		SELECT g.duel_target_id,
+		       (SELECT p.id FROM players p WHERE p.chat_id=g.chat_id AND p.tg_id=g.created_by)
+		FROM games g WHERE g.id=?`, gameID).Scan(&target, &creator)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !target.Valid || !creator.Valid || target.Int64 == creator.Int64 {
+		return nil, nil
+	}
+	return []int64{creator.Int64, target.Int64}, nil
+}
+
 // DuelTargetID returns the challenged player id and true, or (0, false) when the
 // game is not a duel.
 func (s *Store) DuelTargetID(gameID int64) (int64, bool, error) {

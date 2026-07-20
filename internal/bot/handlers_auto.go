@@ -91,6 +91,19 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	to := tele.ChatID(game.ChatID)
 
+	// A duel counts only its two participants — anyone else in the room is a
+	// guest and must not end up in the duel's results (that skews every duel
+	// stat and misnames the loser in the recent-duels log).
+	pair, err := b.st.DuelPlayerIDs(game.ID)
+	if err != nil {
+		log.Printf("autoRecord.pair: %v", err)
+	}
+	isDuel := len(pair) == 2
+	inPair := make(map[int64]bool, len(pair))
+	for _, id := range pair {
+		inPair[id] = true
+	}
+
 	// Map everyone who joined; collect unknown nicks and known player ids.
 	mappedJoined := 0
 	var unknown []string
@@ -99,6 +112,9 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		pl, err := b.st.PlayerByNick(game.ChatID, p.Name)
 		if err != nil {
 			log.Printf("autoRecord.nick: %v", err)
+		}
+		if isDuel && (pl == nil || !inPair[pl.ID]) {
+			continue // guest in a duel room — ignored, doesn't block auto-record
 		}
 		if pl != nil {
 			mappedJoined++
@@ -116,37 +132,51 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	var finisherNicks []string
 	for _, p := range info.FinishOrder() {
 		finisherNicks = append(finisherNicks, p.Name)
-		if pl, _ := b.st.PlayerByNick(game.ChatID, p.Name); pl != nil {
-			secs := p.SolveSeconds(info.Info.StartedAt)
-			if secs == 0 {
-				var comp int64
-				if p.CompletedAt != nil {
-					comp = *p.CompletedAt
-				}
-				log.Printf("⏱ no solve time for %s: startedAt=%d joinedAt=%d completedAt=%d",
-					p.Name, info.Info.StartedAt, p.JoinedAt, comp)
-			}
-			picks = append(picks, pick{id: pl.ID, durSecs: secs})
+		pl, _ := b.st.PlayerByNick(game.ChatID, p.Name)
+		if pl == nil || (isDuel && !inPair[pl.ID]) {
+			continue
 		}
+		secs := p.SolveSeconds(info.Info.StartedAt)
+		if secs == 0 {
+			var comp int64
+			if p.CompletedAt != nil {
+				comp = *p.CompletedAt
+			}
+			log.Printf("⏱ no solve time for %s: startedAt=%d joinedAt=%d completedAt=%d",
+				p.Name, info.Info.StartedAt, p.JoinedAt, comp)
+		}
+		picks = append(picks, pick{id: pl.ID, durSecs: secs})
 	}
 
-	min := b.minPlayers(game.ChatID)
+	if isDuel {
+		// Both duelists must be in the room (matched by nick) and at least
+		// one must finish; otherwise a human decides.
+		if mappedJoined < 2 || len(picks) == 0 {
+			log.Printf("🤖 duel %d → manual: mappedJoined=%d picks=%d finishers=%v",
+				game.ID, mappedJoined, len(picks), finisherNicks)
+			_, _ = b.tb.Send(to, "⚔️ Не смог авто-записать дуэль — запишите результат вручную:",
+				recordKeyboard(game.ID))
+			return
+		}
+	} else {
+		min := b.minPlayers(game.ChatID)
 
-	// Too few known players actually joined — don't count it (anti-farming).
-	if len(unknown) == 0 && mappedJoined < min {
-		log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
-		_, _ = b.tb.Send(to, fmt.Sprintf(
-			"🚫 Игра не засчитана: участвовало меньше <b>%d</b> игроков (текущий минимум).\n"+
-				"Изменить: /settings minplayers", min))
-		return
-	}
+		// Too few known players actually joined — don't count it (anti-farming).
+		if len(unknown) == 0 && mappedJoined < min {
+			log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
+			_, _ = b.tb.Send(to, fmt.Sprintf(
+				"🚫 Игра не засчитана: участвовало меньше <b>%d</b> игроков (текущий минимум).\n"+
+					"Изменить: /settings minplayers", min))
+			return
+		}
 
-	if len(unknown) > 0 || len(picks) == 0 {
-		log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
-			game.ID, finisherNicks, unknown, mappedJoined)
-		_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown),
-			recordAndClaimKeyboard(game.ID, unknown))
-		return
+		if len(unknown) > 0 || len(picks) == 0 {
+			log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
+				game.ID, finisherNicks, unknown, mappedJoined)
+			_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown),
+				recordAndClaimKeyboard(game.ID, unknown))
+			return
+		}
 	}
 	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
 

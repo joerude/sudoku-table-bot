@@ -71,6 +71,18 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE chats ADD COLUMN last_weekly TEXT`,
 		`ALTER TABLE games ADD COLUMN accepted_at TEXT`, // duel: target pressed «Принять»
 		`ALTER TABLE games ADD COLUMN declined_at TEXT`, // duel: target pressed «Отказ»
+		// Duel results belong to the two duelists only. Old auto-record also
+		// wrote rows for room guests, which corrupted every duel stat (the
+		// loser was picked as MAX() over all non-winners). Drop guest rows;
+		// duels whose creator can't be mapped to a player are left alone.
+		`DELETE FROM game_results WHERE id IN (
+		     SELECT gr.id FROM game_results gr
+		     JOIN games g ON g.id = gr.game_id
+		     JOIN players cp ON cp.chat_id = g.chat_id AND cp.tg_id = g.created_by
+		     WHERE g.duel_target_id IS NOT NULL
+		       AND gr.player_id <> g.duel_target_id
+		       AND gr.player_id <> cp.id
+		 )`,
 	} {
 		_, _ = db.Exec(stmt)
 	}
