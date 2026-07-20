@@ -71,6 +71,10 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE chats ADD COLUMN last_weekly TEXT`,
 		`ALTER TABLE games ADD COLUMN accepted_at TEXT`, // duel: target pressed «Принять»
 		`ALTER TABLE games ADD COLUMN declined_at TEXT`, // duel: target pressed «Отказ»
+		// Calendar season end. Left NULL on purpose: the deadline depends on the
+		// chat timezone, which this layer doesn't know — the reminder tick fills
+		// it in on the next minute.
+		`ALTER TABLE seasons ADD COLUMN deadline TEXT`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;
