@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -429,7 +430,7 @@ func seasonDeadlineLine(se *storage.Season, now time.Time, loc *time.Location) s
 	// The deadline is midnight opening the next month, so the last playable
 	// day is the one before it.
 	last := deadline.Add(-time.Second)
-	days := int(last.Sub(now.UTC()).Hours() / 24)
+	days := int(math.Floor(last.Sub(now.UTC()).Hours() / 24))
 	switch {
 	case days < 0:
 		return fmt.Sprintf("\n\n📅 Финал сезона: %s", fmtRuDate(last, loc))

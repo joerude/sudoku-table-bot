@@ -1152,6 +1152,28 @@ func TestSeasonDeadlineLineLastDay(t *testing.T) {
 	}
 }
 
+// TestSeasonDeadlineLineJustAfterDeadline covers the truncate-vs-floor bug:
+// now is a few seconds past the stored deadline, so the true day count is a
+// small negative fraction (e.g. -30s / 24h ≈ -0.00035). Truncating toward
+// zero collapses that to 0 ("сегодня!"), which is wrong — the last playable
+// day is already over. Flooring correctly lands in the days<0 branch.
+func TestSeasonDeadlineLineJustAfterDeadline(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	se := &storage.Season{
+		Number:   5,
+		Deadline: sql.NullString{String: "2026-07-31 18:00:00", Valid: true}, // 1 Aug 00:00 +06
+	}
+	// 30 seconds after the stored deadline instant.
+	now := time.Date(2026, 7, 31, 18, 0, 30, 0, time.UTC)
+	got := seasonDeadlineLine(se, now, loc)
+	if strings.Contains(got, "сегодня") {
+		t.Errorf("line = %q, must NOT say сегодня — the last playable day has passed", got)
+	}
+	if !strings.Contains(got, "31 июля") {
+		t.Errorf("line = %q, want the past date (31 июля)", got)
+	}
+}
+
 func TestSeasonDeadlineLineUnset(t *testing.T) {
 	se := &storage.Season{Number: 5}
 	if got := seasonDeadlineLine(se, time.Now(), time.UTC); got != "" {
