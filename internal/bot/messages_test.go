@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -1078,5 +1079,46 @@ func TestPendingConflictText(t *testing.T) {
 	}
 	if !strings.Contains(bare, "#7") {
 		t.Errorf("bare game should still show id:\n%s", bare)
+	}
+}
+
+func TestFmtDBTime(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	got := fmtDBTime(time.Date(2026, 8, 1, 0, 0, 0, 0, loc))
+	if want := "2026-07-31 18:00:00"; got != want {
+		t.Errorf("fmtDBTime = %q, want %q", got, want)
+	}
+}
+
+func TestSeasonDeadlineEndText(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	next := time.Date(2026, 9, 1, 0, 0, 0, 0, loc).UTC()
+	got := seasonDeadlineEndText(5, "Nur", 42, []string{"🏅 award"}, 6, 100, next, loc)
+
+	for _, want := range []string{
+		"Сезон 5 завершён",
+		"по календарю",
+		"<b>Nur</b>",
+		"42",
+		"🏅 award",
+		"сезон 6",
+		"100",
+		"31 августа",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("seasonDeadlineEndText missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestSeasonDeadlineEndTextNoAwards(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	next := time.Date(2026, 9, 1, 0, 0, 0, 0, loc).UTC()
+	got := seasonDeadlineEndText(1, "Joe <b>", 3, nil, 2, 100, next, loc)
+	if strings.Contains(got, "Номинации") {
+		t.Errorf("no awards, but the awards block rendered:\n%s", got)
+	}
+	if !strings.Contains(got, "Joe &lt;b&gt;") {
+		t.Errorf("winner name not escaped:\n%s", got)
 	}
 }

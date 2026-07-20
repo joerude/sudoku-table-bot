@@ -727,6 +727,22 @@ func seasonEndText(number int, winner string, points int, awards []string, nextT
 	return b.String()
 }
 
+// seasonDeadlineEndText announces a season closed by the calendar rather than
+// by reaching the target. nextDeadline is the new season's end instant (UTC);
+// the text shows the last playable day, i.e. the day before it.
+func seasonDeadlineEndText(number int, winner string, points int, awards []string,
+	nextNumber, nextTarget int, nextDeadline time.Time, loc *time.Location) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "📅🏆 <b>Сезон %d завершён по календарю!</b>\nПобедитель: <b>%s</b> (%d очков) 👑\n",
+		number, esc(winner), points)
+	if len(awards) > 0 {
+		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
+	}
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d очков, финал %s. Поехали! 🔥",
+		nextNumber, nextTarget, fmtRuDate(nextDeadline.Add(-time.Second), loc))
+	return b.String()
+}
+
 // namesMissingNick returns the names of players with no usdoku nick set, in
 // input order — used to warn before a game that auto-record will skip them.
 func namesMissingNick(players []storage.Player) []string {
@@ -919,6 +935,23 @@ func loadLoc(tz string) *time.Location {
 // parseDBTime parses a SQLite datetime('now') string (UTC) into a time.Time.
 func parseDBTime(s string) (time.Time, error) {
 	return time.Parse("2006-01-02 15:04:05", s)
+}
+
+// fmtDBTime renders a time as a SQLite datetime('now') string (UTC).
+func fmtDBTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05")
+}
+
+// ruMonthsGen are Russian month names in the genitive case ("1 августа").
+var ruMonthsGen = [...]string{
+	"января", "февраля", "марта", "апреля", "мая", "июня",
+	"июля", "августа", "сентября", "октября", "ноября", "декабря",
+}
+
+// fmtRuDate renders a UTC instant as "31 августа" in loc.
+func fmtRuDate(t time.Time, loc *time.Location) string {
+	t = t.In(loc)
+	return fmt.Sprintf("%d %s", t.Day(), ruMonthsGen[int(t.Month())-1])
 }
 
 // fmtLocalDateTime renders a UTC DB datetime in loc as "2006-01-02 15:04",
