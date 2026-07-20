@@ -784,11 +784,25 @@ func (b *Bot) pickerView(chatID, gameID int64) (string, *tele.ReplyMarkup, error
 	return pickerText(picked), pickerKeyboard(gameID, remaining, len(picked)), nil
 }
 
-// remainingPlayers returns active players not yet picked for the game.
+// remainingPlayers returns active players not yet picked for the game. For a
+// duel only the two duelists are eligible — the picker offers just them, and
+// DNF-finalize never drags a bystander into the duel.
 func (b *Bot) remainingPlayers(chatID, gameID int64) ([]storage.Player, error) {
 	players, err := b.st.ListPlayers(chatID)
 	if err != nil {
 		return nil, err
+	}
+	if pair, err := b.st.DuelPlayerIDs(gameID); err != nil {
+		return nil, err
+	} else if len(pair) == 2 {
+		inPair := map[int64]bool{pair[0]: true, pair[1]: true}
+		var duelists []storage.Player
+		for _, p := range players {
+			if inPair[p.ID] {
+				duelists = append(duelists, p)
+			}
+		}
+		players = duelists
 	}
 	pickedIDs, err := b.st.PickedPlayerIDs(gameID)
 	if err != nil {
