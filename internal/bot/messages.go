@@ -523,6 +523,14 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 	}
 	if w.Duration > 0 {
 		fmt.Fprintf(&b, " · ⏱ %s", fmtDuration(w.Duration))
+		if len(rows) >= 2 && rows[1].Rank != 0 && rows[1].Duration > 0 {
+			delta := rows[1].Duration - w.Duration
+			sign := "+"
+			if delta < 0 {
+				sign, delta = "-", -delta
+			}
+			fmt.Fprintf(&b, " vs %s (%s%s)", fmtDuration(rows[1].Duration), sign, fmtDuration(delta))
+		}
 	}
 	if h2h && len(rows) >= 2 {
 		fmt.Fprintf(&b, "\n\nH2H: <b>%s</b> %d–%d <b>%s</b>",
