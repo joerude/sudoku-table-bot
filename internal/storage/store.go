@@ -75,6 +75,9 @@ func migrate(db *sql.DB) {
 		// chat timezone, which this layer doesn't know — the reminder tick fills
 		// it in on the next minute.
 		`ALTER TABLE seasons ADD COLUMN deadline TEXT`,
+		// Games floor for the calendar exit. Backfilled with the default for
+		// archived seasons too — harmless, they are never evaluated again.
+		`ALTER TABLE seasons ADD COLUMN min_games INTEGER NOT NULL DEFAULT 66`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;

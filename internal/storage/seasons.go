@@ -15,10 +15,16 @@ type Season struct {
 	Target      int
 	PointsTable []int
 	Status      string
+	// MinGames is how many seasonal games must be played before Deadline is
+	// allowed to close the season. Reaching Target ignores it.
+	MinGames int
 	// Deadline is when the season ends by the calendar (UTC "2006-01-02 15:04:05").
 	// Invalid = not assigned yet; the bot's reminder tick fills it in.
 	Deadline sql.NullString
 }
+
+// seasonCols is the column list every season read shares, in scanSeason order.
+const seasonCols = "id, chat_id, number, target, points_table, status, min_games, deadline"
 
 // ActiveSeason returns the chat's current active season, creating season #1 if
 // none exists yet. The create is race-safe: a partial unique index guarantees
@@ -34,10 +40,10 @@ func (s *Store) ActiveSeason(chatID int64) (*Season, error) {
 	}
 	pts, _ := json.Marshal(domain.DefaultPointsTable)
 	if _, err := s.db.Exec(
-		`INSERT INTO seasons(chat_id, number, target, points_table, status)
-		 VALUES(?, 1, ?, ?, 'active')
+		`INSERT INTO seasons(chat_id, number, target, min_games, points_table, status)
+		 VALUES(?, 1, ?, ?, ?, 'active')
 		 ON CONFLICT(chat_id) WHERE status='active' DO NOTHING`,
-		chatID, domain.DefaultTarget, string(pts)); err != nil {
+		chatID, domain.DefaultTarget, domain.DefaultMinGames, string(pts)); err != nil {
 		return nil, err
 	}
 	return s.activeSeasonRow(chatID)
@@ -46,7 +52,7 @@ func (s *Store) ActiveSeason(chatID int64) (*Season, error) {
 // activeSeasonRow reads the chat's active season (sql.ErrNoRows if none).
 func (s *Store) activeSeasonRow(chatID int64) (*Season, error) {
 	return s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status, deadline FROM seasons
+		`SELECT `+seasonCols+` FROM seasons
 		 WHERE chat_id=? AND status='active' ORDER BY number DESC LIMIT 1`, chatID))
 }
 
@@ -55,7 +61,7 @@ func (s *Store) activeSeasonRow(chatID int64) (*Season, error) {
 // import; ORDER BY id DESC picks the newest if history ever produced a dup.
 func (s *Store) SeasonByNumber(chatID int64, number int) (*Season, error) {
 	se, err := s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status, deadline FROM seasons
+		`SELECT `+seasonCols+` FROM seasons
 		 WHERE chat_id=? AND number=? ORDER BY id DESC LIMIT 1`, chatID, number))
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -105,20 +111,21 @@ func (s *Store) ArchivedNumbers(chatID int64) ([]int, error) {
 // SeasonByID fetches a season by id.
 func (s *Store) SeasonByID(id int64) (*Season, error) {
 	return s.scanSeason(s.db.QueryRow(
-		`SELECT id, chat_id, number, target, points_table, status, deadline FROM seasons WHERE id=?`, id))
+		`SELECT `+seasonCols+` FROM seasons WHERE id=?`, id))
 }
 
-// CreateSeason inserts a new active season.
+// CreateSeason inserts a new active season with the default games floor.
 func (s *Store) CreateSeason(chatID int64, number, target int, table []int) (*Season, error) {
 	pts, _ := json.Marshal(table)
 	res, err := s.db.Exec(
-		`INSERT INTO seasons(chat_id, number, target, points_table, status)
-		 VALUES(?,?,?,?, 'active')`, chatID, number, target, string(pts))
+		`INSERT INTO seasons(chat_id, number, target, min_games, points_table, status)
+		 VALUES(?,?,?,?,?, 'active')`, chatID, number, target, domain.DefaultMinGames, string(pts))
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return &Season{ID: id, ChatID: chatID, Number: number, Target: target, PointsTable: table, Status: "active"}, nil
+	return &Season{ID: id, ChatID: chatID, Number: number, Target: target,
+		MinGames: domain.DefaultMinGames, PointsTable: table, Status: "active"}, nil
 }
 
 // CloseSeason archives a season and records its winner, then opens the next one
@@ -129,12 +136,16 @@ func (s *Store) CloseSeason(se *Season, winnerID int64) (*Season, error) {
 		 WHERE id=?`, winnerID, se.ID); err != nil {
 		return nil, err
 	}
+	minGames := se.MinGames
+	if minGames < 1 {
+		minGames = domain.DefaultMinGames
+	}
 	pts, _ := json.Marshal(se.PointsTable)
 	if _, err := s.db.Exec(
-		`INSERT INTO seasons(chat_id, number, target, points_table, status)
-		 VALUES(?, ?, ?, ?, 'active')
+		`INSERT INTO seasons(chat_id, number, target, min_games, points_table, status)
+		 VALUES(?, ?, ?, ?, ?, 'active')
 		 ON CONFLICT(chat_id) WHERE status='active' DO NOTHING`,
-		se.ChatID, se.Number+1, se.Target, string(pts)); err != nil {
+		se.ChatID, se.Number+1, se.Target, minGames, string(pts)); err != nil {
 		return nil, err
 	}
 	return s.activeSeasonRow(se.ChatID)
@@ -144,6 +155,23 @@ func (s *Store) CloseSeason(se *Season, winnerID int64) (*Season, error) {
 func (s *Store) UpdateSeasonTarget(seasonID int64, target int) error {
 	_, err := s.db.Exec(`UPDATE seasons SET target=? WHERE id=?`, target, seasonID)
 	return err
+}
+
+// UpdateSeasonMinGames changes how many games the season needs before its
+// deadline may close it.
+func (s *Store) UpdateSeasonMinGames(seasonID int64, minGames int) error {
+	_, err := s.db.Exec(`UPDATE seasons SET min_games=? WHERE id=?`, minGames, seasonID)
+	return err
+}
+
+// SeasonGameCount returns how many games count toward the season's games floor:
+// completed, not deleted, not duels — the same set Standings scores.
+func (s *Store) SeasonGameCount(chatID, seasonID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM games g WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames,
+		chatID, seasonID).Scan(&n)
+	return n, err
 }
 
 // SetSeasonDeadline stores when the season ends by the calendar (UTC
@@ -163,8 +191,12 @@ func (s *Store) UpdateSeasonPoints(seasonID int64, table []int) error {
 func (s *Store) scanSeason(row *sql.Row) (*Season, error) {
 	var se Season
 	var ptsJSON string
-	if err := row.Scan(&se.ID, &se.ChatID, &se.Number, &se.Target, &ptsJSON, &se.Status, &se.Deadline); err != nil {
+	if err := row.Scan(&se.ID, &se.ChatID, &se.Number, &se.Target, &ptsJSON, &se.Status,
+		&se.MinGames, &se.Deadline); err != nil {
 		return nil, err
+	}
+	if se.MinGames < 1 {
+		se.MinGames = domain.DefaultMinGames
 	}
 	if err := json.Unmarshal([]byte(ptsJSON), &se.PointsTable); err != nil {
 		se.PointsTable = domain.DefaultPointsTable

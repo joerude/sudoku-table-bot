@@ -131,6 +131,7 @@ func (b *Bot) onSeason(c tele.Context) error {
 		return b.fail(c, "onSeason.leader", err)
 	}
 	text := seasonText(season, leader) +
+		b.seasonGamesBlock(c.Chat().ID, season) +
 		seasonDeadlineLine(season, time.Now(), loadLoc(b.chatTZ(c.Chat().ID))) +
 		archiveHint(nums)
 	return c.Send(text, seasonsKeyboard(nums, season.Number))
@@ -267,6 +268,7 @@ func (b *Bot) onHistory(c tele.Context) error {
 
 const settingsUsage = `⚙️ <b>Настройки</b>
 /settings target &lt;N&gt; — порог сезона (очки до победы)
+/settings mingames &lt;N&gt; — игр за сезон до закрытия по дедлайну
 /settings points &lt;a b c…&gt; — таблица очков по местам
 /settings minplayers &lt;N&gt; — мин. участников, чтобы игра засчиталась
 /settings daily &lt;HH:MM|off&gt; — ежедневное напоминание
@@ -306,6 +308,17 @@ func (b *Bot) onSettings(c tele.Context) error {
 			return b.fail(c, "onSettings.points", err)
 		}
 		return c.Send("✅ Таблица очков: " + formatTable(table))
+
+	case "mingames":
+		n, err := strconv.Atoi(argAt(args, 1))
+		if err != nil || n < 1 {
+			return b.ephemeral(c, "Сколько игр нужно сыграть за сезон: /settings mingames 66")
+		}
+		if err := b.st.UpdateSeasonMinGames(season.ID, n); err != nil {
+			return b.fail(c, "onSettings.mingames", err)
+		}
+		return c.Send(fmt.Sprintf(
+			"✅ Сезон закроется по дедлайну, только если сыграно ≥ <b>%d</b> игр.", n))
 
 	case "minplayers":
 		n, err := strconv.Atoi(argAt(args, 1))
@@ -371,11 +384,24 @@ func (b *Bot) settingsSummary(chatID int64, season *storage.Season) string {
 	return fmt.Sprintf(
 		"⚙️ <b>Настройки</b>\n"+
 			"Порог сезона: <b>%d</b>\n"+
+			"Игр за сезон: <b>%d</b>\n"+
 			"Таблица очков: <b>%s</b>\n"+
 			"Мин. участников в игре: <b>%d</b>\n"+
 			"Ежедневное напоминание: <b>%s</b>\n"+
 			"Недельный дайджест: <b>%s</b>\n\n%s",
-		season.Target, formatTable(season.PointsTable), minPlayers, daily, weekly, settingsUsage)
+		season.Target, season.MinGames, formatTable(season.PointsTable), minPlayers,
+		daily, weekly, settingsUsage)
+}
+
+// seasonGamesBlock renders the season's games-floor counter for a panel, empty
+// when the count can't be read — the panel stays useful without it.
+func (b *Bot) seasonGamesBlock(chatID int64, season *storage.Season) string {
+	games, first, _, _, err := b.st.SeasonMeta(chatID, season.ID)
+	if err != nil {
+		log.Printf("seasonGamesBlock: %v", err)
+		return ""
+	}
+	return seasonGamesLine(season, games, first, time.Now())
 }
 
 // isAdmin reports whether the sender may perform privileged actions: in a group
@@ -456,6 +482,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = standingsText(season, standings) +
+			b.seasonGamesBlock(chatID, season) +
 			seasonDeadlineLine(season, time.Now(), loadLoc(b.chatTZ(chatID)))
 	}
 	if err != nil {

@@ -66,6 +66,17 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
   бежит ДО `migrate()`. `ActiveSeason`/`CloseSeason` используют
   `INSERT ... ON CONFLICT(chat_id) WHERE status='active' DO NOTHING` + re-read
   (read-then-create гонка плодила дубли). Season «номер» (`number`) ≠ row id.
+- **Закрытие сезона** — два выхода, оба в `closeExpiredSeason` / `scoreAndCheck`:
+  `target` очков (100) закрывает сезон в любой момент, а календарный `deadline`
+  закрывает ТОЛЬКО если сыграно ≥ `seasons.min_games` (66; `SeasonGameCount` =
+  `sqlSeasonalGames`, дуэли и удалённые не в счёт). Не добрали — дедлайн едет
+  на месяц вперёд (`ExtendSeasonDeadline`) + пост `seasonExtendedText` с недобором;
+  при 0 игр молча (мёртвый чат не пинаем). `deadline` = start + `SeasonMonths`
+  (2) месяца, **не** выравнивается по календарным месяцам. 66 игр за 2 месяца =
+  темп ~1.1 игр/день — это и есть рычаг «играйте больше». `min_games`
+  наследуется `CloseSeason` как `target`, крутится `/settings mingames`.
+  Историю сломал сезон 5: закрылся по календарю на 28 играх (лидер 45/100),
+  откачен вручную и продолжен — отсюда правило.
 - `players`: `tg_id` (есть у всех через /join), `username` (часто пусто — не у всех
   есть @ник в Telegram), `usdoku_nick` (для авто-матчинга), `active` (soft-remove).
 - `game_rsvp`: ростер «Я в деле» для /invite. `ToggleRsvp` = INSERT OR IGNORE / DELETE.

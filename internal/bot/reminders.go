@@ -13,9 +13,18 @@ import (
 // stalePendingMinutes is how long a pending game waits before the bot nudges.
 const stalePendingMinutes = 45
 
-// minSeasonPointsToClose is the leader's point floor for a calendar-deadline
-// close. Below it, the month is treated as too quiet to crown anyone.
-const minSeasonPointsToClose = 10
+
+// notify posts a fire-and-forget message to a chat. It no-ops without a
+// telebot client so the decision branches around it stay testable against a
+// bare &Bot{st: st}, which is how this repo tests reminder logic.
+func (b *Bot) notify(chatID int64, text string) {
+	if b.tb == nil {
+		return
+	}
+	if _, err := b.tb.Send(tele.ChatID(chatID), text); err != nil {
+		log.Printf("notify %d: %v", chatID, err)
+	}
+}
 
 // runReminders ticks once a minute, sending event-driven and daily nudges.
 func (b *Bot) runReminders() {
@@ -178,9 +187,9 @@ func (b *Bot) longestWinStreak(chatID int64) (name string, length int) {
 
 // closeExpiredSeasons ends seasons whose calendar deadline has passed, and
 // assigns a deadline to seasons that have none yet (older rows, and the season
-// opened by CloseSeason). A season whose month produced no points is extended
-// silently instead of crowning a champion with nothing — that also keeps the
-// bot quiet in chats that no longer play.
+// opened by CloseSeason). A season that hasn't been played enough (fewer than
+// MinGames games) is extended a month instead of crowning a champion out of a
+// half-played season — the shortfall is announced so the chat can close it.
 func (b *Bot) closeExpiredSeasons() {
 	chats, err := b.st.AllChats()
 	if err != nil {
@@ -219,15 +228,29 @@ func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
 	if err != nil {
 		return err
 	}
-	if len(standings) == 0 || standings[0].Points < minSeasonPointsToClose {
-		// Too quiet to crown anyone: roll the deadline forward instead. Historical
-		// seasons in this chat ran 65-84 games and hit the 100-point target on
-		// their own in 15-30 days, so a leader still under the threshold at
-		// deadline means the month was effectively dead, not just slow.
+	games, err := b.st.SeasonGameCount(ch.ChatID, season.ID)
+	if err != nil {
+		return err
+	}
+	if len(standings) == 0 || games < season.MinGames {
+		// Not played enough to crown anyone: roll the deadline forward a month
+		// and say so out loud. Silence is what let season 5 drift to a hollow
+		// finish; a visible counter is the only pressure the bot can apply.
 		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
-		log.Printf("📅 chat %d: quiet season %d (leader %d pts) extended to %s",
-			ch.ChatID, season.Number, standings[0].Points, ext)
-		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext))
+		if err := b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext)); err != nil {
+			return err
+		}
+		log.Printf("📅 chat %d: season %d under-played (%d/%d games) extended to %s",
+			ch.ChatID, season.Number, games, season.MinGames, ext)
+		if games == 0 {
+			return nil // nothing was played at all: extend silently, don't nag a dead chat
+		}
+		var leader *storage.Standing
+		if len(standings) > 0 {
+			leader = &standings[0]
+		}
+		b.notify(ch.ChatID, seasonExtendedText(season, games, leader, ext, now, loc))
+		return nil
 	}
 
 	awards := b.seasonAwards(ch.ChatID, season.ID, standings)

@@ -211,7 +211,8 @@ func pickerText(picked []storage.ResultRow) string {
 
 // resultText is the finalised game summary: winner spotlight, per-finisher
 // points + solve time (when known), and the season leader's progress.
-func resultText(rows []storage.ResultRow, difficulty, mode string, leader *storage.Standing, target int) string {
+func resultText(rows []storage.ResultRow, difficulty, mode string, leader *storage.Standing,
+	target, games, minGames int) string {
 	var b strings.Builder
 	b.WriteString("🏁 <b>Игра записана</b>")
 	if tag := gameTag(difficulty, mode); tag != "" {
@@ -237,6 +238,11 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 	if leader != nil && leader.Points > 0 && target > 0 {
 		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
 			esc(leader.Name), leader.Points, target, progressBar(leader.Points, target)))
+	}
+	// The games counter rides along on every result post: it is the one message
+	// everyone reads, so it is where the season's tempo stays visible.
+	if games > 0 && minGames > 0 {
+		fmt.Fprintf(&b, "\n🎲 Игр в сезоне: <b>%d</b>/%d", games, minGames)
 	}
 	return b.String()
 }
@@ -417,19 +423,101 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 	return b.String()
 }
 
-// seasonDeadlineLine renders when the season ends by the calendar, as a block
-// to append to a season panel. Empty when the season has no deadline yet.
-func seasonDeadlineLine(se *storage.Season, now time.Time, loc *time.Location) string {
+// seasonLastDay returns the season's last playable instant, false when the
+// season has no readable deadline. The stored deadline is the midnight that
+// opens the day after the season, so the last playable moment is a tick before.
+func seasonLastDay(se *storage.Season) (time.Time, bool) {
 	if se == nil || !se.Deadline.Valid || se.Deadline.String == "" {
-		return ""
+		return time.Time{}, false
 	}
 	deadline, err := parseDBTime(se.Deadline.String)
 	if err != nil {
+		return time.Time{}, false
+	}
+	return deadline.Add(-time.Second), true
+}
+
+// seasonGamesLine renders the games floor the calendar exit has to clear, plus
+// the pace needed to clear it in time. firstGame is the season's first game
+// date (YYYY-MM-DD, empty when nothing has been played). Block-formatted for
+// appending to a season panel.
+func seasonGamesLine(se *storage.Season, games int, firstGame string, now time.Time) string {
+	if se == nil || se.MinGames < 1 {
 		return ""
 	}
-	// The deadline is midnight opening the next month, so the last playable
-	// day is the one before it.
-	last := deadline.Add(-time.Second)
+	if games >= se.MinGames {
+		return fmt.Sprintf("\n\n🎲 Сыграно: <b>%d</b>/%d ✅", games, se.MinGames)
+	}
+	line := fmt.Sprintf("\n\n🎲 Сыграно: <b>%d</b>/%d %s",
+		games, se.MinGames, progressBar(games, se.MinGames))
+	var parts []string
+	if p, ok := actualPace(games, firstGame, now); ok {
+		parts = append(parts, fmt.Sprintf("темп %.1f/день", p))
+	}
+	if p, ok := requiredPace(se, games, now); ok {
+		parts = append(parts, fmt.Sprintf("нужно %.1f/день", p))
+	}
+	if len(parts) > 0 {
+		line += "\n   <i>" + strings.Join(parts, " · ") + "</i>"
+	}
+	return line
+}
+
+// actualPace is games per day since the season's first game. False until a full
+// day has passed, when the number would be meaningless.
+func actualPace(games int, firstGame string, now time.Time) (float64, bool) {
+	first, err := time.Parse("2006-01-02", firstGame)
+	if err != nil || games <= 0 {
+		return 0, false
+	}
+	days := now.UTC().Sub(first).Hours() / 24
+	if days < 1 {
+		return 0, false
+	}
+	return float64(games) / days, true
+}
+
+// requiredPace is games per day needed to reach the floor before the deadline.
+func requiredPace(se *storage.Season, games int, now time.Time) (float64, bool) {
+	last, ok := seasonLastDay(se)
+	if !ok || games >= se.MinGames {
+		return 0, false
+	}
+	days := math.Floor(last.Sub(now.UTC()).Hours()/24) + 1
+	if days < 1 {
+		return 0, false
+	}
+	return float64(se.MinGames-games) / days, true
+}
+
+// seasonExtendedText announces a deadline that passed on an under-played season:
+// what is missing, who leads, and the pace that would finish it.
+func seasonExtendedText(se *storage.Season, games int, leader *storage.Standing,
+	newDeadline, now time.Time, loc *time.Location) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⏳ <b>Сезон %d продлён</b>\n\n", se.Number)
+	fmt.Fprintf(&b, "Сыграно <b>%d</b>/%d — до конца сезона нужно ещё <b>%d</b>.\n",
+		games, se.MinGames, se.MinGames-games)
+	if leader != nil && leader.Points > 0 {
+		fmt.Fprintf(&b, "Лидер: <b>%s</b> — %d/%d\n", esc(leader.Name), leader.Points, se.Target)
+	}
+	last := newDeadline.Add(-time.Second)
+	days := int(math.Floor(last.Sub(now.UTC()).Hours() / 24))
+	fmt.Fprintf(&b, "\n📅 Новый финал: %s", fmtRuDate(last, loc))
+	if days > 0 {
+		fmt.Fprintf(&b, " (через %d дн)\n⚡ Это %.1f игр в день.",
+			days, float64(se.MinGames-games)/float64(days+1))
+	}
+	return b.String()
+}
+
+// seasonDeadlineLine renders when the season ends by the calendar, as a block
+// to append to a season panel. Empty when the season has no deadline yet.
+func seasonDeadlineLine(se *storage.Season, now time.Time, loc *time.Location) string {
+	last, ok := seasonLastDay(se)
+	if !ok {
+		return ""
+	}
 	days := int(math.Floor(last.Sub(now.UTC()).Hours() / 24))
 	switch {
 	case days < 0:
