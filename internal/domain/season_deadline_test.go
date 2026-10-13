@@ -34,6 +34,26 @@ func TestSeasonDeadlineCrossesYear(t *testing.T) {
 	}
 }
 
+func TestSeasonDaysLeft(t *testing.T) {
+	deadline := time.Date(2026, 8, 1, 0, 0, 0, 0, bishkek).UTC() // last day: 31 July
+	cases := []struct {
+		name string
+		now  time.Time
+		want int
+	}{
+		{"mid month", time.Date(2026, 7, 20, 12, 0, 0, 0, bishkek), 11},
+		{"day before", time.Date(2026, 7, 30, 23, 59, 0, 0, bishkek), 1},
+		{"last day morning", time.Date(2026, 7, 31, 0, 1, 0, 0, bishkek), 0},
+		{"last day night", time.Date(2026, 7, 31, 23, 59, 0, 0, bishkek), 0},
+		{"just after", time.Date(2026, 8, 1, 0, 0, 30, 0, bishkek), -1},
+	}
+	for _, tc := range cases {
+		if got := SeasonDaysLeft(deadline, tc.now, bishkek); got != tc.want {
+			t.Errorf("%s: SeasonDaysLeft = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestExtendSeasonDeadlineOneMonth(t *testing.T) {
 	deadline := time.Date(2026, 8, 1, 0, 0, 0, 0, bishkek).UTC()
 	now := time.Date(2026, 8, 1, 0, 1, 0, 0, bishkek)

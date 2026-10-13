@@ -24,6 +24,17 @@ func SeasonDeadline(now time.Time, loc *time.Location) time.Time {
 	return d.UTC()
 }
 
+// SeasonDaysLeft counts calendar days in loc from now to the season's last
+// playable day (the one before the deadline midnight): 0 on that day itself,
+// negative once it has passed.
+func SeasonDaysLeft(deadline, now time.Time, loc *time.Location) int {
+	last := deadline.Add(-time.Second).In(loc)
+	today := now.In(loc)
+	lastDay := time.Date(last.Year(), last.Month(), last.Day(), 0, 0, 0, 0, time.UTC)
+	todayDay := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	return int(lastDay.Sub(todayDay) / (24 * time.Hour))
+}
+
 // ExtendSeasonDeadline moves an expired deadline forward by whole months until
 // it is in the future. Used when a season's month ended with nothing played,
 // and to recover after an outage that swallowed several deadlines.

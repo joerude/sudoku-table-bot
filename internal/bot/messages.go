@@ -2,7 +2,6 @@ package bot
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -397,7 +396,7 @@ func fmtDuration(secs int) string {
 // standingsText renders the season leaderboard as a medal list.
 func standingsText(se *storage.Season, rows []storage.Standing) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b> · до %d очков\n\n", se.Number, se.Target))
+	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b> · до %d %s\n\n", se.Number, se.Target, pointsWord(se.Target)))
 	if len(rows) == 0 {
 		b.WriteString("Пока нет игроков. /join")
 		return b.String()
@@ -407,8 +406,8 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 		if i > 0 && rows[0].Points > r.Points {
 			gap = fmt.Sprintf("-%d · ", rows[0].Points-r.Points)
 		}
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%s%d поб · %d игр)</i>\n",
-			medal(i+1), esc(r.Name), r.Points, gap, r.Wins, r.Games))
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%s%d поб · %d %s)</i>\n",
+			medal(i+1), esc(r.Name), r.Points, gap, r.Wins, r.Games, gamesWord(r.Games)))
 	}
 	if leader := rows[0]; leader.Points > 0 {
 		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
@@ -430,22 +429,24 @@ func seasonDeadlineLine(se *storage.Season, now time.Time, loc *time.Location) s
 	// The deadline is midnight opening the next month, so the last playable
 	// day is the one before it.
 	last := deadline.Add(-time.Second)
-	days := int(math.Floor(last.Sub(now.UTC()).Hours() / 24))
+	days := domain.SeasonDaysLeft(deadline, now, loc)
 	switch {
 	case days < 0:
 		return fmt.Sprintf("\n\n📅 Финал сезона: %s", fmtRuDate(last, loc))
 	case days == 0:
-		return fmt.Sprintf("\n\n📅 Финал сезона: %s — <b>сегодня!</b>", fmtRuDate(last, loc))
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s, <b>сегодня!</b>", fmtRuDate(last, loc))
+	case days == 1:
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s (завтра)", fmtRuDate(last, loc))
 	default:
-		return fmt.Sprintf("\n\n📅 Финал сезона: %s (через %d дн)", fmtRuDate(last, loc), days)
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s (через %d %s)", fmtRuDate(last, loc), days, daysWord(days))
 	}
 }
 
 // seasonText summarises the active season and the leader's progress.
 func seasonText(se *storage.Season, leader *storage.Standing) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b>\nЦель: <b>%d</b> очков\nТаблица очков: %s\n\n",
-		se.Number, se.Target, formatTable(se.PointsTable)))
+	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b>\nЦель: <b>%d</b> %s\nТаблица очков: %s\n\n",
+		se.Number, se.Target, pointsWord(se.Target), formatTable(se.PointsTable)))
 	if leader == nil || leader.Points == 0 {
 		b.WriteString("Ещё никто не набрал очков.")
 		return b.String()
@@ -652,8 +653,8 @@ func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.Sp
 			minGames, titleCase(difficulty))
 	} else {
 		for i, r := range ranked {
-			fmt.Fprintf(&b, "%s <b>%s</b> — %s   <i>(%d игр · ⚡ %s)</i>\n",
-				medal(i+1), esc(r.Name), fmtDuration(r.AvgSecs), r.Games, fmtDuration(r.BestSecs))
+			fmt.Fprintf(&b, "%s <b>%s</b> — %s   <i>(%d %s · ⚡ %s)</i>\n",
+				medal(i+1), esc(r.Name), fmtDuration(r.AvgSecs), r.Games, gamesWord(r.Games), fmtDuration(r.BestSecs))
 		}
 	}
 	if len(fewer) > 0 {
@@ -702,7 +703,7 @@ func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, f
 	if se.Status == "archived" {
 		b.WriteString(" · завершён")
 	} else {
-		fmt.Fprintf(&b, " · идёт, до %d очков", se.Target)
+		fmt.Fprintf(&b, " · идёт, до %d %s", se.Target, pointsWord(se.Target))
 	}
 	if first != "" {
 		fmt.Fprintf(&b, "\n📅 %s — %s · игр: <b>%d</b>", first, last, games)
@@ -717,8 +718,8 @@ func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, f
 			continue
 		}
 		shown++
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d игр)</i>\n",
-			medal(shown), esc(r.Name), r.Points, r.Wins, r.Games))
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d %s)</i>\n",
+			medal(shown), esc(r.Name), r.Points, r.Wins, r.Games, gamesWord(r.Games)))
 	}
 	if shown == 0 {
 		b.WriteString("В этом сезоне не было игр.\n")
@@ -750,13 +751,13 @@ func noSuchSeasonText(n int, nums []int) string {
 
 func seasonEndText(number int, winner string, points int, awards []string, nextTarget, nextNumber int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🎉🏆 <b>Сезон %d завершён!</b>\nПобедитель: <b>%s</b> (%d очков) 👑\n",
-		number, esc(winner), points)
+	fmt.Fprintf(&b, "🎉🏆 <b>Сезон %d завершён!</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
+		number, esc(winner), points, pointsWord(points))
 	if len(awards) > 0 {
 		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
 	}
-	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d очков. Поехали! 🔥",
-		nextNumber, nextTarget)
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d %s. Поехали! 🔥",
+		nextNumber, nextTarget, pointsWord(nextTarget))
 	return b.String()
 }
 
@@ -766,13 +767,13 @@ func seasonEndText(number int, winner string, points int, awards []string, nextT
 func seasonDeadlineEndText(number int, winner string, points int, awards []string,
 	nextNumber, nextTarget int, nextDeadline time.Time, loc *time.Location) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "📅🏆 <b>Сезон %d завершён по календарю!</b>\nПобедитель: <b>%s</b> (%d очков) 👑\n",
-		number, esc(winner), points)
+	fmt.Fprintf(&b, "📅🏆 <b>Сезон %d завершён по календарю!</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
+		number, esc(winner), points, pointsWord(points))
 	if len(awards) > 0 {
 		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
 	}
-	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d очков, финал %s. Поехали! 🔥",
-		nextNumber, nextTarget, fmtRuDate(nextDeadline.Add(-time.Second), loc))
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d %s, финал %s. Поехали! 🔥",
+		nextNumber, nextTarget, pointsWord(nextTarget), fmtRuDate(nextDeadline.Add(-time.Second), loc))
 	return b.String()
 }
 
@@ -1018,6 +1019,11 @@ func digestText(se *storage.Season, top []storage.Standing, fastest *storage.Rec
 
 // --- small helpers ---
 
+func pointsWord(n int) string { return plural(n, "очко", "очка", "очков") }
+func gamesWord(n int) string  { return plural(n, "игра", "игры", "игр") }
+func daysWord(n int) string   { return plural(n, "день", "дня", "дней") }
+func duelsWord(n int) string  { return plural(n, "дуэль", "дуэли", "дуэлей") }
+
 func titleCase(s string) string {
 	if s == "" {
 		return s
@@ -1124,8 +1130,8 @@ func activityText(rows []storage.InitiativeRow, now time.Time) string {
 		return b.String()
 	}
 	for i, r := range rows {
-		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> игр · <b>%d</b> дуэлей\n",
-			medal(i+1), esc(r.Name), r.GamesAll, r.DuelsAll)
+		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> %s · <b>%d</b> %s\n",
+			medal(i+1), esc(r.Name), r.GamesAll, gamesWord(r.GamesAll), r.DuelsAll, duelsWord(r.DuelsAll))
 		fmt.Fprintf(&b, "   <i>за 30 дн: %d · %d · %s</i>\n",
 			r.Games30, r.Duels30, lastPlayedPhrase(r.LastPlayed, now))
 	}
@@ -1148,6 +1154,6 @@ func lastPlayedPhrase(lastPlayed string, now time.Time) string {
 	case days == 1:
 		return "не играл 1 дн"
 	default:
-		return fmt.Sprintf("не играл %d дн", days)
+		return fmt.Sprintf("не играл %d %s", days, daysWord(days))
 	}
 }
