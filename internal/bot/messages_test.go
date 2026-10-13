@@ -728,10 +728,10 @@ func TestBadgeCollectionText(t *testing.T) {
 	out := badgeCollectionText(domain.BadgeProgress(in))
 	for _, want := range []string{
 		"🏆", "Бейджи", "(4/7)", // header with earned count
-		"чемпион сезона ×2", // 🏅 folds in the title count
-		"💯 50 побед — 34/50", // locked count badge shows progress
+		"чемпион сезона ×2",        // 🏅 folds in the title count
+		"💯 50 побед — 34/50",       // locked count badge shows progress
 		"🔒 ⚡ решение быстрее 2:00", // locked speed badge, no best time
-		"📅 7 дней подряд — 2/7", // locked streak badge
+		"📅 7 дней подряд — 2/7",    // locked streak badge
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("badgeCollectionText: want %q in\n%s", want, out)
