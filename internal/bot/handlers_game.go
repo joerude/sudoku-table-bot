@@ -107,6 +107,14 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode, origin string) (*
 
 // createGameRoomAt is createGameRoom with an explicit notice placement.
 func (b *Bot) createGameRoomAt(c tele.Context, difficulty, mode, origin string, place placement) (*gameRoom, error) {
+	// One creation per chat at a time: a double tap, or two people at once, must
+	// not both pass the "no pending game" check below.
+	unlock, ok := creatingRooms.TryLock(c.Chat().ID)
+	if !ok {
+		b.replyBusy(c)
+		return nil, nil
+	}
+	defer unlock()
 	season, err := b.ensure(c)
 	if err != nil {
 		return nil, err
@@ -151,6 +159,16 @@ func (b *Bot) createGameRoomAt(c tele.Context, difficulty, mode, origin string, 
 	log.Printf("🎮 game %d created on usdoku: %s (%s/%s)", gameID, code, difficulty, mode)
 	go b.watchGame(gameID, chatID, code)
 	return room, nil
+}
+
+// replyBusy answers a create request that lost the per-chat lock: a toast for a
+// button press, an ephemeral line for a command.
+func (b *Bot) replyBusy(c tele.Context) {
+	if c.Callback() != nil {
+		_ = c.Respond(&tele.CallbackResponse{Text: busyCreatingText})
+		return
+	}
+	_ = b.ephemeral(c, busyCreatingText)
 }
 
 // showCreating gives instant feedback while the usdoku room is being made: the
