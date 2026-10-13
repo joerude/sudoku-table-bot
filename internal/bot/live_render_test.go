@@ -141,3 +141,20 @@ func TestNotCountedTextNamesTheMinimum(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestAutoMappingTextDoesNotBlameMissingPlayers(t *testing.T) {
+	got := autoMappingText(nil, nil)
+	if strings.Contains(got, "минимум 2") {
+		t.Errorf("all nicks are known, the old minimum-players line is a lie: %q", got)
+	}
+	if !strings.Contains(got, "не финишировал") {
+		t.Errorf("must say nobody finished: %q", got)
+	}
+}
+
+func TestAutoMappingTextListsUnknownNicks(t *testing.T) {
+	got := autoMappingText([]string{"joe"}, []string{"max"})
+	if !strings.Contains(got, "Не узнал ники: <b>max</b>") || !strings.Contains(got, "🥇 joe") {
+		t.Errorf("got %q", got)
+	}
+}

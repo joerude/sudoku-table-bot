@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -222,15 +221,15 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 }
 
 // onClaimNick binds an unrecognised usdoku nick to the tapping player, so future
-// games auto-record for them. Re-attribution of the just-finished game is left to
-// a manual /result if needed (keeps this a safe, single-write action).
+// games auto-record for them. The claim button then disappears from the post and,
+// once every nick in the room is known, the game is recorded right away.
 func (b *Bot) onClaimNick(c tele.Context) error {
 	data := c.Data()
 	i := strings.IndexByte(data, ':')
 	if i < 0 {
 		return c.Respond(&tele.CallbackResponse{Text: "Не понял ник"})
 	}
-	nick := data[i+1:]
+	gameID, nick := parseID(data[:i]), data[i+1:]
 	sender := realSender(c)
 	if sender == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Не получилось определить тебя"})
@@ -242,12 +241,66 @@ func (b *Bot) onClaimNick(c tele.Context) error {
 	if player == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
 	}
-	if err := b.st.SetNick(player.ID, nick); err != nil {
+	claimed, err := b.st.ClaimNick(player.ID, nick)
+	if err != nil {
 		return b.fail(c, "onClaimNick.set", err)
 	}
+	if !claimed {
+		text := "Ник " + nick + " уже занят"
+		if owner, _ := b.st.PlayerByNick(c.Chat().ID, nick); owner != nil {
+			text += ": " + owner.Name
+		}
+		return c.Respond(&tele.CallbackResponse{Text: text})
+	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Готово: ник " + nick + " привязан"})
-	return c.Send(fmt.Sprintf("✅ <b>%s</b> = usdoku <code>%s</code>. Дальше учёт сам.",
-		esc(player.Name), esc(nick)))
+	b.afterClaim(c, gameID)
+	return nil
+}
+
+// afterClaim refreshes the fallback post after a claim: drop the claimed nick's
+// button, or, when no unknown nick is left, record the game from fresh state.
+func (b *Bot) afterClaim(c tele.Context, gameID int64) {
+	game, err := b.st.GameByID(gameID)
+	if err != nil || game == nil || game.Status != "pending" || game.Deleted ||
+		!game.UsdokuCode.Valid || game.UsdokuCode.String == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	info, err := b.ud.Info(ctx, game.UsdokuCode.String)
+	if err != nil {
+		log.Printf("afterClaim.info %s: %v", game.UsdokuCode.String, err)
+		return
+	}
+	unknown := b.unknownNicks(game.ChatID, info)
+	if len(unknown) == 0 {
+		b.autoRecord(game, info)
+		return
+	}
+	if err := c.Edit(autoMappingText(finisherNicks(info), unknown),
+		recordAndClaimKeyboard(gameID, unknown)); err != nil {
+		log.Printf("afterClaim.edit: %v", err)
+	}
+}
+
+// unknownNicks lists the room's usdoku nicks that match no registered player.
+func (b *Bot) unknownNicks(chatID int64, info *usdoku.GameInfo) []string {
+	var unknown []string
+	for _, p := range info.Players {
+		if pl, err := b.st.PlayerByNick(chatID, p.Name); err == nil && pl == nil {
+			unknown = append(unknown, p.Name)
+		}
+	}
+	return unknown
+}
+
+// finisherNicks is the room's finish order as usdoku nicks.
+func finisherNicks(info *usdoku.GameInfo) []string {
+	var nicks []string
+	for _, p := range info.FinishOrder() {
+		nicks = append(nicks, p.Name)
+	}
+	return nicks
 }
 
 // onRecordNow records the game from a fresh usdoku poll without waiting for the
