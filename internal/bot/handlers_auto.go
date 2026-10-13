@@ -213,7 +213,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	result += b.ratingFooter(game)
 	// The result is a NEW message (an edit would not notify anyone); the card
 	// is retired to a one-liner pointing at it.
-	if _, err := b.tb.Send(to, autoResultHeader()+result, resultKeyboard(game.ID)); err != nil {
+	if _, err := b.tb.Send(to, autoResultHeader()+result, b.resultKB(game.ID)); err != nil {
 		log.Printf("autoRecord.send: %v", err)
 	}
 	b.closeCard(game.ID)

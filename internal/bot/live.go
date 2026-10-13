@@ -272,6 +272,7 @@ func (b *Bot) closeOtherCard(c tele.Context, game int64) {
 // registerGameCardRoutes wires the buttons that live on the game card.
 func (b *Bot) registerGameCardRoutes() {
 	b.tb.Handle(&tele.Btn{Unique: cbRecNow}, b.onRecordNow)
+	b.tb.Handle(&tele.Btn{Unique: cbAgain}, b.onAgain)
 }
 
 // watching counts the live usdoku watchers per game, so the stale-game nudge can

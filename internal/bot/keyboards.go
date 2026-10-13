@@ -26,6 +26,7 @@ const (
 	cbUndel   = "undel"   // payload: "<gameID>" — restore deleted game
 	cbRec     = "rec"     // payload: "<gameID>"
 	cbRecNow  = "recnow"  // payload: "<gameID>" — auto-record from fresh usdoku state now
+	cbAgain   = "again"   // payload: "<gameID>" — new game with the same difficulty and mode
 	cbDoneDNF = "donednf" // payload: "<gameID>" — finalize, rest = DNF (0)
 
 	// Quick-action menu (no payload).
@@ -105,13 +106,24 @@ func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount int) *
 }
 
 // resultKeyboard is attached to a finalised game for light-touch corrections.
-func resultKeyboard(gameID int64) *tele.ReplyMarkup {
+// extra buttons (see Bot.resultKB) go in a row of their own below.
+func resultKeyboard(gameID int64, extra ...tele.Btn) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(
+	rows := []tele.Row{m.Row(
 		m.Data("✏️ Исправить", cbEdit, gid(gameID)),
 		m.Data("🗑 Удалить", cbDel, gid(gameID)),
-	))
+	)}
+	if len(extra) > 0 {
+		rows = append(rows, m.Row(extra...))
+	}
+	m.Inline(rows...)
 	return m
+}
+
+// againButton is «Ещё одну» on a regular game's result: same difficulty and mode.
+func againButton(gameID int64) tele.Btn {
+	m := &tele.ReplyMarkup{}
+	return m.Data("🔁 Ещё одну", cbAgain, gid(gameID))
 }
 
 // confirmDeleteKeyboard asks the user to confirm deletion. origin (may be

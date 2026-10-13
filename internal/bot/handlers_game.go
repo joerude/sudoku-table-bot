@@ -68,9 +68,10 @@ func (b *Bot) onNewGame(c tele.Context) error {
 
 // onQuickGame starts a default medium/hardcore game from the quick menu.
 func (b *Bot) onQuickGame(c tele.Context) error {
-	_ = c.Respond()
 	// The quick menu rides on the help message, which must survive: new card.
-	return b.startNewGameAt(c, "medium", "hardcore", placeNew)
+	err := b.startNewGameAt(c, "medium", "hardcore", placeNew)
+	_ = c.Respond() // after, so a «уже создаю» toast from the lock can still show
+	return err
 }
 
 // gameRoom is a freshly created pending game; code is empty when usdoku room
@@ -213,6 +214,54 @@ func (b *Bot) publishCard(room *gameRoom, chatID int64, kind, text string, kb *t
 	}
 	b.saveCard(room.gameID, chatID, msgID, text, kind)
 	return nil
+}
+
+// resultKB is the keyboard of a recorded game's result post. It is the one
+// place that decides which extra buttons ride along: a regular game with a known
+// difficulty and mode gets «Ещё одну»; a duel gets its rematch button here (the
+// duel flow adds rematchButton(gameID) in the isDuel branch).
+func (b *Bot) resultKB(gameID int64) *tele.ReplyMarkup {
+	game, err := b.st.GameByID(gameID)
+	if err != nil || game == nil {
+		return resultKeyboard(gameID)
+	}
+	if _, isDuel, err := b.st.DuelTargetID(gameID); err != nil || isDuel {
+		return resultKeyboard(gameID) // duel: append rematchButton(gameID) here
+	}
+	if game.Difficulty.String == "" || game.Mode.String == "" {
+		return resultKeyboard(gameID) // recorded by hand: nothing to repeat
+	}
+	return resultKeyboard(gameID, againButton(gameID))
+}
+
+// onAgain starts a new game with the same difficulty and mode as a recorded one.
+// The result post must survive, so the new card is a new message. The usual
+// createGameRoom guards apply (enough players, no pending game, one creation
+// at a time).
+func (b *Bot) onAgain(c tele.Context) error {
+	game, err := b.st.GameByID(parseID(c.Data()))
+	if err != nil {
+		return b.fail(c, "onAgain.game", err)
+	}
+	if game == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+	}
+	difficulty, mode := repeatParams(game.Difficulty.String, game.Mode.String)
+	err = b.startNewGameAt(c, difficulty, mode, placeNew)
+	_ = c.Respond() // after, so a guard's toast can still show
+	return err
+}
+
+// repeatParams validates a recorded game's difficulty and mode for a rematch,
+// falling back to the defaults for anything missing or unknown.
+func repeatParams(difficulty, mode string) (string, string) {
+	if !validDifficulty[difficulty] {
+		difficulty = "medium"
+	}
+	if mode != "hardcore" && mode != "original" {
+		mode = "hardcore"
+	}
+	return difficulty, mode
 }
 
 // pendingConflict posts the "unfinished game" warning with the pending game's
@@ -678,7 +727,7 @@ func (b *Bot) onDeleteCancel(c tele.Context) error {
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
 	if game != nil && game.Status == "completed" {
-		return c.Edit(resultKeyboard(gameID))
+		return c.Edit(b.resultKB(gameID))
 	}
 	if origin != "" {
 		return c.Edit(pendingConflictKeyboard(gameID, origin))
@@ -717,7 +766,7 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		if _, isDuel, derr := b.st.DuelTargetID(gameID); derr != nil {
 			log.Printf("gameView.duelCheck: %v", derr)
 		} else if isDuel {
-			return b.duelResult(game, rows), resultKeyboard(gameID), nil
+			return b.duelResult(game, rows), b.resultKB(gameID), nil
 		}
 		target := 0
 		if season, err := b.st.SeasonByID(game.SeasonID); err == nil && season != nil {
@@ -725,7 +774,7 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		}
 		leader, _ := b.st.Leader(game.ChatID, game.SeasonID)
 		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target),
-			resultKeyboard(gameID), nil
+			b.resultKB(gameID), nil
 	}
 	return "🧩 Игра ожидает результата — жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
@@ -947,7 +996,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 			esc(strings.Join(noNick, ", ")))
 	}
 	result += b.ratingFooter(game)
-	if err := c.Edit(result, resultKeyboard(game.ID)); err != nil {
+	if err := c.Edit(result, b.resultKB(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
 	}
 	b.closeOtherCard(c, game.ID) // the result landed in the picker, not on the card
