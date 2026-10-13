@@ -96,6 +96,18 @@ func TestSettingsFooter(t *testing.T) {
 	}
 }
 
+func TestGuardTexts(t *testing.T) {
+	if guardFailToast != "⚠️ Не вышло, попробуй ещё раз" {
+		t.Errorf("fail toast = %q", guardFailToast)
+	}
+	if got := playerNotFoundText("<b>x"); strings.Contains(got, "<b>x") || !strings.Contains(got, "/players") {
+		t.Errorf("playerNotFoundText must escape the name and point to /players: %q", got)
+	}
+	if !strings.Contains(noPlayersText, "/setnick") {
+		t.Errorf("noPlayersText should send people to /setnick: %q", noPlayersText)
+	}
+}
+
 func TestNickTakenText(t *testing.T) {
 	got := nickTakenText("Ace", "A<b>")
 	if !strings.Contains(got, "Ace") || !strings.Contains(got, "уже у") {
