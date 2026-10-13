@@ -259,3 +259,8 @@ func (b *Bot) closeOtherCard(c tele.Context, game int64) {
 	}
 	b.closeCard(game)
 }
+
+// registerGameCardRoutes wires the buttons that live on the game card.
+func (b *Bot) registerGameCardRoutes() {
+	b.tb.Handle(&tele.Btn{Unique: cbRecNow}, b.onRecordNow)
+}

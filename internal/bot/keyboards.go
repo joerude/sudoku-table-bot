@@ -25,6 +25,7 @@ const (
 	cbDelN    = "deln"    // payload: "<gameID>" — cancel delete
 	cbUndel   = "undel"   // payload: "<gameID>" — restore deleted game
 	cbRec     = "rec"     // payload: "<gameID>"
+	cbRecNow  = "recnow"  // payload: "<gameID>" — auto-record from fresh usdoku state now
 	cbDoneDNF = "donednf" // payload: "<gameID>" — finalize, rest = DNF (0)
 
 	// Quick-action menu (no payload).
@@ -148,13 +149,23 @@ func recordKeyboard(gameID int64) *tele.ReplyMarkup {
 	return m
 }
 
-// liveKeyboard is the game card's keyboard: the invite card keeps its RSVP
-// button (rsvp = roster size); every other card offers the manual record button.
+// liveKeyboard is the game card's keyboard for its live state: the invite card
+// keeps its RSVP button (rsvp = roster size); once somebody has finished,
+// «Записать сейчас» appears so nobody has to wait out the drain timer.
 func liveKeyboard(gameID int64, kind string, hasFinishers bool, rsvp int) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	var rows []tele.Row
 	if kind == cardKindInvite {
-		return inviteKeyboard(gameID, rsvp)
+		rows = append(rows, m.Row(m.Data(fmt.Sprintf("✅ Я в деле (%d)", rsvp), cbJoinIn, gid(gameID))))
 	}
-	return recordKeyboard(gameID)
+	if hasFinishers {
+		rows = append(rows, m.Row(m.Data("🏁 Записать сейчас", cbRecNow, gid(gameID))))
+	}
+	if kind != cardKindInvite || hasFinishers {
+		rows = append(rows, m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID))))
+	}
+	m.Inline(rows...)
+	return m
 }
 
 // recordAndClaimKeyboard combines the "record result" button with one claim-nick

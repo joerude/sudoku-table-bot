@@ -35,3 +35,6 @@ var creatingRooms keyLocks
 
 // busyCreatingText is the reply to a second create request while one is running.
 const busyCreatingText = "⏳ Уже создаю комнату"
+
+// recordingGames serialises auto-record per game (watcher vs «Записать сейчас»).
+var recordingGames keyLocks

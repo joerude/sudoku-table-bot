@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tele "gopkg.in/telebot.v3"
+
 	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
@@ -41,5 +43,83 @@ func TestLiveKeyboardKeepsRSVPOnInviteCard(t *testing.T) {
 	plain := liveKeyboard(7, "", false, 0)
 	if len(plain.InlineKeyboard) != 1 || plain.InlineKeyboard[0][0].Unique != cbRec {
 		t.Errorf("plain card must offer the record button: %+v", plain.InlineKeyboard)
+	}
+}
+
+func TestBuildLiveSnapshotJoinedAndSolving(t *testing.T) {
+	info := &usdoku.GameInfo{
+		Info: usdoku.Info{StartedAt: 1000},
+		Players: []usdoku.Player{
+			{Name: "ann", JoinedAt: 1000, CompletedAt: i64p(1200)},
+			{Name: "bob", JoinedAt: 1000},
+		},
+	}
+	snap := buildLiveSnapshot(info, func(n string) string { return n })
+	if got := strings.Join(snap.Joined, ","); got != "ann,bob" {
+		t.Errorf("joined = %q", got)
+	}
+	if got := strings.Join(snap.Solving, ","); got != "bob" {
+		t.Errorf("solving = %q, want only the one without completedAt", got)
+	}
+}
+
+func TestLiveSectionTextBeforeStartListsRoom(t *testing.T) {
+	got := liveSectionText(liveSnapshot{Joined: []string{"Аня", "Боб"}})
+	if got != "👀 В комнате: Аня, Боб" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestLiveSectionTextDrainExplainsWhoAndWhen(t *testing.T) {
+	got := liveSectionText(liveSnapshot{
+		Joined:    []string{"Аня", "Боб"},
+		Finishers: []liveFinisher{{Name: "Аня", Secs: 125}},
+		Solving:   []string{"Боб"},
+	})
+	for _, want := range []string{"🥇 Аня", "⏱ 2:05", "⏳ Ещё решают: Боб", "~6 мин"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestLiveSectionTextEscapesNames(t *testing.T) {
+	got := liveSectionText(liveSnapshot{Joined: []string{"<b>x</b>"}})
+	if strings.Contains(got, "<b>x</b>") {
+		t.Errorf("nick must be HTML-escaped: %q", got)
+	}
+}
+
+func TestLiveSectionTextEveryoneDone(t *testing.T) {
+	got := liveSectionText(liveSnapshot{
+		Joined:    []string{"Аня"},
+		Finishers: []liveFinisher{{Name: "Аня"}},
+	})
+	if strings.Contains(got, "Ещё решают") {
+		t.Errorf("nobody is solving, got %q", got)
+	}
+}
+
+func TestLiveKeyboardOffersRecordNowOnlyAfterAFinish(t *testing.T) {
+	has := func(m *tele.ReplyMarkup, unique string) bool {
+		for _, row := range m.InlineKeyboard {
+			for _, b := range row {
+				if b.Unique == unique {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if has(liveKeyboard(7, "", false, 0), cbRecNow) {
+		t.Error("no finisher yet: no «Записать сейчас»")
+	}
+	after := liveKeyboard(7, "", true, 0)
+	if !has(after, cbRecNow) || !has(after, cbRec) {
+		t.Errorf("after a finish both record buttons are expected: %+v", after.InlineKeyboard)
+	}
+	inv := liveKeyboard(7, cardKindInvite, true, 1)
+	if !has(inv, cbJoinIn) || !has(inv, cbRecNow) {
+		t.Errorf("invite card keeps RSVP and gains record-now: %+v", inv.InlineKeyboard)
 	}
 }
