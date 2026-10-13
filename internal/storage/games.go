@@ -127,20 +127,20 @@ func (s *Store) AddPickTimed(gameID, playerID, durationSecs int64) error {
 	return s.addPick(gameID, playerID, durationSecs)
 }
 
+// addPick takes the next rank and inserts in one statement, so two concurrent
+// taps cannot both read the same MAX(rank). It only inserts into a live pending
+// game (not completed, not soft-deleted); otherwise it is a no-op.
 func (s *Store) addPick(gameID, playerID, durationSecs int64) error {
-	var next int
-	if err := s.db.QueryRow(
-		`SELECT COALESCE(MAX(rank),0)+1 FROM game_results WHERE game_id=?`, gameID).
-		Scan(&next); err != nil {
-		return err
-	}
 	var dur any
 	if durationSecs > 0 {
 		dur = durationSecs
 	}
 	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank, duration_secs) VALUES(?,?,?,?)`,
-		gameID, playerID, next, dur)
+		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank, duration_secs)
+		 SELECT g.id, ?,
+		        COALESCE((SELECT MAX(rank) FROM game_results WHERE game_id=g.id), 0)+1, ?
+		 FROM games g WHERE g.id=? AND g.status='pending' AND g.deleted=0`,
+		playerID, dur, gameID)
 	return err
 }
 
@@ -239,11 +239,14 @@ type ResultRow struct {
 }
 
 // AddDNF records a player who joined but did not finish: rank 0 (scores 0,
-// marks a non-finisher) with no solve time. Safe to call after finishers.
+// marks a non-finisher) with no solve time. Safe to call after finishers; a
+// no-op unless the game is a live pending one.
 func (s *Store) AddDNF(gameID, playerID int64) error {
 	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank, duration_secs) VALUES(?,?,0,NULL)`,
-		gameID, playerID)
+		`INSERT OR IGNORE INTO game_results(game_id, player_id, rank, duration_secs)
+		 SELECT g.id, ?, 0, NULL FROM games g
+		 WHERE g.id=? AND g.status='pending' AND g.deleted=0`,
+		playerID, gameID)
 	return err
 }
 
