@@ -288,13 +288,14 @@ func (b *Bot) scheduleDelete(d time.Duration, msgs ...*tele.Message) {
 	})
 }
 
-// fail logs an error and shows a generic message to the user.
+// fail logs an error and tells the user something went wrong: a toast on a
+// button press (no chat message), a self-deleting message for a command.
 func (b *Bot) fail(c tele.Context, where string, err error) error {
 	log.Printf("%s: %v", where, err)
 	if c.Callback() != nil {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Ошибка, попробуйте ещё раз"})
+		return c.Respond(&tele.CallbackResponse{Text: guardFailToast})
 	}
-	return b.ephemeral(c, "⚠️ Что-то пошло не так. Попробуйте ещё раз.")
+	return b.ephemeral(c, guardFailText)
 }
 
 // parseID reads an int64 from callback payload (whole string or before ':').

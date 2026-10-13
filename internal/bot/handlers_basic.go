@@ -157,14 +157,14 @@ func (b *Bot) onRemovePlayer(c tele.Context) error {
 	}
 	name := strings.TrimSpace(c.Message().Payload)
 	if name == "" {
-		return b.ephemeral(c, "Кого убрать? Напиши: /removeplayer Имя\n(смотри /players)")
+		return b.ephemeral(c, removeWhoText)
 	}
 	n, err := b.st.RemovePlayer(c.Chat().ID, name)
 	if err != nil {
 		return b.fail(c, "onRemovePlayer.remove", err)
 	}
 	if n == 0 {
-		return b.ephemeral(c, "Не нашёл игрока: <b>"+esc(name)+"</b>. Проверь /players.")
+		return b.ephemeral(c, playerNotFoundText(name))
 	}
 	return c.Send("🗑 Игрок убран: <b>" + esc(name) + "</b> (его прошлые игры сохранены).")
 }
@@ -178,7 +178,7 @@ func (b *Bot) onPlayers(c tele.Context) error {
 		return b.fail(c, "onPlayers.list", err)
 	}
 	if len(players) == 0 {
-		return b.ephemeral(c, "Пока никто не зарегистрирован. Жми /join")
+		return b.ephemeral(c, noPlayersText)
 	}
 	var sb strings.Builder
 	sb.WriteString("👥 <b>Игроки</b>\n")
