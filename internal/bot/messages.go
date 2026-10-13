@@ -196,7 +196,7 @@ func autoMappingText(orderNicks, unknown []string) string {
 			"\nНе узнал ники: <b>%s</b>\nПусть эти игроки сделают /setnick &lt;ник&gt;, "+
 				"либо запишите вручную:", esc(strings.Join(unknown, ", "))))
 	} else {
-		b.WriteString("\nНужно минимум 2 знакомых игрока. Запишите вручную:")
+		b.WriteString("\nНикто из знакомых игроков не финишировал. Запишите вручную:")
 	}
 	return b.String()
 }
