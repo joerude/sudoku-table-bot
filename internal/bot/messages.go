@@ -928,10 +928,10 @@ var difficultyRank = map[string]int{"easy": 0, "medium": 1, "hard": 2, "extreme"
 // championship-title tally. Empty only when there is neither.
 func recordsText(rows []storage.RecordRow, titles []storage.TitleRow) string {
 	if len(rows) == 0 && len(titles) == 0 {
-		return "🏆 <b>Рекорды</b>\nПока нет рекордов — сыграйте авто-игру (нужен /setnick), и время попадёт сюда."
+		return "⏱ <b>Рекорды всех времён</b>\nПока нет рекордов — сыграйте авто-игру (нужен /setnick), и время попадёт сюда."
 	}
 	var b strings.Builder
-	b.WriteString("🏆 <b>Рекорды</b> · лучшее время\n")
+	b.WriteString("⏱ <b>Рекорды всех времён</b> · лучшее время\n")
 	if len(rows) == 0 {
 		b.WriteString("Пока нет рекордов по времени.\n")
 	} else {

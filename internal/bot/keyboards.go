@@ -38,9 +38,9 @@ const (
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
-	cbStatsTab = "ststab" // payload: "<tab>" — table|me|speed|duels|history
+	cbStatsTab = "ststab" // payload: "<tab>" (see statsTabs) or "speed_all"
 
-	cbSeasonView = "seasview" // payload: "<number>" — render that season's summary
+	cbSeasonView = "seasview" // payload: "<number>" (that season's summary) or "archive" (all seasons)
 
 	cbClaimNick = "claim" // payload: "<gameID>:<usdokuNick>" — bind nick to tapper
 
@@ -219,9 +219,16 @@ var statsTabs = []struct{ id, label string }{
 	{"speed", "⚡ Скорость"},
 	{"duels", "⚔️ Дуэли"},
 	{"history", "📜 История"},
-	{"records", "🏆 Рекорды"},
-	{"activity", "🎯 Актив"},
+	{"rating", "📊 Рейтинг"},
+	{"activity", "📣 Актив"},
 }
+
+// statsTabsPerRow keeps the tab layout even: 7 tabs make rows of 4 and 3.
+const statsTabsPerRow = 4
+
+// recentSeasonButtons is how many season buttons sit under the Table tab; the
+// rest hide behind the «Архив» button.
+const recentSeasonButtons = 4
 
 // playMenuKeyboard is the /play hub: pick a game mode.
 func playMenuKeyboard() *tele.ReplyMarkup {
@@ -332,11 +339,8 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 		btns = append(btns, m.Data(label, cbStatsTab, t.id))
 	}
 	var rows []tele.Row
-	for i := 0; i < len(btns); i += 3 {
-		end := i + 3
-		if end > len(btns) {
-			end = len(btns)
-		}
+	for i := 0; i < len(btns); i += statsTabsPerRow {
+		end := min(i+statsTabsPerRow, len(btns))
 		rows = append(rows, m.Row(btns[i:end]...))
 	}
 	switch active {
@@ -346,7 +350,7 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 		rows = append(rows, m.Row(m.Data("📅 Текущий сезон", cbStatsTab, "speed")))
 	case "table":
 		if len(archived) > 0 {
-			rows = append(rows, seasonButtonRows(m, archived, seasonNumber)...)
+			rows = append(rows, recentSeasonRows(m, archived, seasonNumber)...)
 		}
 	}
 	m.Inline(rows...)
@@ -367,17 +371,79 @@ func seasonNumbers(archived []int, active int) []int {
 	return out
 }
 
+// seasonButton is one season's button; the active season is marked with ▶.
+func seasonButton(m *tele.ReplyMarkup, n, active int) tele.Btn {
+	label := fmt.Sprintf("С%d", n)
+	if n == active {
+		label = "▶ " + label
+	}
+	return m.Data(label, cbSeasonView, strconv.Itoa(n))
+}
+
+// recentSeasonRows is the Table tab's season strip: the latest
+// recentSeasonButtons seasons in one row, plus «Архив» when older ones exist.
+func recentSeasonRows(m *tele.ReplyMarkup, archived []int, active int) []tele.Row {
+	nums := seasonNumbers(archived, active)
+	hidden := len(nums) > recentSeasonButtons
+	if hidden {
+		nums = nums[len(nums)-recentSeasonButtons:]
+	}
+	btns := make([]tele.Btn, len(nums))
+	for i, n := range nums {
+		btns[i] = seasonButton(m, n, active)
+	}
+	rows := []tele.Row{m.Row(btns...)}
+	if hidden {
+		rows = append(rows, m.Row(m.Data("📚 Архив", cbSeasonView, seasonArchive)))
+	}
+	return rows
+}
+
+// seasonArchive is the cbSeasonView payload that opens the full season list.
+const seasonArchive = "archive"
+
+// seasonViewKeyboard sits under a season summary: arrows to the neighbouring
+// seasons and a way back to the stats hub, so the summary is not a dead end.
+func seasonViewKeyboard(archived []int, active, viewed int) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	nums := seasonNumbers(archived, active)
+	var arrows tele.Row
+	for i, n := range nums {
+		if n != viewed {
+			continue
+		}
+		if i > 0 {
+			arrows = append(arrows, m.Data(fmt.Sprintf("◀ С%d", nums[i-1]), cbSeasonView, strconv.Itoa(nums[i-1])))
+		}
+		if i < len(nums)-1 {
+			arrows = append(arrows, m.Data(fmt.Sprintf("С%d ▶", nums[i+1]), cbSeasonView, strconv.Itoa(nums[i+1])))
+		}
+	}
+	var rows []tele.Row
+	if len(arrows) > 0 {
+		rows = append(rows, arrows)
+	}
+	rows = append(rows, m.Row(m.Data("⬅️ К статистике", cbStatsTab, "table")))
+	m.Inline(rows...)
+	return m
+}
+
+// archiveKeyboard lists every season plus a way back to the stats hub.
+func archiveKeyboard(archived []int, active int) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	rows := seasonButtonRows(m, archived, active)
+	rows = append(rows, m.Row(m.Data("⬅️ К статистике", cbStatsTab, "table")))
+	m.Inline(rows...)
+	return m
+}
+
 // seasonButtonRows renders one button per season in rows of 4; the active
 // season is marked with ▶.
 func seasonButtonRows(m *tele.ReplyMarkup, archived []int, active int) []tele.Row {
 	var rows []tele.Row
 	var btns []tele.Btn
 	for _, n := range seasonNumbers(archived, active) {
-		label := fmt.Sprintf("С%d", n)
-		if n == active {
-			label = "▶ " + label
-		}
-		btns = append(btns, m.Data(label, cbSeasonView, strconv.Itoa(n)))
+		btns = append(btns, seasonButton(m, n, active))
 		if len(btns) == 4 {
 			rows = append(rows, m.Row(btns...))
 			btns = nil

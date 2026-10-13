@@ -3,6 +3,7 @@ package bot
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -93,16 +94,39 @@ func (b *Bot) onExport(c tele.Context) error {
 	return c.Send(doc)
 }
 
-func (b *Bot) onStatus(c tele.Context) error {
-	season, err := b.ensure(c)
+// onStatus is an alias of the stats hub's Table tab (with the season deadline).
+func (b *Bot) onStatus(c tele.Context) error { return b.openStatsTab(c, "table") }
+
+// onDuelsHub is the /duels alias: the stats hub opened on the Duels tab.
+func (b *Bot) onDuelsHub(c tele.Context) error { return b.openStatsTab(c, "duels") }
+
+// openStatsTab sends the stats hub as a new message on the given tab. The
+// per-topic commands (/status, /me, /duels, /rating, ...) are aliases of it.
+func (b *Bot) openStatsTab(c tele.Context, tab string) error {
+	text, markup, err := b.statsView(c, tab)
 	if err != nil {
-		return b.fail(c, "onStatus.ensure", err)
+		return b.fail(c, "openStatsTab."+tab, err)
 	}
-	standings, err := b.st.Standings(c.Chat().ID, season.ID)
-	if err != nil {
-		return b.fail(c, "onStatus.standings", err)
+	return c.Send(text, markup)
+}
+
+// isNotModified reports Telegram's "message is not modified" edit error, which
+// a tap on the already-open tab produces.
+func isNotModified(err error) bool {
+	return errors.Is(err, tele.ErrSameMessageContent) || errors.Is(err, tele.ErrMessageNotModified) ||
+		(err != nil && strings.Contains(err.Error(), "message is not modified"))
+}
+
+// editInPlace swaps the callback's message for text+markup. Re-tapping the tab
+// that is already open changes nothing, which Telegram reports as an error;
+// that becomes an «Обновлено» toast instead.
+func editInPlace(c tele.Context, text string, markup *tele.ReplyMarkup) error {
+	err := c.Edit(text, markup)
+	if isNotModified(err) {
+		return c.Respond(&tele.CallbackResponse{Text: "Обновлено"})
 	}
-	return c.Send(standingsText(season, standings))
+	_ = c.Respond()
+	return err
 }
 
 // onSeason without args shows the active season; "/season N" shows any
@@ -124,7 +148,7 @@ func (b *Bot) onSeason(c tele.Context) error {
 		if !ok {
 			return b.ephemeral(c, noSuchSeasonText(n, nums))
 		}
-		return c.Send(text, seasonsKeyboard(nums, season.Number))
+		return c.Send(text, seasonViewKeyboard(nums, season.Number, n))
 	}
 	leader, err := b.st.Leader(c.Chat().ID, season.ID)
 	if err != nil {
@@ -155,11 +179,19 @@ func (b *Bot) seasonSummaryView(chatID int64, number int) (string, bool, error) 
 	return seasonSummaryText(se, standings, games, first, last, winner, awards), true, nil
 }
 
-// onSeasonView switches the message to the tapped season's summary in place.
+// onSeasonView switches the message to the tapped season's summary (or the
+// full season list for «Архив») in place.
 func (b *Bot) onSeasonView(c tele.Context) error {
 	season, err := b.ensure(c)
 	if err != nil {
 		return b.fail(c, "onSeasonView.ensure", err)
+	}
+	nums, err := b.st.ArchivedNumbers(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onSeasonView.archived", err)
+	}
+	if c.Data() == seasonArchive {
+		return editInPlace(c, "📚 <b>Архив сезонов</b>\nВыбери сезон.", archiveKeyboard(nums, season.Number))
 	}
 	n, aerr := strconv.Atoi(c.Data())
 	if aerr != nil || n < 1 {
@@ -172,12 +204,7 @@ func (b *Bot) onSeasonView(c tele.Context) error {
 	if !ok {
 		return c.Respond(&tele.CallbackResponse{Text: "Сезон не найден"})
 	}
-	nums, err := b.st.ArchivedNumbers(c.Chat().ID)
-	if err != nil {
-		return b.fail(c, "onSeasonView.archived", err)
-	}
-	_ = c.Respond()
-	return c.Edit(text, seasonsKeyboard(nums, season.Number))
+	return editInPlace(c, text, seasonViewKeyboard(nums, season.Number, n))
 }
 
 func (b *Bot) onWeekly(c tele.Context) error {
@@ -194,40 +221,8 @@ func (b *Bot) onWeekly(c tele.Context) error {
 	return c.Send(text)
 }
 
-func (b *Bot) onMe(c tele.Context) error {
-	season, err := b.ensure(c)
-	if err != nil {
-		return b.fail(c, "onMe.ensure", err)
-	}
-	if c.Sender() == nil {
-		return b.ephemeral(c, "Не удалось определить пользователя.")
-	}
-	player, err := b.st.PlayerByTg(c.Chat().ID, c.Sender().ID)
-	if err != nil {
-		return b.fail(c, "onMe.player", err)
-	}
-	if player == nil {
-		return b.ephemeral(c, "Ты ещё не в игре. Жми /join")
-	}
-	stat, err := b.st.StatFor(c.Chat().ID, season.ID, player.ID)
-	if err != nil {
-		return b.fail(c, "onMe.stat", err)
-	}
-	sp, err := b.st.SpeedFor(c.Chat().ID, season.ID, player.ID, "medium")
-	if err != nil {
-		return b.fail(c, "onMe.speed", err)
-	}
-	duelW, duelL, err := b.st.DuelRecord(c.Chat().ID, player.ID)
-	if err != nil {
-		return b.fail(c, "onMe.duel", err)
-	}
-	duelSp, duelStreak, err := b.duelExtras(c.Chat().ID, player.ID)
-	if err != nil {
-		return b.fail(c, "onMe.duelExtras", err)
-	}
-	return c.Send(meText(player.Name, stat, sp, duelW, duelL, duelSp, duelStreak, season) +
-		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)))
-}
+// onMe is an alias of the stats hub's «Я» tab.
+func (b *Bot) onMe(c tele.Context) error { return b.openStatsTab(c, "me") }
 
 // historyDefault is the page size for the History tab / bare /history.
 // historyMax caps "/history all" so the message stays under Telegram's 4096 limit.
@@ -236,9 +231,12 @@ const (
 	historyMax     = 50
 )
 
-// onHistory shows recent games. "/history" → last 8; "/history N" → last N;
-// "/history all" → up to historyMax.
+// onHistory shows recent games. "/history" opens the stats hub on its History
+// tab; "/history N" → last N; "/history all" → up to historyMax.
 func (b *Bot) onHistory(c tele.Context) error {
+	if len(c.Args()) == 0 {
+		return b.openStatsTab(c, "history")
+	}
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onHistory.ensure", err)
 	}
@@ -412,22 +410,33 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		return "", nil, err
 	}
 	chatID := c.Chat().ID
+	if tab == "records" { // legacy button: records moved into the Speed tab
+		tab = "speed"
+	}
 	var text string
 	switch tab {
 	case "me":
 		text, err = b.meTab(c, season)
-	case "speed":
-		ranked, fewer, e := b.st.Speedboard(chatID, season.ID, "medium", speedMinGames)
+	case "speed", "speed_all":
+		seasonID, se := season.ID, season
+		if tab == "speed_all" {
+			seasonID, se = 0, nil
+		}
+		ranked, fewer, e := b.st.Speedboard(chatID, seasonID, "medium", speedMinGames)
 		if e != nil {
 			return "", nil, e
 		}
-		text = speedText(season, "medium", ranked, fewer, speedMinGames)
-	case "speed_all":
-		ranked, fewer, e := b.st.Speedboard(chatID, 0, "medium", speedMinGames)
+		recs, e := b.st.RecordsBoard(chatID)
 		if e != nil {
 			return "", nil, e
 		}
-		text = speedText(nil, "medium", ranked, fewer, speedMinGames)
+		titles, e := b.st.TitlesBoard(chatID)
+		if e != nil {
+			return "", nil, e
+		}
+		text = speedText(se, "medium", ranked, fewer, speedMinGames) + "\n\n" + recordsText(recs, titles)
+	case "rating":
+		text, err = b.ratingTab(chatID)
 	case "duels":
 		text, err = b.duelsPanel(chatID)
 		if err != nil {
@@ -439,16 +448,6 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = historyText(games, b.chatTZ(chatID))
-	case "records":
-		recs, e := b.st.RecordsBoard(chatID)
-		if e != nil {
-			return "", nil, e
-		}
-		titles, e := b.st.TitlesBoard(chatID)
-		if e != nil {
-			return "", nil, e
-		}
-		text = recordsText(recs, titles)
 	case "activity":
 		since := time.Now().UTC().AddDate(0, 0, -30).Format("2006-01-02 15:04:05")
 		init, e := b.st.InitiativeStats(chatID, since)
@@ -474,7 +473,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, err
 		}
 	}
-	return text, statsKeyboard(tab, archived, season.Number), nil
+	return clipText(text, tgMaxText), statsKeyboard(tab, archived, season.Number), nil
 }
 
 // meTab renders the caller's personal stats, or a join hint if unregistered.
@@ -510,13 +509,7 @@ func (b *Bot) meTab(c tele.Context, season *storage.Season) (string, error) {
 		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)), nil
 }
 
-func (b *Bot) onStats(c tele.Context) error {
-	text, markup, err := b.statsView(c, "table")
-	if err != nil {
-		return b.fail(c, "onStats", err)
-	}
-	return c.Send(text, markup)
-}
+func (b *Bot) onStats(c tele.Context) error { return b.openStatsTab(c, "table") }
 
 // onStatsTab edits the single shared group message in place; the "me" tab therefore
 // renders for whoever last tapped, not as a per-user private view — this is by design.
@@ -525,8 +518,7 @@ func (b *Bot) onStatsTab(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onStatsTab", err)
 	}
-	_ = c.Respond()
-	return c.Edit(text, markup)
+	return editInPlace(c, text, markup)
 }
 
 func (b *Bot) requireAdmin(c tele.Context) bool {
@@ -556,6 +548,12 @@ func (b *Bot) onSpeed(c tele.Context) error {
 		case low == "all" || low == "все" || low == "всё":
 			all = true
 		}
+	}
+	if difficulty == "medium" { // the hub's Speed tab covers medium
+		if all {
+			return b.openStatsTab(c, "speed_all")
+		}
+		return b.openStatsTab(c, "speed")
 	}
 	seasonID, se := season.ID, season
 	if all {

@@ -5,15 +5,18 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-// onRating shows the eternal ELO ladder for the chat.
-func (b *Bot) onRating(c tele.Context) error {
-	games, err := b.st.GamesForRating(c.Chat().ID)
+// onRating is an alias of the stats hub's «Рейтинг» tab.
+func (b *Bot) onRating(c tele.Context) error { return b.openStatsTab(c, "rating") }
+
+// ratingTab renders the eternal ELO ladder for the chat.
+func (b *Bot) ratingTab(chatID int64) (string, error) {
+	games, err := b.st.GamesForRating(chatID)
 	if err != nil {
-		return b.fail(c, "rating", err)
+		return "", err
 	}
-	names, err := b.st.PlayerNames(c.Chat().ID)
+	names, err := b.st.PlayerNames(chatID)
 	if err != nil {
-		return b.fail(c, "rating", err)
+		return "", err
 	}
-	return c.Send(ratingLadder(domain.ComputeRatings(games), names))
+	return ratingLadder(domain.ComputeRatings(games), names), nil
 }
