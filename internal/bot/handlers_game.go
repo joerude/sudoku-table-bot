@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -247,15 +248,49 @@ func (b *Bot) onResult(c tele.Context) error {
 	return c.Send(text, markup)
 }
 
+// gameToast says why a picker or record action must not run on g, or "" when it
+// may. wantStatus is the status the action needs: "pending" for picker steps
+// (pick, undo, reset, done), "completed" for reopening a result. A nil or
+// soft-deleted game is never actionable.
+func gameToast(g *storage.Game, wantStatus string) string {
+	switch {
+	case g == nil || g.Deleted:
+		return "Игра не найдена"
+	case g.Status == wantStatus:
+		return ""
+	case wantStatus == "pending":
+		return "Игра уже закрыта"
+	default:
+		return toastAlreadyOpen
+	}
+}
+
+const toastAlreadyOpen = "Игра уже открыта для записи"
+
+// guardGame loads the game for a callback and checks gameToast. When the game
+// is not actionable it answers the callback with the toast and returns ok=false
+// (a DB error goes through fail), so stale buttons on an old picker or result
+// post never change a game that was closed, reopened or deleted elsewhere. The
+// mutating storage calls re-check the status in SQL, which covers the race
+// between this read and the write.
+func (b *Bot) guardGame(c tele.Context, op string, gameID int64, wantStatus string) (*storage.Game, bool) {
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		_ = b.fail(c, op+".game", err)
+		return nil, false
+	}
+	if msg := gameToast(game, wantStatus); msg != "" {
+		_ = c.Respond(&tele.CallbackResponse{Text: msg})
+		return nil, false
+	}
+	return game, true
+}
+
 // onRecord opens the picker for an existing pending game (from its button).
 func (b *Bot) onRecord(c tele.Context) error {
 	gameID := parseID(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onRecord.game", err)
-	}
-	if game == nil || game.Status == "completed" {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Игра не найдена или уже закрыта"})
+	game, ok := b.guardGame(c, "onRecord", gameID, "pending")
+	if !ok {
 		return nil
 	}
 	text, markup, err := b.pickerView(game.ChatID, gameID)
@@ -269,12 +304,8 @@ func (b *Bot) onRecord(c tele.Context) error {
 // onPick records the next finisher; auto-finalises when everyone is placed.
 func (b *Bot) onPick(c tele.Context) error {
 	gameID, playerID := parsePair(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onPick.game", err)
-	}
-	if game == nil || game.Status == "completed" {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Игра уже закрыта"})
+	game, ok := b.guardGame(c, "onPick", gameID, "pending")
+	if !ok {
 		return nil
 	}
 	if err := b.st.AddPick(gameID, playerID); err != nil {
@@ -286,7 +317,6 @@ func (b *Bot) onPick(c tele.Context) error {
 		return b.fail(c, "onPick.remaining", err)
 	}
 	if len(remaining) == 0 {
-		_ = c.Respond()
 		return b.finalize(c, game)
 	}
 	text, markup, err := b.pickerView(game.ChatID, gameID)
@@ -299,12 +329,8 @@ func (b *Bot) onPick(c tele.Context) error {
 
 func (b *Bot) onDone(c tele.Context) error {
 	gameID := parseID(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onDone.game", err)
-	}
-	if game == nil || game.Status == "completed" {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Игра уже закрыта"})
+	game, ok := b.guardGame(c, "onDone", gameID, "pending")
+	if !ok {
 		return nil
 	}
 	picked, err := b.st.PickedPlayerIDs(gameID)
@@ -314,18 +340,13 @@ func (b *Bot) onDone(c tele.Context) error {
 	if len(picked) == 0 {
 		return c.Respond(&tele.CallbackResponse{Text: "Сначала выбери хотя бы одного игрока"})
 	}
-	_ = c.Respond()
 	return b.finalize(c, game)
 }
 
 func (b *Bot) onReset(c tele.Context) error {
 	gameID := parseID(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onReset.game", err)
-	}
-	if game == nil {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+	game, ok := b.guardGame(c, "onReset", gameID, "pending")
+	if !ok {
 		return nil
 	}
 	if err := b.st.ClearResults(gameID); err != nil {
@@ -342,12 +363,8 @@ func (b *Bot) onReset(c tele.Context) error {
 // onUndoPick removes the last finisher tapped, stepping back one.
 func (b *Bot) onUndoPick(c tele.Context) error {
 	gameID := parseID(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onUndoPick.game", err)
-	}
-	if game == nil {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+	game, ok := b.guardGame(c, "onUndoPick", gameID, "pending")
+	if !ok {
 		return nil
 	}
 	if err := b.st.RemoveLastPick(gameID); err != nil {
@@ -364,6 +381,9 @@ func (b *Bot) onUndoPick(c tele.Context) error {
 // onCancelRecord aborts recording: clears partial picks, keeps the game pending.
 func (b *Bot) onCancelRecord(c tele.Context) error {
 	gameID := parseID(c.Data())
+	if _, ok := b.guardGame(c, "onCancelRecord", gameID, "pending"); !ok {
+		return nil
+	}
 	if err := b.st.ClearResults(gameID); err != nil {
 		return b.fail(c, "onCancelRecord.clear", err)
 	}
@@ -375,15 +395,14 @@ func (b *Bot) onCancelRecord(c tele.Context) error {
 // onEdit reopens a finalised game for re-entry.
 func (b *Bot) onEdit(c tele.Context) error {
 	gameID := parseID(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onEdit.game", err)
-	}
-	if game == nil {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+	game, ok := b.guardGame(c, "onEdit", gameID, "completed")
+	if !ok {
 		return nil
 	}
-	if err := b.st.ReopenGame(gameID); err != nil {
+	if err := b.st.ReopenGame(gameID); errors.Is(err, storage.ErrGameNotCompleted) {
+		_ = c.Respond(&tele.CallbackResponse{Text: toastAlreadyOpen})
+		return nil
+	} else if err != nil {
 		return b.fail(c, "onEdit.reopen", err)
 	}
 	text, markup, err := b.pickerView(game.ChatID, gameID)
@@ -648,12 +667,9 @@ func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 // non-finisher (rank 0 → 0 points, still counts as a played game).
 func (b *Bot) onDoneDNF(c tele.Context) error {
 	gameID := parseID(c.Data())
-	game, err := b.st.GameByID(gameID)
-	if err != nil {
-		return b.fail(c, "onDoneDNF.game", err)
-	}
-	if game == nil || game.Status == "completed" {
-		return c.Respond(&tele.CallbackResponse{Text: "Игра уже закрыта"})
+	game, ok := b.guardGame(c, "onDoneDNF", gameID, "pending")
+	if !ok {
+		return nil
 	}
 	picked, err := b.st.PickedPlayerIDs(gameID)
 	if err != nil {
@@ -671,7 +687,6 @@ func (b *Bot) onDoneDNF(c tele.Context) error {
 			log.Printf("onDoneDNF.dnf: %v", err)
 		}
 	}
-	_ = c.Respond()
 	return b.finalize(c, game)
 }
 
@@ -761,6 +776,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 	if err != nil {
 		return b.fail(c, "finalize", err)
 	}
+	_ = c.Respond()
 	if len(noNick) > 0 {
 		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b> — задайте /setnick",
 			esc(strings.Join(noNick, ", ")))
