@@ -25,8 +25,8 @@ const (
 	cbDelN    = "deln"    // payload: "<gameID>" — cancel delete
 	cbUndel   = "undel"   // payload: "<gameID>" — restore deleted game
 	cbRec     = "rec"     // payload: "<gameID>"
-	cbRecNow  = "recnow"  // payload: "<gameID>" — auto-record from fresh usdoku state now
-	cbAgain   = "again"   // payload: "<gameID>" — new game with the same difficulty and mode
+	cbRecNow  = "recnow"  // payload: "<gameID>", auto-record from fresh usdoku state now
+	cbAgain   = "again"   // payload: "<gameID>", new game with the same difficulty and mode
 	cbDoneDNF = "donednf" // payload: "<gameID>" — finalize, rest = DNF (0)
 
 	// Quick-action menu (no payload).

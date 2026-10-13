@@ -19,6 +19,8 @@ const (
 	// cardClosedText replaces the card once the result is recorded; the result
 	// itself goes out as a new message, because edits do not notify anyone.
 	cardClosedText = "🏁 Записано, результат ниже ↓"
+	// cardCancelledText replaces the card of a game that was deleted elsewhere.
+	cardCancelledText = "🗑 Игра отменена"
 	// creatingText is the instant feedback while the usdoku room is being made.
 	creatingText = "⏳ Создаю комнату…"
 )
@@ -183,7 +185,7 @@ func (b *Bot) setCardBase(gameID int64, text string) bool {
 // message, and an edit here would clobber it.
 func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo) {
 	lp := b.anchor(gameID)
-	if lp == nil || lp.base == "" {
+	if lp == nil {
 		return
 	}
 	if picked, err := b.st.PickedPlayerIDs(gameID); err != nil || len(picked) > 0 {
@@ -201,9 +203,24 @@ func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo) {
 	})
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
+	if lp.base == "" { // retired, suspended by the picker, or restored without text
+		return
+	}
 	lp.section = liveSectionText(snap)
 	lp.finishers = len(snap.Finishers) > 0
 	b.renderCard(gameID, lp)
+}
+
+// suspendLive stops live edits of the card while the manual picker is shown in
+// its message: an edit from the watcher would wipe the picker the user is using.
+func (b *Bot) suspendLive(c tele.Context, gameID int64) {
+	lp := b.anchor(gameID)
+	if lp == nil || c.Message() == nil || int64(c.Message().ID) != lp.msgID {
+		return
+	}
+	lp.mu.Lock()
+	lp.base = ""
+	lp.mu.Unlock()
 }
 
 // retireCardText clears the stored base text so a restart does not bring the
@@ -216,7 +233,10 @@ func (b *Bot) retireCardText(gameID int64) {
 
 // closeCard retires the card after the result was recorded: short text, no
 // keyboard. The result is posted separately, so the group gets a notification.
-func (b *Bot) closeCard(gameID int64) {
+func (b *Bot) closeCard(gameID int64) { b.retireCard(gameID, cardClosedText) }
+
+// retireCard turns the card into a one-line text without a keyboard.
+func (b *Bot) retireCard(gameID int64, text string) {
 	lp := b.anchor(gameID)
 	if lp == nil {
 		return
@@ -225,8 +245,8 @@ func (b *Bot) closeCard(gameID int64) {
 	defer lp.mu.Unlock()
 	lp.base = ""
 	b.retireCardText(gameID)
-	if err := b.editPost(lp.chatID, lp.msgID, cardClosedText, nil); err != nil {
-		log.Printf("closeCard %d: %v", gameID, err)
+	if err := b.editPost(lp.chatID, lp.msgID, text, nil); err != nil {
+		log.Printf("retireCard %d: %v", gameID, err)
 	}
 }
 
@@ -258,15 +278,14 @@ func (b *Bot) cardNote(gameID, chatID int64, text string, kb *tele.ReplyMarkup) 
 	}
 }
 
-// closeOtherCard retires the game's card when the result was recorded in a
-// different message (the picker the user pressed), so no dead keyboard stays.
-func (b *Bot) closeOtherCard(c tele.Context, game int64) {
-	msg := c.Message()
-	lp := b.anchor(game)
-	if lp == nil || (msg != nil && int64(msg.ID) == lp.msgID) {
+// retireOtherCard retires the game's card with text when the user acted in a
+// different message (the picker, a conflict post), so no dead keyboard stays.
+func (b *Bot) retireOtherCard(c tele.Context, gameID int64, text string) {
+	lp := b.anchor(gameID)
+	if lp == nil || (c.Message() != nil && int64(c.Message().ID) == lp.msgID) {
 		return
 	}
-	b.closeCard(game)
+	b.retireCard(gameID, text)
 }
 
 // registerGameCardRoutes wires the buttons that live on the game card.

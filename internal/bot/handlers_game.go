@@ -503,6 +503,7 @@ func (b *Bot) onRecord(c tele.Context) error {
 		return b.fail(c, "onRecord.picker", err)
 	}
 	_ = c.Respond()
+	b.suspendLive(c, gameID)
 	return c.Edit(text, markup)
 }
 
@@ -639,7 +640,7 @@ func (b *Bot) onDeleteConfirm(c tele.Context) error {
 	if err := b.st.SoftDeleteGame(gameID); err != nil {
 		return b.fail(c, "onDeleteConfirm.delete", err)
 	}
-	b.closeOtherCard(c, gameID)
+	b.retireOtherCard(c, gameID, cardCancelledText)
 	if origin != "" {
 		return b.resumeAfterDelete(c, origin)
 	}
@@ -999,7 +1000,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 	if err := c.Edit(result, b.resultKB(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
 	}
-	b.closeOtherCard(c, game.ID) // the result landed in the picker, not on the card
+	b.retireOtherCard(c, game.ID, cardClosedText) // the result landed in the picker, not on the card
 	if seasonEnd != "" {
 		return c.Send(seasonEnd)
 	}
