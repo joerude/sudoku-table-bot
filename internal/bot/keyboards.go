@@ -186,6 +186,18 @@ func recordAndClaimKeyboard(gameID int64, unknown []string) *tele.ReplyMarkup {
 	return m
 }
 
+// notCountedKeyboard follows the «игра не засчитана» post, which would otherwise
+// leave the game pending with no way out: record it by hand anyway, or cancel
+// it (the usual delete-with-confirmation path).
+func notCountedKeyboard(gameID int64) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(
+		m.Data("📝 Всё равно записать", cbRec, gid(gameID)),
+		m.Data("🗑 Отменить", cbDel, gid(gameID)),
+	))
+	return m
+}
+
 // duelPickKeyboard lists candidate opponents; tapping one issues the challenge.
 // ownerTg (the opener's Telegram id) rides in every payload so only the opener
 // can use or dismiss the picker.

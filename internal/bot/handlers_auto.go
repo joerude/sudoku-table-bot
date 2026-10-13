@@ -168,9 +168,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		// Too few known players actually joined — don't count it (anti-farming).
 		if len(unknown) == 0 && mappedJoined < min {
 			log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
-			b.cardNote(game.ID, game.ChatID, fmt.Sprintf(
-				"🚫 Игра не засчитана: участвовало меньше <b>%d</b> игроков (текущий минимум).\n"+
-					"Изменить: /settings minplayers", min), nil)
+			b.cardNote(game.ID, game.ChatID, notCountedText(min), notCountedKeyboard(game.ID))
 			return
 		}
 

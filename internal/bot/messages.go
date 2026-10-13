@@ -177,6 +177,13 @@ func autoResultHeader() string {
 	return "🤖 <b>Результат подтянут с usdoku</b>\n"
 }
 
+// notCountedText explains why auto-record refused a game and what can be done.
+func notCountedText(min int) string {
+	return fmt.Sprintf(
+		"🚫 Игра не засчитана: участвовало меньше <b>%d</b> игроков (текущий минимум).\n"+
+			"Можно записать вручную, отменить игру или изменить порог: /settings minplayers", min)
+}
+
 // autoMappingText is shown when the bot can't fully map usdoku nicknames to players.
 func autoMappingText(orderNicks, unknown []string) string {
 	var b strings.Builder
