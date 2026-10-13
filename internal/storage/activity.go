@@ -13,7 +13,8 @@ type InitiativeRow struct {
 }
 
 // InitiativeStats returns every active player's initiative record, most
-// initiated first. since bounds the recent window (UTC datetime string).
+// initiated in the recent window first, then overall. since bounds the window
+// (UTC datetime string).
 // Games whose created_by matches no player (legacy rows imported before the
 // column existed) are attributed to nobody.
 func (s *Store) InitiativeStats(chatID int64, since string) ([]InitiativeRow, error) {
@@ -34,7 +35,8 @@ func (s *Store) InitiativeStats(chatID int64, since string) ([]InitiativeRow, er
 		                 WHERE gr.player_id=p.id AND `+sqlCompletedGames+`), '') AS last_played
 		FROM players p
 		WHERE p.chat_id=? AND p.active=1
-		ORDER BY (games_all + duels_all) DESC, p.name COLLATE NOCASE`,
+		ORDER BY (games_30 + duels_30) DESC, (games_all + duels_all) DESC,
+		         p.name COLLATE NOCASE`,
 		since, since, chatID)
 	if err != nil {
 		return nil, err
