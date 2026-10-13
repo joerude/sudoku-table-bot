@@ -99,3 +99,38 @@ func TestBadgeProgress(t *testing.T) {
 		}
 	}
 }
+
+// A badge keyed on the best run is kept after the streak breaks and is not
+// re-earned by the next win, so it is announced only once.
+func TestBestRunBadgesAreSticky(t *testing.T) {
+	hist := []int{1, 1, 1, 2} // chronological: won 3, then lost
+	atPeak := Badges(BadgeInput{WinStreak: LongestWinRun(hist[:3])})
+	afterLoss := Badges(BadgeInput{WinStreak: LongestWinRun(hist)})
+	afterWin := Badges(BadgeInput{WinStreak: LongestWinRun(append(hist, 1))})
+	for name, got := range map[string][]string{"peak": atPeak, "loss": afterLoss, "win": afterWin} {
+		if len(got) != 1 || got[0] != "🔥" {
+			t.Errorf("%s: want [🔥], got %v", name, got)
+		}
+	}
+}
+
+func TestLongestDayStreak(t *testing.T) {
+	cases := []struct {
+		name  string
+		dates []string
+		want  int
+	}{
+		{"empty", nil, 0},
+		{"single", []string{"2026-07-05"}, 1},
+		{"duplicates collapse", []string{"2026-07-05", "2026-07-05"}, 1},
+		{"run of three, any order", []string{"2026-07-05", "2026-07-03", "2026-07-04"}, 3},
+		{"older run is longer", []string{"2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-07-05"}, 4},
+		{"gap splits", []string{"2026-07-01", "2026-07-02", "2026-07-04", "2026-07-05"}, 2},
+		{"month boundary", []string{"2026-06-30", "2026-07-01"}, 2},
+	}
+	for _, tc := range cases {
+		if got := LongestDayStreak(tc.dates); got != tc.want {
+			t.Errorf("%s: want %d, got %d", tc.name, tc.want, got)
+		}
+	}
+}

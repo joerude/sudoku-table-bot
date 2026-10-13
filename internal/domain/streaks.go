@@ -65,7 +65,34 @@ func DayStreak(dates []string, today string) int {
 	return n
 }
 
+// LongestDayStreak returns the longest run of consecutive calendar days with at
+// least one play, over the whole history. dates may contain duplicates and any
+// order (YYYY-MM-DD). Unlike DayStreak it does not decay, so a badge built on
+// it is earned once and kept.
+func LongestDayStreak(dates []string) int {
+	uniq := make(map[string]bool, len(dates))
+	for _, d := range dates {
+		uniq[d] = true
+	}
+	best := 0
+	for d := range uniq {
+		if uniq[addDays(d, -1)] {
+			continue // not the start of a run
+		}
+		n := 0
+		for cur := d; uniq[cur]; cur = addDays(cur, 1) {
+			n++
+		}
+		if n > best {
+			best = n
+		}
+	}
+	return best
+}
+
 // BadgeInput is the cross-season career data a player's badges are computed from.
+// WinStreak and DayStreak are the BEST runs of the career (not the current ones),
+// so earned badges never disappear and are announced only once.
 type BadgeInput struct {
 	Wins       int
 	Games      int
