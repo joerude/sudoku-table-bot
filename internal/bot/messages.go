@@ -586,15 +586,11 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 	}
 	if len(challenges) > 0 {
 		b.WriteString("\n<b>🤺 Вызовы</b>\n")
-		duckID := topDecliner(challenges)
 		for _, c := range challenges {
 			fmt.Fprintf(&b, "%s — бросил <b>%d</b> · получил <b>%d</b>",
 				esc(c.Name), c.Issued, c.Received)
 			if c.Declined > 0 {
 				fmt.Fprintf(&b, " · отказов <b>%d</b>", c.Declined)
-			}
-			if c.PlayerID == duckID {
-				b.WriteString(" 🙈")
 			}
 			b.WriteByte('\n')
 		}
@@ -611,25 +607,6 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 		}
 	}
 	return b.String()
-}
-
-// topDecliner returns the player with the most declines when that's at least 2
-// and nobody ties them — the 🙈 goes to a clear champion or no one.
-func topDecliner(challenges []storage.ChallengeStat) int64 {
-	var id int64
-	best, ties := 0, 0
-	for _, c := range challenges {
-		switch {
-		case c.Declined > best:
-			best, ties, id = c.Declined, 1, c.PlayerID
-		case c.Declined == best && best > 0:
-			ties++
-		}
-	}
-	if best < 2 || ties > 1 {
-		return 0
-	}
-	return id
 }
 
 // speedText renders the /speed leaderboard: players ranked by average solve
