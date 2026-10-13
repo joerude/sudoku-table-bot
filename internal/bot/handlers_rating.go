@@ -18,5 +18,5 @@ func (b *Bot) ratingTab(chatID int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return ratingLadder(domain.ComputeRatings(games), names), nil
+	return ratingLadder(domain.ComputeRatingsActive(games, b.activePlayerSet(chatID)), names), nil
 }
