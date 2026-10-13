@@ -544,6 +544,33 @@ func TestDuelChallengeTextStakes(t *testing.T) {
 	}
 }
 
+func TestDuelReplyTexts(t *testing.T) {
+	ch := storage.Player{Name: "Vasya", TgID: sql.NullInt64{Int64: 5, Valid: true}}
+	acc := duelAcceptReplyText(ch)
+	for _, want := range []string{"Вызов принят", "tg://user?id=5", "Поехали"} {
+		if !strings.Contains(acc, want) {
+			t.Errorf("accept reply: want %q in %q", want, acc)
+		}
+	}
+	dec := duelDeclineReplyText(ch)
+	for _, want := range []string{"Вызов отклонён", "tg://user?id=5"} {
+		if !strings.Contains(dec, want) {
+			t.Errorf("decline reply: want %q in %q", want, dec)
+		}
+	}
+}
+
+func TestDuelPostTexts(t *testing.T) {
+	target := storage.Player{Name: "Petya", TgID: sql.NullInt64{Int64: 7, Valid: true}}
+	if out := duelAcceptText(target, "ABCD"); !strings.Contains(out, "Вызов принят") ||
+		!strings.Contains(out, "usdoku.com/ABCD") || strings.Contains(out, "принял") {
+		t.Errorf("duelAcceptText: %s", out)
+	}
+	if out := duelDeclineText(target); !strings.Contains(out, "Вызов отклонён") || strings.Contains(out, "отказался") {
+		t.Errorf("duelDeclineText: %s", out)
+	}
+}
+
 func TestMilestoneLines(t *testing.T) {
 	if !gamesMilestones[250] || gamesMilestones[100] {
 		t.Errorf("gamesMilestones: 250 must be in, 100 must be out (badge covers it)")

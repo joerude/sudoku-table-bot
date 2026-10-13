@@ -93,27 +93,46 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 	if target == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
 	}
+	posted, err := b.issueDuel(c, caller, target, difficulty)
+	if err != nil || !posted {
+		return err
+	}
+	// The picker only confirms; the challenge itself went out as a NEW message
+	// (an edit would not notify the target).
+	if err := c.Edit(duelSentText); err != nil {
+		log.Printf("onDuelPick.edit: %v", err)
+	}
+	return nil
+}
+
+// issueDuel creates the room, tags the target and posts the challenge as a new
+// message pinging the target. posted=false with a nil error means a guard
+// already replied (e.g. a game is pending).
+func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficulty string) (posted bool, err error) {
 	room, err := b.createGameRoom(c, difficulty, "hardcore", "duel:"+difficulty)
 	if err != nil {
-		return b.fail(c, "onDuelPick.room", err)
+		return false, b.fail(c, "issueDuel.room", err)
 	}
 	if room == nil {
 		_ = c.Respond()
-		return nil // a guard replied (e.g. game already pending)
+		return false, nil // a guard replied (e.g. game already pending)
 	}
-	if err := b.st.SetDuelTarget(room.gameID, targetID); err != nil {
-		return b.fail(c, "onDuelPick.settarget", err)
+	if err := b.st.SetDuelTarget(room.gameID, target.ID); err != nil {
+		return false, b.fail(c, "issueDuel.settarget", err)
 	}
 	nickWarn := !caller.UsdokuNick.Valid || caller.UsdokuNick.String == "" ||
 		!target.UsdokuNick.Valid || target.UsdokuNick.String == ""
-	eloC, eloT, gainC, gainT, serr := b.duelStakes(c.Chat().ID, caller.ID, targetID)
+	eloC, eloT, gainC, gainT, serr := b.duelStakes(c.Chat().ID, caller.ID, target.ID)
 	if serr != nil {
-		log.Printf("onDuelPick.stakes: %v", serr)
+		log.Printf("issueDuel.stakes: %v", serr)
 		eloC = 0 // hide the stakes block, the challenge still posts
 	}
 	_ = c.Respond()
-	return c.Edit(duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
-		eloC, eloT, gainC, gainT), duelKeyboard(room.gameID))
+	if err := c.Send(duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
+		eloC, eloT, gainC, gainT), duelKeyboard(room.gameID)); err != nil {
+		return false, b.fail(c, "issueDuel.send", err)
+	}
+	return true, nil
 }
 
 // duelTargetGuard returns the duel's target player and whether the presser IS
@@ -168,7 +187,23 @@ func (b *Bot) onAccept(c tele.Context) error {
 	if err == nil && game.UsdokuCode.String != "" {
 		registerLive(gameID, c.Message(), text, kb)
 	}
+	b.replyToChallenger(c, game, duelAcceptReplyText)
 	return err
+}
+
+// replyToChallenger answers the challenge post with a short reply that pings
+// the challenger (edits of the post itself notify nobody). Best-effort.
+func (b *Bot) replyToChallenger(c tele.Context, game *storage.Game, text func(storage.Player) string) {
+	if !game.CreatedBy.Valid {
+		return
+	}
+	challenger, err := b.st.PlayerByTg(game.ChatID, game.CreatedBy.Int64)
+	if err != nil || challenger == nil {
+		return
+	}
+	if err := c.Reply(text(*challenger)); err != nil {
+		log.Printf("replyToChallenger: %v", err)
+	}
 }
 
 // onDuelCancel dismisses the opponent picker (no game was created yet).
@@ -215,5 +250,7 @@ func (b *Bot) onDecline(c tele.Context) error {
 		return b.fail(c, "onDecline.cancel", err)
 	}
 	_ = c.Respond()
-	return c.Edit(duelDeclineText(*target))
+	err = c.Edit(duelDeclineText(*target))
+	b.replyToChallenger(c, game, duelDeclineReplyText)
+	return err
 }
