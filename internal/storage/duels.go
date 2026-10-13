@@ -197,7 +197,7 @@ type DuelPair struct {
 
 // DuelPairs returns all finished duels of a chat in chronological order
 // (oldest first). Duels where either side is missing from the results (e.g.
-// only the winner was recorded) are skipped — a streak needs both players.
+// only the winner was recorded) are skipped (a streak needs both players).
 func (s *Store) DuelPairs(chatID int64) ([]DuelPair, error) {
 	rows, err := s.db.Query(`
 		SELECT g.id,

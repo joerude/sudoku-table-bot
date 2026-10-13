@@ -33,11 +33,11 @@ const (
 	cbQMe     = "qme"
 
 	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>:<ownerTgID>"
-	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>" — dismiss the opponent picker
+	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>", dismiss the opponent picker
 	cbAccept     = "accept"     // payload: "<gameID>"
 	cbDecline    = "decline"    // payload: "<gameID>"
-	cbRematch    = "rematch"    // payload: "<difficulty>:<playerAID>:<playerBID>" — rematch from a duel result
-	cbRevoke     = "revoke"     // payload: "<gameID>" — challenger withdraws an unanswered challenge
+	cbRematch    = "rematch"    // payload: "<difficulty>:<playerAID>:<playerBID>", rematch from a duel result
+	cbRevoke     = "revoke"     // payload: "<gameID>", challenger withdraws an unanswered challenge
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
