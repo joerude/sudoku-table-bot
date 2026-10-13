@@ -10,6 +10,12 @@ import (
 type Message struct {
 	ID int `json:"message_id"`
 
+	// (Optional) Identifier of an ephemeral message, whose ID is 0.
+	EphemeralMessageID int `json:"ephemeral_message_id,omitempty"`
+
+	// (Optional) The only user who sees an ephemeral message.
+	ReceiverUser *User `json:"receiver_user,omitempty"`
+
 	// (Optional) Unique identifier of a message thread to which the message belongs; for supergroups only
 	ThreadID int `json:"message_thread_id"`
 

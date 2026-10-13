@@ -10,6 +10,9 @@ type Command struct {
 
 	// Description of the command, 3-256 characters.
 	Description string `json:"description"`
+
+	// IsEphemeral makes the command invisible to the rest of the chat.
+	IsEphemeral bool `json:"is_ephemeral,omitempty"`
 }
 
 // CommandParams controls parameters for commands-related methods (setMyCommands, deleteMyCommands and getMyCommands).

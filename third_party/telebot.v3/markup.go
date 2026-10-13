@@ -95,6 +95,8 @@ type Btn struct {
 	Poll            PollType        `json:"request_poll,omitempty"`
 	User            *ReplyRecipient `json:"request_user,omitempty"`
 	Chat            *ReplyRecipient `json:"request_chat,omitempty"`
+	Style           string          `json:"style,omitempty"`
+	Disabled        *struct{}       `json:"disabled,omitempty"`
 }
 
 // Row represents an array of buttons, a row.
@@ -280,6 +282,12 @@ type InlineButton struct {
 	InlineQueryChosenChat *SwitchInlineQuery `json:"switch_inline_query_chosen_chat,omitempty"`
 	Login                 *Login             `json:"login_url,omitempty"`
 	WebApp                *WebApp            `json:"web_app,omitempty"`
+
+	// Style is the button color: "danger", "success" or "primary".
+	Style string `json:"style,omitempty"`
+
+	// Disabled, when set, makes the button inactive (sent as an empty object).
+	Disabled *struct{} `json:"disabled,omitempty"`
 }
 
 // MarshalJSON implements json.Marshaler interface.
@@ -338,6 +346,8 @@ func (b Btn) Inline() *InlineButton {
 		InlineQueryChat: b.InlineQueryChat,
 		Login:           b.Login,
 		WebApp:          b.WebApp,
+		Style:           b.Style,
+		Disabled:        b.Disabled,
 	}
 }
 
