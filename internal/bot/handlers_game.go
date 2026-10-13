@@ -649,25 +649,21 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 }
 
 // duelResult renders a finished duel: winner, time, the pair's head-to-head,
-// and the winner's Elo rating change.
+// and an upset line when the lower-rated player won.
 func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 	if len(rows) < 2 {
-		return duelResultText(rows, 0, 0, false, 0, 0)
+		return duelResultText(rows, 0, 0, false, 0)
 	}
-	elo, delta := 0, 0
+	upset := 0
 	if rows[0].Rank == 1 {
-		if pairs, perr := b.st.DuelPairs(game.ChatID); perr != nil {
-			log.Printf("duelResult.elo: %v", perr)
-		} else if r, d, ok := winnerEloAt(pairs, game.ID, rows[0].PlayerID); ok {
-			elo, delta = r, d
-		}
+		upset = b.duelUpsetGain(game, rows[0].PlayerID, rows[1].PlayerID)
 	}
 	wWins, lWins, err := b.st.HeadToHead(game.ChatID, rows[0].PlayerID, rows[1].PlayerID)
 	if err != nil {
 		log.Printf("duelResult.h2h: %v", err)
-		return duelResultText(rows, 0, 0, false, elo, delta)
+		return duelResultText(rows, 0, 0, false, upset)
 	}
-	return duelResultText(rows, wWins, lWins, true, elo, delta)
+	return duelResultText(rows, wWins, lWins, true, upset)
 }
 
 // onDoneDNF finalises the game, recording every remaining active player as a

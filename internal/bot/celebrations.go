@@ -2,7 +2,6 @@ package bot
 
 import (
 	"log"
-	"sort"
 	"time"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
@@ -207,7 +206,7 @@ func (b *Bot) longestSeasonRun(chatID, seasonID int64) (string, int, error) {
 	return bestName, best, nil
 }
 
-// duelsPanel builds the full duels view: leaderboard (Elo-sorted) with
+// duelsPanel builds the full duels view: leaderboard (by wins) with
 // head-to-head, duel solve-time, win-streak markers, and the recent log.
 func (b *Bot) duelsPanel(chatID int64) (string, error) {
 	rows, err := b.st.DuelLeaderboard(chatID)
@@ -222,16 +221,7 @@ func (b *Bot) duelsPanel(chatID int64) (string, error) {
 	for i, p := range pairs {
 		dp[i] = [2]int64{p.WinnerID, p.LoserID}
 	}
-	ratings := domain.EloRatings(dp)
 	streaks := domain.DuelStreaks(dp)
-	for i := range rows {
-		if r, ok := ratings[rows[i].PlayerID]; ok {
-			rows[i].Elo = r
-		} else {
-			rows[i].Elo = domain.EloStart
-		}
-	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Elo > rows[j].Elo })
 	h2h, err := b.st.HeadToHeadAll(chatID)
 	if err != nil {
 		return "", err
@@ -268,52 +258,31 @@ func (b *Bot) duelExtras(chatID, playerID int64) (*storage.SpeedStat, domain.Str
 	return sp, domain.DuelStreaks(dp)[playerID], nil
 }
 
-// duelStakes returns both players' current Elo and what each would gain by
-// winning the upcoming duel — the "stakes" shown on a challenge post.
+// duelStakes returns both players' current rating on the eternal ladder and
+// what each would gain by winning the upcoming duel: the stakes shown on a
+// challenge post. Same ratings as the result footer, no separate duel rating.
 func (b *Bot) duelStakes(chatID, challengerID, targetID int64) (rc, rt, gainC, gainT int, err error) {
-	pairs, err := b.st.DuelPairs(chatID)
+	games, err := b.st.GamesForRating(chatID)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	dp := make([][2]int64, len(pairs))
-	for i, p := range pairs {
-		dp[i] = [2]int64{p.WinnerID, p.LoserID}
-	}
-	ratings := domain.EloRatings(dp)
-	get := func(id int64) int {
-		if v, ok := ratings[id]; ok {
-			return v
-		}
-		return domain.EloStart
-	}
-	rc, rt = get(challengerID), get(targetID)
-	wc, _ := domain.EloUpdate(rc, rt)
-	wt, _ := domain.EloUpdate(rt, rc)
-	return rc, rt, wc - rc, wt - rt, nil
+	rc, rt, gainC, gainT = domain.DuelStakes(games, challengerID, targetID)
+	return rc, rt, gainC, gainT, nil
 }
 
-// winnerEloAt replays duel history and returns the winner's rating right after
-// the given game plus the change that game caused. ok=false when the game is
-// not in the pair history (e.g. the opponent's result row is missing), so the
-// value is stable across re-renders even after later duels.
-func winnerEloAt(pairs []storage.DuelPair, gameID, winnerID int64) (rating, delta int, ok bool) {
-	r := map[int64]int{}
-	get := func(id int64) int {
-		if v, found := r[id]; found {
-			return v
-		}
-		return domain.EloStart
+// duelUpsetGain returns the rating points an underdog winner took from a duel
+// (0 when the winner was the favourite or the game has no rating impact).
+func (b *Bot) duelUpsetGain(game *storage.Game, winnerID, loserID int64) int {
+	games, err := b.st.GamesForRating(game.ChatID)
+	if err != nil {
+		log.Printf("duelUpsetGain: %v", err)
+		return 0
 	}
-	for _, p := range pairs {
-		w0, l0 := get(p.WinnerID), get(p.LoserID)
-		w1, l1 := domain.EloUpdate(w0, l0)
-		r[p.WinnerID], r[p.LoserID] = w1, l1
-		if p.GameID == gameID {
-			if p.WinnerID != winnerID {
-				return 0, 0, false
-			}
-			return w1, w1 - w0, true
+	for _, gr := range domain.ComputeRatings(games).PerGame {
+		if gr.GameID == game.ID {
+			gain, _ := domain.UpsetGain(gr, winnerID, loserID)
+			return gain
 		}
 	}
-	return 0, 0, false
+	return 0
 }

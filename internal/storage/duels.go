@@ -11,7 +11,6 @@ type DuelStanding struct {
 	Name     string
 	Wins     int
 	Losses   int
-	Elo      int // filled by the bot layer from duel history; 0 = not computed
 }
 
 // DuelRecord returns a player's all-time duel wins (rank 1) and losses (rank > 1)
@@ -189,7 +188,7 @@ func (s *Store) ChallengeStats(chatID int64) ([]ChallengeStat, error) {
 	return out, rows.Err()
 }
 
-// DuelPair is one finished duel with both participants known, for Elo replay.
+// DuelPair is one finished duel with both participants known, for streak replay.
 type DuelPair struct {
 	GameID   int64
 	WinnerID int64
@@ -198,7 +197,7 @@ type DuelPair struct {
 
 // DuelPairs returns all finished duels of a chat in chronological order
 // (oldest first). Duels where either side is missing from the results (e.g.
-// only the winner was recorded) are skipped — Elo needs both players.
+// only the winner was recorded) are skipped — a streak needs both players.
 func (s *Store) DuelPairs(chatID int64) ([]DuelPair, error) {
 	rows, err := s.db.Query(`
 		SELECT g.id,

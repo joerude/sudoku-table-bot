@@ -9,8 +9,7 @@ type Streak struct {
 
 // DuelStreaks computes each player's current and best consecutive-win run from
 // duels in chronological order (oldest first). Each element is a finished duel
-// as {winnerID, loserID} — the same shape EloRatings consumes (from
-// storage.DuelPairs). A loss resets that player's current run to 0. Players who
+// as {winnerID, loserID} (built from storage.DuelPairs). A loss resets that player's current run to 0. Players who
 // only ever lost appear with a zero Streak.
 func DuelStreaks(games [][2]int64) map[int64]Streak {
 	cur := map[int64]int{}

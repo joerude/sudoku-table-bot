@@ -148,3 +148,48 @@ func TestSoloGameNoImpact(t *testing.T) {
 		t.Errorf("solo game must not register players, got %+v", r.Players)
 	}
 }
+
+func TestDuelStakesFreshPlayers(t *testing.T) {
+	ra, rb, ga, gb := DuelStakes(nil, 1, 2)
+	if ra != StartRating || rb != StartRating || ga != 32 || gb != 32 {
+		t.Errorf("fresh duel: want 1000/1000 +32/+32, got %d/%d +%d/+%d", ra, rb, ga, gb)
+	}
+}
+
+func TestDuelStakesAfterHistory(t *testing.T) {
+	games := []RatingGame{{ID: 1, Participants: []RatingResult{{PlayerID: 1, Rank: 1}, {PlayerID: 2, Rank: 2}}}}
+	ra, rb, ga, gb := DuelStakes(games, 1, 2)
+	if ra != 1032 || rb != 968 {
+		t.Fatalf("ratings: want 1032/968, got %d/%d", ra, rb)
+	}
+	if ga != 26 || gb != 38 {
+		t.Errorf("stakes: want +26/+38, got +%d/+%d", ga, gb)
+	}
+	if len(games) != 1 {
+		t.Errorf("DuelStakes must not grow the caller's slice, len=%d", len(games))
+	}
+}
+
+func TestUpsetGain(t *testing.T) {
+	g1 := RatingGame{ID: 1, Participants: []RatingResult{{PlayerID: 1, Rank: 1}, {PlayerID: 2, Rank: 2}}}
+	g2 := RatingGame{ID: 2, Participants: []RatingResult{{PlayerID: 2, Rank: 1}, {PlayerID: 1, Rank: 2}}}
+	g3 := RatingGame{ID: 3, Participants: []RatingResult{{PlayerID: 1, Rank: 1}, {PlayerID: 2, Rank: 2}}}
+	r := ComputeRatings([]RatingGame{g1, g2, g3})
+	if _, ok := UpsetGain(r.PerGame[0], 1, 2); ok {
+		t.Error("equal ratings is not an upset")
+	}
+	gain, ok := UpsetGain(r.PerGame[1], 2, 1)
+	if !ok || gain != 38 {
+		t.Errorf("underdog win: want (38, true), got (%d, %v)", gain, ok)
+	}
+	if _, ok := UpsetGain(r.PerGame[1], 1, 2); ok {
+		t.Error("favourite-side args must not report an upset")
+	}
+	// After the swap (1: 994, 2: 1006) player 1 is the underdog again.
+	if gain, ok := UpsetGain(r.PerGame[2], 1, 2); !ok || gain != 33 {
+		t.Errorf("rematch: want (33, true), got (%d, %v)", gain, ok)
+	}
+	if _, ok := UpsetGain(r.PerGame[0], 1, 99); ok {
+		t.Error("unknown player must not report an upset")
+	}
+}

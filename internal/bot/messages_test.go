@@ -104,7 +104,7 @@ func TestDuelResultText(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 252},
 		{Rank: 2, Name: "Petya"},
 	}
-	out := duelResultText(rows, 4, 2, true, 0, 0)
+	out := duelResultText(rows, 4, 2, true, 0)
 	for _, want := range []string{"Vasya", "побеждает", "Petya", "4:12", "H2H", "4–2"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText: want %q in output\ngot: %s", want, out)
@@ -117,7 +117,7 @@ func TestDuelResultTextShowsLoserTime(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 264}, // 4:24
 		{Rank: 2, Name: "Petya", Duration: 279}, // 4:39
 	}
-	out := duelResultText(rows, 0, 0, false, 0, 0)
+	out := duelResultText(rows, 0, 0, false, 0)
 	for _, want := range []string{"4:24", "vs 4:39", "+0:15"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText loser time: want %q in output\ngot: %s", want, out)
@@ -130,31 +130,33 @@ func TestDuelResultTextHidesLoserTimeWhenUnknown(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 264},
 		{Rank: 2, Name: "Petya"}, // Duration 0: manual entry, no solve time
 	}
-	out := duelResultText(rows, 0, 0, false, 0, 0)
+	out := duelResultText(rows, 0, 0, false, 0)
 	if strings.Contains(out, "vs") {
 		t.Errorf("duelResultText: loser has no duration, must not show 'vs'\ngot: %s", out)
 	}
 }
 
-func TestDuelResultTextShowsElo(t *testing.T) {
+func TestDuelResultTextUpset(t *testing.T) {
 	rows := []storage.ResultRow{
 		{Rank: 1, Name: "Vasya", Duration: 252},
 		{Rank: 2, Name: "Petya"},
 	}
-	out := duelResultText(rows, 1, 0, true, 1016, 16)
-	for _, want := range []string{"Рейтинг", "1016", "(+16)"} {
+	out := duelResultText(rows, 1, 0, true, 35)
+	for _, want := range []string{"😮 Апсет: фаворит пал", "<b>Vasya</b> берёт +35"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("duelResultText elo: want %q in output\ngot: %s", want, out)
+			t.Errorf("duelResultText upset: want %q in output\ngot: %s", want, out)
 		}
 	}
-	// elo == 0 hides the rating line.
-	if plain := duelResultText(rows, 1, 0, true, 0, 0); strings.Contains(plain, "Рейтинг") {
-		t.Errorf("duelResultText elo=0: should NOT contain 'Рейтинг'\ngot: %s", plain)
+	if strings.Contains(out, "Рейтинг") || strings.Contains(out, "обыграл фаворита") {
+		t.Errorf("duelResultText: no own rating line / masculine wording\ngot: %s", out)
+	}
+	if plain := duelResultText(rows, 1, 0, true, 0); strings.Contains(plain, "Апсет") {
+		t.Errorf("duelResultText upset=0: should NOT contain 'Апсет'\ngot: %s", plain)
 	}
 }
 
 func TestDuelResultTextEmpty(t *testing.T) {
-	out := duelResultText(nil, 0, 0, false, 0, 0)
+	out := duelResultText(nil, 0, 0, false, 0)
 	if !strings.Contains(out, "Никто не финишировал") {
 		t.Errorf("duelResultText empty: want 'Никто не финишировал' in output\ngot: %s", out)
 	}
@@ -199,8 +201,8 @@ func TestDuelsTextWithRecent(t *testing.T) {
 // TestDuelsTextNewBlocks: head-to-head, duel solve-time, and win-streak marker.
 func TestDuelsTextNewBlocks(t *testing.T) {
 	rows := []storage.DuelStanding{
-		{PlayerID: 1, Name: "Vasya", Wins: 5, Losses: 1, Elo: 1100},
-		{PlayerID: 2, Name: "Masha", Wins: 1, Losses: 5, Elo: 950},
+		{PlayerID: 1, Name: "Vasya", Wins: 5, Losses: 1},
+		{PlayerID: 2, Name: "Masha", Wins: 1, Losses: 5},
 	}
 	h2h := []storage.H2HPair{{AID: 1, BID: 2, AName: "Vasya", BName: "Masha", AWins: 4, BWins: 1}}
 	speed := []storage.SpeedRow{{Name: "Vasya", AvgSecs: 200, BestSecs: 150, Games: 6}}
@@ -423,7 +425,7 @@ func TestDuelResultTextAllDNF(t *testing.T) {
 		{Rank: 0, Name: "Vasya"},
 		{Rank: 0, Name: "Petya"},
 	}
-	out := duelResultText(rows, 0, 0, false, 0, 0)
+	out := duelResultText(rows, 0, 0, false, 0)
 	if !strings.Contains(out, "Никто не финишировал") {
 		t.Errorf("duelResultText all-DNF: want 'Никто не финишировал' in output\ngot: %s", out)
 	}
@@ -437,7 +439,7 @@ func TestDuelResultTextWithDNF(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Points: 3, Duration: 180},
 		{Rank: 0, Name: "Petya"},
 	}
-	out := duelResultText(rows, 0, 0, false, 0, 0)
+	out := duelResultText(rows, 0, 0, false, 0)
 	if !strings.Contains(out, "Vasya") || !strings.Contains(out, "побеждает") {
 		t.Errorf("duelResultText DNF: want winner info\ngot: %s", out)
 	}
@@ -524,7 +526,7 @@ func TestDuelChallengeText(t *testing.T) {
 	if strings.Contains(out, "⚠️") {
 		t.Errorf("duelChallengeText nickWarn=false: should NOT contain warning\ngot: %s", out)
 	}
-	if strings.Contains(out, "На кону") {
+	if strings.Contains(out, "Победа даст") {
 		t.Errorf("duelChallengeText elo=0: should NOT contain stakes\ngot: %s", out)
 	}
 
@@ -536,8 +538,8 @@ func TestDuelChallengeText(t *testing.T) {
 
 func TestDuelChallengeTextStakes(t *testing.T) {
 	target := storage.Player{Name: "Petya"}
-	out := duelChallengeText("Vasya", target, "medium", "", false, 1016, 984, 15, 17)
-	for _, want := range []string{"1016", "984", "На кону", "+15", "+17"} {
+	out := duelChallengeText("Vasya", target, "medium", "", false, 1032, 968, 26, 38)
+	for _, want := range []string{"⚖️ Рейтинг: Vasya 1032, Petya 968", "Победа даст Vasya +26, Petya +38"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelChallengeText stakes: want %q in output\ngot: %s", want, out)
 		}
@@ -889,16 +891,19 @@ func TestDigestText(t *testing.T) {
 	}
 }
 
-func TestDuelsTextShowsElo(t *testing.T) {
+func TestDuelsTextShowsScore(t *testing.T) {
 	rows := []storage.DuelStanding{
-		{Name: "Vasya", Wins: 8, Losses: 2, Elo: 1080},
-		{Name: "Masha", Wins: 5, Losses: 5, Elo: 990},
+		{Name: "Vasya", Wins: 8, Losses: 2},
+		{Name: "Masha", Wins: 5, Losses: 5},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, nil, "Asia/Bishkek")
-	for _, want := range []string{"1080", "990", "8–2", "(80%)"} {
+	for _, want := range []string{"Дуэли</b> · счёт", "8–2", "(80%)"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("duelsText elo: want %q in output\ngot: %s", want, out)
+			t.Errorf("duelsText score: want %q in output\ngot: %s", want, out)
 		}
+	}
+	if strings.Contains(out, "рейтинг") {
+		t.Errorf("duelsText must not advertise a separate duel rating\ngot: %s", out)
 	}
 }
 
@@ -1015,29 +1020,6 @@ func TestSeasonEndTextWithAwards(t *testing.T) {
 	// No awards → no nominations block.
 	if plain := seasonEndText(3, "Ann", 101, nil, 100, 4); strings.Contains(plain, "Номинации") {
 		t.Errorf("seasonEndText no awards: should NOT contain 'Номинации'\ngot: %s", plain)
-	}
-}
-
-func TestWinnerEloAt(t *testing.T) {
-	pairs := []storage.DuelPair{
-		{GameID: 10, WinnerID: 1, LoserID: 2},
-		{GameID: 11, WinnerID: 1, LoserID: 2},
-	}
-	r1, d1, ok := winnerEloAt(pairs, 10, 1)
-	if !ok || r1 != 1016 || d1 != 16 {
-		t.Errorf("first duel: want (1016, +16, ok), got (%d, %d, %v)", r1, d1, ok)
-	}
-	// Second win against a now-weaker opponent pays less.
-	r2, d2, ok := winnerEloAt(pairs, 11, 1)
-	if !ok || d2 >= d1 || r2 != r1+d2 {
-		t.Errorf("second duel: want smaller delta, got (%d, %d, %v)", r2, d2, ok)
-	}
-	// Unknown game or wrong winner → not ok.
-	if _, _, ok := winnerEloAt(pairs, 99, 1); ok {
-		t.Errorf("unknown game must not be ok")
-	}
-	if _, _, ok := winnerEloAt(pairs, 10, 2); ok {
-		t.Errorf("wrong winner must not be ok")
 	}
 }
 

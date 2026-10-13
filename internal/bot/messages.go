@@ -500,9 +500,9 @@ func duelDetailLines(sp *storage.SpeedStat, s domain.Streak) string {
 
 // duelResultText renders a finished duel. rows are rank-ordered (winner first);
 // winnerWins/loserWins are the pair's head-to-head tally, shown only when h2h.
-// elo is the winner's rating right after this duel and eloDelta its change;
-// elo <= 0 hides the rating line.
-func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, elo, eloDelta int) string {
+// upsetGain > 0 means the winner entered the duel rated below the loser and the
+// win paid that many rating points; it adds the upset line.
+func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, upsetGain int) string {
 	var b strings.Builder
 	b.WriteString("⚔️ <b>Дуэль</b>\n")
 	if len(rows) == 0 {
@@ -537,8 +537,8 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 		fmt.Fprintf(&b, "\n\nH2H: <b>%s</b> %d–%d <b>%s</b>",
 			esc(rows[0].Name), winnerWins, loserWins, esc(rows[1].Name))
 	}
-	if elo > 0 {
-		fmt.Fprintf(&b, "\n📈 Рейтинг <b>%s</b>: <b>%d</b> (%+d)", esc(w.Name), elo, eloDelta)
+	if upsetGain > 0 {
+		fmt.Fprintf(&b, "\n😮 Апсет: фаворит пал, <b>%s</b> берёт +%d", esc(w.Name), upsetGain)
 	}
 	return b.String()
 }
@@ -555,7 +555,7 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 	loc := loadLoc(tz)
 	var b strings.Builder
 	if len(rows) > 0 {
-		b.WriteString("⚔️ <b>Дуэли</b> · рейтинг\n")
+		b.WriteString("⚔️ <b>Дуэли</b> · счёт\n")
 	} else {
 		b.WriteString("⚔️ <b>Дуэли</b>\n")
 	}
@@ -564,13 +564,8 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 		if total := r.Wins + r.Losses; total > 0 {
 			pct = r.Wins * 100 / total
 		}
-		if r.Elo > 0 {
-			fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> · %d–%d <i>(%d%%)</i>",
-				medal(i+1), esc(r.Name), r.Elo, r.Wins, r.Losses, pct)
-		} else {
-			fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>",
-				medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
-		}
+		fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>",
+			medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
 		if s := streaks[r.PlayerID]; s.Current >= 2 {
 			fmt.Fprintf(&b, " 🔥%d", s.Current)
 		}
@@ -850,9 +845,9 @@ func parseDuelPick(s string) (difficulty string, targetID, ownerTg int64) {
 
 // duelChallengeText is the posted challenge. code may be empty (manual fallback).
 // nickWarn appends a note when a participant has no usdoku nick (no auto-record).
-// eloC/eloT are current ratings and gainC/gainT the winner's potential gain;
-// eloC <= 0 hides the stakes block.
-func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool, eloC, eloT, gainC, gainT int) string {
+// ratC/ratT are the players' current ratings and gainC/gainT what a win would
+// pay each; ratC <= 0 hides the stakes line.
+func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool, ratC, ratT, gainC, gainT int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "⚔️ <b>%s</b> вызывает %s на дуэль! · %s\n",
 		esc(challenger), mention(target), titleCase(difficulty))
@@ -862,10 +857,10 @@ func duelChallengeText(challenger string, target storage.Player, difficulty, cod
 		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную (%s) "+
 			"и пришлите код: <code>/code LOVI</code>\n", usdokuCreateURL)
 	}
-	if eloC > 0 {
-		fmt.Fprintf(&b, "\n📈 <b>%s</b> %d · <b>%s</b> %d\n⚖️ На кону: +%d против +%d",
-			esc(challenger), eloC, esc(target.Name), eloT, gainC, gainT)
-		b.WriteString("\n")
+	if ratC > 0 {
+		fmt.Fprintf(&b, "\n⚖️ Рейтинг: %s %d, %s %d. Победа даст %s +%d, %s +%d\n",
+			esc(challenger), ratC, esc(target.Name), ratT,
+			esc(challenger), gainC, esc(target.Name), gainT)
 	}
 	b.WriteString("\nПринимаешь вызов?")
 	fmt.Fprintf(&b, "\n⏳ Сгорит через %d мин, если не принять", duelChallengeTTLMinutes)
