@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS seasons (
     winner_id    INTEGER,
     started_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     deadline     TEXT,                            -- UTC; season also ends when this passes
-    ended_at     TEXT
+    ended_at     TEXT,
+    last_nudge   TEXT                             -- last mid-season post: "<kind>@<deadline>"
 );
 
 CREATE TABLE IF NOT EXISTS games (

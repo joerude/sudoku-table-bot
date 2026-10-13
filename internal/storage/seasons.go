@@ -167,6 +167,24 @@ func (s *Store) SetSeasonDeadline(seasonID int64, deadline string) error {
 	return err
 }
 
+// SeasonNudge returns the marker of the last mid-season post sent for the
+// season ("" = none yet). The bot keys it by kind and deadline so a nudge fires
+// once per deadline and survives a restart.
+func (s *Store) SeasonNudge(seasonID int64) (string, error) {
+	var v sql.NullString
+	err := s.db.QueryRow(`SELECT last_nudge FROM seasons WHERE id=?`, seasonID).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v.String, err
+}
+
+// SetSeasonNudge records the last mid-season post sent for the season.
+func (s *Store) SetSeasonNudge(seasonID int64, marker string) error {
+	_, err := s.db.Exec(`UPDATE seasons SET last_nudge=? WHERE id=?`, marker, seasonID)
+	return err
+}
+
 // UpdateSeasonPoints changes the active season's points table.
 func (s *Store) UpdateSeasonPoints(seasonID int64, table []int) error {
 	pts, _ := json.Marshal(table)
