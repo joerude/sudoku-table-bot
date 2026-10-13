@@ -13,6 +13,9 @@ import (
 	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
+// manualRecordingToast answers «Записать сейчас» while a picker has picks.
+const manualRecordingToast = "Идёт ручная запись"
+
 const (
 	watchInterval = 25 * time.Second
 	// watchHotInterval is used while a round is live (players joined, not all
@@ -67,8 +70,11 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		} else {
 			b.duelRoomSeen(g, info)
 			if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
-				b.autoRecord(g, info)
-				return
+				if b.autoRecord(g, info) {
+					return
+				}
+				// A manual recording is open: leave it alone and look again, the
+				// picks may be cleared or the game closed by hand.
 			}
 			b.liveUpdate(gameID, info) // dedupes: edits only when the card text changes
 			if len(info.Players) > 0 && !info.Finished() {
@@ -89,14 +95,25 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 // least two known players joined and every joined nick is recognised. A
 // did-not-finish is fine — that player simply isn't in the finish order and
 // scores 0. Otherwise it asks for a manual entry instead of guessing.
-func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
+//
+// Returns false only when it did nothing because somebody is recording the game
+// by hand (picks already exist): the usdoku order must not be appended onto
+// theirs, and a fallback note would overwrite their picker.
+func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled bool) {
 	to := tele.ChatID(game.ChatID)
 
 	// The watcher and a «Записать сейчас» tap can both get here: one at a time,
 	// and the loser finds the game already closed.
 	defer recordingGames.Lock(game.ID)()
 	if cur, err := b.st.GameByID(game.ID); err != nil || cur == nil || cur.Status != "pending" || cur.Deleted {
-		return
+		return true
+	}
+	if manual, err := b.st.HasResults(game.ID); err != nil {
+		log.Printf("autoRecord.results: %v", err)
+		return true
+	} else if manual {
+		log.Printf("🤖 game %d: manual recording in progress, auto-record skipped", game.ID)
+		return false
 	}
 
 	// A duel counts only its two participants — anyone else in the room is a
@@ -162,9 +179,9 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		if mappedJoined < 2 || len(picks) == 0 {
 			log.Printf("🤖 duel %d → manual: mappedJoined=%d picks=%d finishers=%v",
 				game.ID, mappedJoined, len(picks), finisherNicks)
-			b.cardNote(game.ID, game.ChatID, "⚔️ Не смог авто-записать дуэль, запишите результат вручную:",
+			b.fallbackNote(game, "⚔️ Не смог авто-записать дуэль, запишите результат вручную:",
 				recordKeyboard(game.ID))
-			return
+			return true
 		}
 	} else {
 		min := b.minPlayers(game.ChatID)
@@ -172,16 +189,16 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		// Too few known players actually joined — don't count it (anti-farming).
 		if len(unknown) == 0 && mappedJoined < min {
 			log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
-			b.cardNote(game.ID, game.ChatID, notCountedText(min), notCountedKeyboard(game.ID))
-			return
+			b.fallbackNote(game, notCountedText(min), notCountedKeyboard(game.ID))
+			return true
 		}
 
 		if len(unknown) > 0 || len(picks) == 0 {
 			log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
 				game.ID, finisherNicks, unknown, mappedJoined)
-			b.cardNote(game.ID, game.ChatID, autoMappingText(finisherNicks, unknown),
+			b.fallbackNote(game, autoMappingText(finisherNicks, unknown),
 				recordAndClaimKeyboard(game.ID, unknown))
-			return
+			return true
 		}
 	}
 	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
@@ -205,13 +222,13 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	result, seasonEnd, err := b.scoreAndCheck(game)
 	if errors.Is(err, storage.ErrGameNotPending) {
 		log.Printf("🤖 game %d already closed, skipping auto-post", game.ID)
-		return
+		return true
 	}
 	if err != nil {
 		log.Printf("autoRecord.score: %v", err)
-		b.cardNote(game.ID, game.ChatID, "⚠️ Не удалось авто-записать результат. Запишите вручную:",
+		b.fallbackNote(game, "⚠️ Не удалось авто-записать результат. Запишите вручную:",
 			recordKeyboard(game.ID))
-		return
+		return true
 	}
 	result += b.ratingFooter(game)
 	// The result is a NEW message (an edit would not notify anyone); the card
@@ -222,6 +239,17 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	b.closeCard(game.ID)
 	if seasonEnd != "" {
 		_, _ = b.tb.Send(to, seasonEnd)
+	}
+	return true
+}
+
+// fallbackNote turns the game's card into a manual-entry prompt after a failed
+// auto-record. The game is marked reminded: the prompt IS the nudge, and the
+// stale-game reminder would otherwise rewrite it and wipe its claim buttons.
+func (b *Bot) fallbackNote(game *storage.Game, text string, kb *tele.ReplyMarkup) {
+	b.cardNote(game.ID, game.ChatID, text, kb)
+	if err := b.st.MarkReminded(game.ID); err != nil {
+		log.Printf("fallbackNote.mark %d: %v", game.ID, err)
 	}
 }
 
@@ -269,6 +297,9 @@ func (b *Bot) afterClaim(c tele.Context, gameID int64) {
 	if err != nil || game == nil || game.Status != "pending" || game.Deleted ||
 		!game.UsdokuCode.Valid || game.UsdokuCode.String == "" {
 		return
+	}
+	if manual, err := b.st.HasResults(gameID); err != nil || manual {
+		return // recorded by hand right now: the pressed message is their picker
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -331,6 +362,11 @@ func (b *Bot) onRecordNow(c tele.Context) error {
 	}
 	if len(info.FinishOrder()) == 0 {
 		return c.Respond(&tele.CallbackResponse{Text: "Пока никто не финишировал"})
+	}
+	if manual, err := b.st.HasResults(game.ID); err != nil {
+		return b.fail(c, "onRecordNow.results", err)
+	} else if manual {
+		return c.Respond(&tele.CallbackResponse{Text: manualRecordingToast})
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Записываю…"})
 	b.autoRecord(game, info)
