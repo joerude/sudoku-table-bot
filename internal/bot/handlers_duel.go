@@ -62,6 +62,13 @@ func (b *Bot) opponents(chatID, callerID int64) ([]storage.Player, error) {
 	return others, nil
 }
 
+// duelChallengeTTLMinutes is how long a challenge waits for an answer before it
+// burns out. A pending game blocks the whole league, so it cannot wait forever.
+const duelChallengeTTLMinutes = 20
+
+// closedChallengeToast answers a press on a challenge that was already settled.
+const closedChallengeToast = "Вызов уже закрыт"
+
 // onDuelPick issues the challenge: creates the room, tags the target, posts
 // Accept/Decline. Only the target may answer.
 func (b *Bot) onDuelPick(c tele.Context) error {
@@ -170,15 +177,19 @@ func (b *Bot) onAccept(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onAccept.game", err)
 	}
-	if game == nil || game.Status != "pending" {
-		return c.Respond(&tele.CallbackResponse{Text: "Дуэль уже закрыта"})
+	if game == nil || game.Status != "pending" || game.Deleted {
+		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
 	target, ok := b.duelTargetGuard(c, gameID)
 	if !ok {
 		return nil
 	}
-	if err := b.st.MarkDuelAccepted(gameID); err != nil {
-		log.Printf("onAccept.mark: %v", err) // stats-only stamp, never blocks the duel
+	won, err := b.st.AcceptDuel(gameID)
+	if err != nil {
+		return b.fail(c, "onAccept.mark", err)
+	}
+	if !won { // revoked, declined or expired a moment ago
+		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
 	_ = c.Respond()
 	text := duelAcceptText(*target, game.UsdokuCode.String)
@@ -189,6 +200,58 @@ func (b *Bot) onAccept(c tele.Context) error {
 	}
 	b.replyToChallenger(c, game, duelAcceptReplyText)
 	return err
+}
+
+// onRevoke lets the challenger withdraw a challenge nobody has answered yet.
+func (b *Bot) onRevoke(c tele.Context) error {
+	gameID := parseID(c.Data())
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		return b.fail(c, "onRevoke.game", err)
+	}
+	if game == nil || game.Status != "pending" || game.Deleted {
+		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
+	}
+	me := realSender(c)
+	if me == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Не вижу кто ты"})
+	}
+	if !game.CreatedBy.Valid || game.CreatedBy.Int64 != me.ID {
+		return c.Respond(&tele.CallbackResponse{Text: "Отозвать может только автор вызова"})
+	}
+	won, err := b.st.RevokeDuel(gameID)
+	if err != nil {
+		return b.fail(c, "onRevoke.revoke", err)
+	}
+	if !won { // answered or expired a moment ago
+		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Вызов отозван"})
+	return c.Edit(duelRevokedText)
+}
+
+// expireStaleDuels burns challenges nobody answered within duelChallengeTTLMinutes,
+// freeing the league's single pending slot. Called from the reminder ticker.
+func (b *Bot) expireStaleDuels() {
+	expired, err := b.st.ExpireStaleDuels(duelChallengeTTLMinutes)
+	if err != nil {
+		log.Printf("expireStaleDuels: %v", err)
+	}
+	for _, d := range expired {
+		challenger, target := "?", "?"
+		if d.CreatedBy.Valid {
+			if p, perr := b.st.PlayerByTg(d.ChatID, d.CreatedBy.Int64); perr == nil && p != nil {
+				challenger = p.Name
+			}
+		}
+		if p, perr := b.st.PlayerByID(d.TargetID); perr == nil && p != nil {
+			target = p.Name
+		}
+		if _, serr := b.tb.Send(tele.ChatID(d.ChatID), duelExpiredText(challenger, target)); serr != nil {
+			log.Printf("expireStaleDuels send: %v", serr)
+		}
+		log.Printf("duel %d expired unanswered", d.GameID)
+	}
 }
 
 // replyToChallenger answers the challenge post with a short reply that pings
@@ -236,18 +299,19 @@ func (b *Bot) onDecline(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onDecline.game", err)
 	}
-	if game == nil || game.Status != "pending" {
-		return c.Respond(&tele.CallbackResponse{Text: "Дуэль уже закрыта"})
+	if game == nil || game.Status != "pending" || game.Deleted {
+		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
 	target, ok := b.duelTargetGuard(c, gameID)
 	if !ok {
 		return nil
 	}
-	if err := b.st.MarkDuelDeclined(gameID); err != nil {
-		log.Printf("onDecline.mark: %v", err) // the stamp tells a decline from a cancel
+	won, err := b.st.DeclineDuel(gameID)
+	if err != nil {
+		return b.fail(c, "onDecline.mark", err)
 	}
-	if err := b.st.SoftDeleteGame(gameID); err != nil {
-		return b.fail(c, "onDecline.cancel", err)
+	if !won { // accepted, revoked or expired a moment ago
+		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
 	_ = c.Respond()
 	err = c.Edit(duelDeclineText(*target))

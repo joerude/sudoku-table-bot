@@ -1,6 +1,9 @@
 package storage
 
-import "database/sql"
+import (
+	"database/sql"
+	"strconv"
+)
 
 // DuelStanding is one player's all-time duel record.
 type DuelStanding struct {
@@ -53,20 +56,88 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 	return out, rows.Err()
 }
 
-// MarkDuelAccepted stamps when the target accepted the challenge. Keeps the
-// first stamp — re-taps and later edits don't move it.
-func (s *Store) MarkDuelAccepted(gameID int64) error {
-	_, err := s.db.Exec(
-		`UPDATE games SET accepted_at=datetime('now') WHERE id=? AND accepted_at IS NULL`, gameID)
-	return err
+// sqlOpenChallenge is the state of a challenge nobody has answered yet: a live
+// pending duel, not accepted, declined or withdrawn. Every transition below
+// guards on it, so exactly one of racing callbacks (accept, decline, revoke,
+// expiry) wins; the others see RowsAffected == 0.
+const sqlOpenChallenge = `duel_target_id IS NOT NULL AND status='pending' AND deleted=0
+	AND accepted_at IS NULL AND declined_at IS NULL`
+
+// AcceptDuel stamps the acceptance of an open challenge. ok=false means the
+// challenge was already answered, withdrawn or expired.
+func (s *Store) AcceptDuel(gameID int64) (ok bool, err error) {
+	return s.execOne(
+		`UPDATE games SET accepted_at=datetime('now') WHERE id=? AND `+sqlOpenChallenge, gameID)
 }
 
-// MarkDuelDeclined stamps when the target declined the challenge (the game is
-// soft-deleted right after; the stamp is what tells a decline from a cancel).
-func (s *Store) MarkDuelDeclined(gameID int64) error {
-	_, err := s.db.Exec(
-		`UPDATE games SET declined_at=datetime('now') WHERE id=? AND declined_at IS NULL`, gameID)
-	return err
+// DeclineDuel stamps the refusal and soft-deletes the challenge in one
+// statement (the stamp is what tells a decline from a revoke). ok=false as for
+// AcceptDuel.
+func (s *Store) DeclineDuel(gameID int64) (ok bool, err error) {
+	return s.execOne(
+		`UPDATE games SET declined_at=datetime('now'), deleted=1 WHERE id=? AND `+sqlOpenChallenge, gameID)
+}
+
+// RevokeDuel withdraws an open challenge (soft-delete without a decline stamp,
+// so it does not count in the challenge stats). ok=false as for AcceptDuel.
+func (s *Store) RevokeDuel(gameID int64) (ok bool, err error) {
+	return s.execOne(
+		`UPDATE games SET deleted=1 WHERE id=? AND `+sqlOpenChallenge, gameID)
+}
+
+func (s *Store) execOne(query string, args ...any) (bool, error) {
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// ExpiredDuel is a challenge that burnt out unanswered.
+type ExpiredDuel struct {
+	GameID    int64
+	ChatID    int64
+	CreatedBy sql.NullInt64 // challenger's tg id
+	TargetID  int64         // target player id
+}
+
+// ExpireStaleDuels soft-deletes open challenges older than the given minutes
+// and returns the ones this call closed. Each close is its own guarded UPDATE,
+// so a challenge answered a moment earlier is left alone and never reported.
+func (s *Store) ExpireStaleDuels(minutes int) ([]ExpiredDuel, error) {
+	rows, err := s.db.Query(`
+		SELECT id, chat_id, created_by, duel_target_id FROM games
+		WHERE `+sqlOpenChallenge+` AND created_at <= datetime('now', ?)
+		ORDER BY id`, "-"+strconv.Itoa(minutes)+" minutes")
+	if err != nil {
+		return nil, err
+	}
+	var cands []ExpiredDuel
+	for rows.Next() {
+		var d ExpiredDuel
+		if err := rows.Scan(&d.GameID, &d.ChatID, &d.CreatedBy, &d.TargetID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		cands = append(cands, d)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close() // one connection: release it before the UPDATEs below
+	var out []ExpiredDuel
+	for _, d := range cands {
+		ok, err := s.RevokeDuel(d.GameID)
+		if err != nil {
+			return out, err
+		}
+		if ok {
+			out = append(out, d)
+		}
+	}
+	return out, nil
 }
 
 // ChallengeStat is one player's duel challenge behaviour. Issued/Received
