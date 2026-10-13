@@ -225,8 +225,14 @@ func (b *Bot) resultKB(gameID int64) *tele.ReplyMarkup {
 	if err != nil || game == nil {
 		return resultKeyboard(gameID)
 	}
-	if _, isDuel, err := b.st.DuelTargetID(gameID); err != nil || isDuel {
-		return resultKeyboard(gameID) // duel: append rematchButton(gameID) here
+	if _, isDuel, err := b.st.DuelTargetID(gameID); err != nil {
+		return resultKeyboard(gameID)
+	} else if isDuel {
+		rows, err := b.st.GameResults(gameID)
+		if err != nil {
+			return resultKeyboard(gameID)
+		}
+		return duelResultKeyboard(gameID, game.Difficulty.String, rows)
 	}
 	if game.Difficulty.String == "" || game.Mode.String == "" {
 		return resultKeyboard(gameID) // recorded by hand: nothing to repeat
