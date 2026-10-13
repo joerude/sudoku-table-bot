@@ -295,7 +295,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.UpdateSeasonTarget(season.ID, n); err != nil {
 			return b.fail(c, "onSettings.target", err)
 		}
-		return c.Send(fmt.Sprintf("✅ Порог сезона: <b>%d</b> очков", n))
+		return c.Send(fmt.Sprintf("✅ Порог сезона: <b>%d</b> %s", n, pointsWord(n)))
 
 	case "points":
 		table, err := parseInts(args[1:])
@@ -315,7 +315,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.SetMinPlayers(chatID, n); err != nil {
 			return b.fail(c, "onSettings.minplayers", err)
 		}
-		return c.Send(fmt.Sprintf("✅ Игра засчитывается, если участвовало ≥ <b>%d</b> игроков.", n))
+		return c.Send(fmt.Sprintf("✅ Игра засчитывается, если участвовало ≥ <b>%d</b> %s.", n, plural(n, "игрока", "игроков", "игроков")))
 
 	case "daily":
 		val := strings.ToLower(argAt(args, 1))
