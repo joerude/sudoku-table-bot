@@ -278,7 +278,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	chatID := c.Chat().ID
 	args := c.Args()
 	if len(args) == 0 {
-		return c.Send(b.settingsSummary(chatID, season, b.isAdmin(c)))
+		return b.quiet(c, b.settingsSummary(chatID, season, b.isAdmin(c)))
 	}
 	if !b.requireAdmin(c) {
 		return nil
@@ -293,7 +293,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.UpdateSeasonTarget(season.ID, n); err != nil {
 			return b.fail(c, "onSettings.target", err)
 		}
-		return c.Send(fmt.Sprintf("✅ Порог сезона: <b>%d</b> %s", n, pointsWord(n)))
+		return b.quiet(c, fmt.Sprintf("✅ Порог сезона: <b>%d</b> %s", n, pointsWord(n)))
 
 	case "points":
 		table, err := parseInts(args[1:])
@@ -303,7 +303,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.UpdateSeasonPoints(season.ID, table); err != nil {
 			return b.fail(c, "onSettings.points", err)
 		}
-		return c.Send("✅ Таблица очков: " + formatTable(table))
+		return b.quiet(c, "✅ Таблица очков: "+formatTable(table))
 
 	case "minplayers":
 		n, err := strconv.Atoi(argAt(args, 1))
@@ -313,7 +313,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.SetMinPlayers(chatID, n); err != nil {
 			return b.fail(c, "onSettings.minplayers", err)
 		}
-		return c.Send(fmt.Sprintf("✅ Игра засчитывается, если участвовало ≥ <b>%d</b> %s.", n, plural(n, "игрока", "игроков", "игроков")))
+		return b.quiet(c, fmt.Sprintf("✅ Игра засчитывается, если участвовало ≥ <b>%d</b> %s.", n, plural(n, "игрока", "игроков", "игроков")))
 
 	case "daily":
 		val := strings.ToLower(argAt(args, 1))
@@ -321,7 +321,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 			if err := b.st.SetDailyReminder(chatID, false, ""); err != nil {
 				return b.fail(c, "onSettings.daily", err)
 			}
-			return c.Send("🔕 Ежедневные напоминания выключены.")
+			return b.quiet(c, "🔕 Ежедневные напоминания выключены.")
 		}
 		if _, err := time.Parse("15:04", val); err != nil {
 			return b.ephemeral(c, "Формат времени HH:MM, например: /settings daily 21:00")
@@ -329,7 +329,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.SetDailyReminder(chatID, true, val); err != nil {
 			return b.fail(c, "onSettings.daily", err)
 		}
-		return c.Send("🔔 Ежедневное напоминание в " + val)
+		return b.quiet(c, "🔔 Ежедневное напоминание в "+val)
 
 	case "weekly":
 		val := strings.ToLower(argAt(args, 1))
@@ -342,12 +342,12 @@ func (b *Bot) onSettings(c tele.Context) error {
 			return b.fail(c, "onSettings.weekly", err)
 		}
 		if on {
-			return c.Send("🗓 Недельный дайджест включён (понедельник).")
+			return b.quiet(c, "🗓 Недельный дайджест включён (понедельник).")
 		}
-		return c.Send("🔕 Недельный дайджест выключен.")
+		return b.quiet(c, "🔕 Недельный дайджест выключен.")
 
 	default:
-		return c.Send(settingsUsage)
+		return b.quiet(c, settingsUsage)
 	}
 }
 

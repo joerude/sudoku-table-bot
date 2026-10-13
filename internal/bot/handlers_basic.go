@@ -15,16 +15,16 @@ func (b *Bot) onHelp(c tele.Context) error {
 		return b.fail(c, "onHelp.ensure", err)
 	}
 	if isPrivate(c) {
-		return c.Send(helpText) // quick buttons are group-only
+		return c.Send(helpText, tele.NoPreview) // quick buttons are group-only
 	}
-	return c.Send(helpText, quickMenuKeyboard())
+	return c.Send(helpText, quickMenuKeyboard(), tele.NoPreview)
 }
 
 // onStart greets a chat that nobody has joined yet with the full onboarding. A
 // repeated /start gets a one-line pointer that deletes itself.
 func (b *Bot) onStart(c tele.Context) error {
 	if isPrivate(c) {
-		return c.Send(privateStartText)
+		return c.Send(privateStartText, tele.NoPreview)
 	}
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onStart.ensure", err)
@@ -34,7 +34,7 @@ func (b *Bot) onStart(c tele.Context) error {
 		return b.fail(c, "onStart.players", err)
 	}
 	if len(players) == 0 {
-		return c.Send(welcomeText, quickMenuKeyboard())
+		return c.Send(welcomeText, quickMenuKeyboard(), tele.NoPreview)
 	}
 	return b.ephemeral(c, startText(len(players)))
 }
@@ -44,7 +44,7 @@ func (b *Bot) onAddedToGroup(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onAddedToGroup.ensure", err)
 	}
-	return c.Send(welcomeText, quickMenuKeyboard())
+	return c.Send(welcomeText, quickMenuKeyboard(), tele.NoPreview)
 }
 
 // onText nudges users who type a command incorrectly: an unknown "/cmd" gets a
@@ -81,7 +81,7 @@ func (b *Bot) onQuickPlay(c tele.Context) error {
 
 func (b *Bot) onQuickHelp(c tele.Context) error {
 	_ = c.Respond()
-	return c.Send(helpText)
+	return c.Send(helpText, tele.NoPreview)
 }
 
 func (b *Bot) onQuickMe(c tele.Context) error {
@@ -105,9 +105,9 @@ func (b *Bot) onJoin(c tele.Context) error {
 	}
 	_ = b.st.SetUsername(p.ID, sender.Username) // best-effort; refreshes/clears
 	if created {
-		return c.Send(fmt.Sprintf("✅ <b>%s</b> в игре! Удачи 🍀", esc(name)))
+		return b.quiet(c, fmt.Sprintf("✅ <b>%s</b> в игре! Удачи 🍀", esc(name)))
 	}
-	return c.Send(fmt.Sprintf("👌 Имя обновлено: <b>%s</b>", esc(name)))
+	return b.quiet(c, fmt.Sprintf("👌 Имя обновлено: <b>%s</b>", esc(name)))
 }
 
 func (b *Bot) onSetNick(c tele.Context) error {
@@ -145,7 +145,7 @@ func (b *Bot) onSetNick(c tele.Context) error {
 		}
 		return b.fail(c, "onSetNick.set", err)
 	}
-	return c.Send(setNickDoneText(nick, created))
+	return b.quiet(c, setNickDoneText(nick, created))
 }
 
 func (b *Bot) onRemovePlayer(c tele.Context) error {
@@ -166,7 +166,7 @@ func (b *Bot) onRemovePlayer(c tele.Context) error {
 	if n == 0 {
 		return b.ephemeral(c, playerNotFoundText(name))
 	}
-	return c.Send("🗑 Игрок убран: <b>" + esc(name) + "</b> (его прошлые игры сохранены).")
+	return b.quiet(c, "🗑 Игрок убран: <b>"+esc(name)+"</b> (его прошлые игры сохранены).")
 }
 
 func (b *Bot) onPlayers(c tele.Context) error {
@@ -191,5 +191,5 @@ func (b *Bot) onPlayers(c tele.Context) error {
 		}
 		sb.WriteString(line + "\n")
 	}
-	return c.Send(sb.String())
+	return b.quiet(c, sb.String())
 }
