@@ -34,7 +34,10 @@ func (b *Bot) runReminders() {
 	}
 }
 
-// remindStalePending nudges about pending games with no result yet.
+// remindStalePending nudges about pending games with no result yet. A game with
+// a usdoku room whose watcher is still running is left alone: the bot will
+// record it by itself. The nudge edits the game's card; a new message (with a
+// ping to the creator) goes out only when the game has no card.
 func (b *Bot) remindStalePending() {
 	stale, err := b.st.StalePendingGames(stalePendingMinutes)
 	if err != nil {
@@ -42,11 +45,10 @@ func (b *Bot) remindStalePending() {
 		return
 	}
 	for _, sp := range stale {
-		_, err := b.tb.Send(tele.ChatID(sp.ChatID),
-			"⏰ Есть незаписанная игра. Кто победил?",
-			recordKeyboard(sp.GameID))
-		if err != nil {
-			log.Printf("remindStalePending send: %v", err)
+		if sp.Code != "" && isWatching(sp.GameID) {
+			continue
+		}
+		if !b.nudgeStale(sp) {
 			continue
 		}
 		if err := b.st.MarkReminded(sp.GameID); err != nil {
@@ -85,6 +87,27 @@ func (b *Bot) dailyNudge(chatID int64, now time.Time, loc *time.Location) (strin
 		return "", err
 	}
 	return dailyNudgeText, nil
+}
+
+
+// nudgeStale shows the «запишем?» prompt for one game: on its card when it has
+// one, else as a new message pinging the creator. False when nothing was shown.
+func (b *Bot) nudgeStale(sp storage.StalePending) bool {
+	kb := recordKeyboard(sp.GameID)
+	if sp.PostMsgID.Valid && b.tryCardNote(sp.GameID, staleNudgeText(sp.Code, ""), kb) {
+		return true
+	}
+	ping := ""
+	if sp.CreatedBy.Valid {
+		if p, err := b.st.PlayerByTg(sp.ChatID, sp.CreatedBy.Int64); err == nil && p != nil {
+			ping = mention(*p)
+		}
+	}
+	if _, err := b.tb.Send(tele.ChatID(sp.ChatID), staleNudgeText(sp.Code, ping), kb); err != nil {
+		log.Printf("remindStalePending send: %v", err)
+		return false
+	}
+	return true
 }
 
 // remindDaily sends the catch-all evening nudge if nothing was played today.

@@ -37,3 +37,38 @@ func TestStalePendingGamesSkipsDeleted(t *testing.T) {
 		t.Fatalf("got %+v, want only the live game %d", got, live)
 	}
 }
+
+// The nudge needs the room code (to skip games the watcher still handles), the
+// creator (to ping when there is no card) and the card message (to edit).
+func TestStalePendingGamesCarriesCardAndRoom(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7002)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid, err := st.CreatePendingGame(chat, se.ID, 42, "medium", "hardcore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetUsdokuCode(gid, "LOVI"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPostMsg(gid, 99); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(`UPDATE games SET created_at = datetime('now', '-2 hours')`); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.StalePendingGames(45)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v, err %v", got, err)
+	}
+	sp := got[0]
+	if sp.Code != "LOVI" || sp.CreatedBy.Int64 != 42 || sp.PostMsgID.Int64 != 99 {
+		t.Errorf("stale game lost its context: %+v", sp)
+	}
+}

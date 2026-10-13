@@ -230,19 +230,28 @@ func (b *Bot) closeCard(gameID int64) {
 	}
 }
 
-// cardNote turns the game's card into text + keyboard (a fallback or a nudge).
-// With no card, or when the edit fails, it is sent as a new message instead.
-func (b *Bot) cardNote(gameID, chatID int64, text string, kb *tele.ReplyMarkup) {
-	if lp := b.anchor(gameID); lp != nil {
-		lp.mu.Lock()
-		lp.base = "" // the card is not live any more
-		b.retireCardText(gameID)
-		err := b.editPost(lp.chatID, lp.msgID, text, kb)
-		lp.mu.Unlock()
-		if err == nil {
-			return
-		}
+// tryCardNote turns the game's card into text + keyboard (a fallback or a
+// nudge). False when there is no card or the edit failed.
+func (b *Bot) tryCardNote(gameID int64, text string, kb *tele.ReplyMarkup) bool {
+	lp := b.anchor(gameID)
+	if lp == nil {
+		return false
+	}
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	lp.base = "" // the card is not live any more
+	b.retireCardText(gameID)
+	if err := b.editPost(lp.chatID, lp.msgID, text, kb); err != nil {
 		log.Printf("cardNote %d: %v", gameID, err)
+		return false
+	}
+	return true
+}
+
+// cardNote is tryCardNote that falls back to a new message.
+func (b *Bot) cardNote(gameID, chatID int64, text string, kb *tele.ReplyMarkup) {
+	if b.tryCardNote(gameID, text, kb) {
+		return
 	}
 	if _, err := b.tb.Send(tele.ChatID(chatID), text, kb); err != nil {
 		log.Printf("cardNote.send %d: %v", gameID, err)
@@ -263,4 +272,34 @@ func (b *Bot) closeOtherCard(c tele.Context, game int64) {
 // registerGameCardRoutes wires the buttons that live on the game card.
 func (b *Bot) registerGameCardRoutes() {
 	b.tb.Handle(&tele.Btn{Unique: cbRecNow}, b.onRecordNow)
+}
+
+// watching counts the live usdoku watchers per game, so the stale-game nudge can
+// tell "nobody is looking" from "the bot is still waiting on usdoku".
+var (
+	watchMu  sync.Mutex
+	watching = map[int64]int{}
+)
+
+func markWatching(gameID int64) {
+	watchMu.Lock()
+	watching[gameID]++
+	watchMu.Unlock()
+}
+
+func unmarkWatching(gameID int64) {
+	watchMu.Lock()
+	if watching[gameID] <= 1 {
+		delete(watching, gameID)
+	} else {
+		watching[gameID]--
+	}
+	watchMu.Unlock()
+}
+
+// isWatching reports whether a watcher goroutine is currently polling the game.
+func isWatching(gameID int64) bool {
+	watchMu.Lock()
+	defer watchMu.Unlock()
+	return watching[gameID] > 0
 }
