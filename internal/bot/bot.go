@@ -124,6 +124,7 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbDuelCancel}, b.onDuelCancel)
 	b.tb.Handle(&tele.Btn{Unique: cbAccept}, b.onAccept)
 	b.tb.Handle(&tele.Btn{Unique: cbDecline}, b.onDecline)
+	b.tb.Handle(&tele.Btn{Unique: cbRevoke}, b.onRevoke)
 	b.tb.Handle("/invite", b.onInvite)
 	b.tb.Handle(&tele.Btn{Unique: cbJoinIn}, b.onJoinIn)
 

@@ -868,6 +868,7 @@ func duelChallengeText(challenger string, target storage.Player, difficulty, cod
 		b.WriteString("\n")
 	}
 	b.WriteString("\nПринимаешь вызов?")
+	fmt.Fprintf(&b, "\n⏳ Сгорит через %d мин, если не принять", duelChallengeTTLMinutes)
 	if nickWarn {
 		b.WriteString("\n\n⚠️ У кого-то не задан /setnick — авто-запись не сработает, запишите результат через /result.")
 	}
@@ -888,6 +889,14 @@ func duelAcceptText(target storage.Player, code string) string {
 			"Или запишите результат через «📝 Записать результат».", usdokuCreateURL)
 	}
 	return b.String()
+}
+
+// duelRevokedText replaces a challenge its author withdrew.
+const duelRevokedText = "🗑 Вызов отозван"
+
+// duelExpiredText announces a challenge that nobody answered in time.
+func duelExpiredText(challenger, target string) string {
+	return fmt.Sprintf("⌛ Вызов %s → %s сгорел, лига свободна", esc(challenger), esc(target))
 }
 
 func duelDeclineText(target storage.Player) string {

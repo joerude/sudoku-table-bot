@@ -30,6 +30,7 @@ func (b *Bot) runReminders() {
 		b.remindDaily()
 		b.remindWeekly()
 		b.closeExpiredSeasons()
+		b.expireStaleDuels()
 	}
 }
 

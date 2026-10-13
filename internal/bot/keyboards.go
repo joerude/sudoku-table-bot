@@ -35,6 +35,7 @@ const (
 	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>" — dismiss the opponent picker
 	cbAccept     = "accept"     // payload: "<gameID>"
 	cbDecline    = "decline"    // payload: "<gameID>"
+	cbRevoke     = "revoke"     // payload: "<gameID>" — challenger withdraws an unanswered challenge
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
@@ -185,13 +186,17 @@ func duelPickKeyboard(difficulty string, players []storage.Player, ownerTg int64
 	return m
 }
 
-// duelKeyboard is the Accept/Decline prompt on a duel challenge.
+// duelKeyboard is the prompt on a duel challenge: Accept/Decline for the
+// target, Revoke for the challenger (each handler checks who pressed).
 func duelKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(
-		m.Data("✅ Принять", cbAccept, gid(gameID)),
-		m.Data("❌ Отказ", cbDecline, gid(gameID)),
-	))
+	m.Inline(
+		m.Row(
+			m.Data("✅ Принять", cbAccept, gid(gameID)),
+			m.Data("❌ Отказ", cbDecline, gid(gameID)),
+		),
+		m.Row(m.Data("🗑 Отозвать", cbRevoke, gid(gameID))),
+	)
 	return m
 }
 

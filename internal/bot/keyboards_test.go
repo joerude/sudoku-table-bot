@@ -65,3 +65,14 @@ func TestSeasonNumbers(t *testing.T) {
 		}
 	}
 }
+
+func TestDuelKeyboardHasRevoke(t *testing.T) {
+	kb := duelKeyboard(12)
+	if len(kb.InlineKeyboard) != 2 || len(kb.InlineKeyboard[0]) != 2 || len(kb.InlineKeyboard[1]) != 1 {
+		t.Fatalf("want accept/decline row + revoke row, got %+v", kb.InlineKeyboard)
+	}
+	rev := kb.InlineKeyboard[1][0]
+	if rev.Unique != cbRevoke || rev.Data != "12" {
+		t.Errorf("revoke button = %+v", rev)
+	}
+}

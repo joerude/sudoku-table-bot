@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"strconv"
 	"testing"
 )
 
@@ -490,10 +491,9 @@ func TestChallengeStats(t *testing.T) {
 		t.Fatalf("CreatePendingGame declined: %v", err)
 	}
 	st.SetDuelTarget(g2, b.ID)
-	if err := st.MarkDuelDeclined(g2); err != nil {
-		t.Fatalf("MarkDuelDeclined: %v", err)
+	if ok, err := st.DeclineDuel(g2); err != nil || !ok {
+		t.Fatalf("DeclineDuel: ok=%v err=%v", ok, err)
 	}
-	st.SoftDeleteGame(g2)
 
 	// 3. Live pending duel: Bob (tg 102) challenges Alice.
 	g3, err := st.CreatePendingGame(chat, se.ID, 102, "medium", "hardcore")
@@ -530,21 +530,30 @@ func TestChallengeStats(t *testing.T) {
 	}
 }
 
-// TestMarkDuelAccepted: stamps once, keeps the first timestamp.
-func TestMarkDuelAccepted(t *testing.T) {
+// openChallenge creates a pending duel challenge from tg 201 to target.
+func openChallenge(t *testing.T, st *Store, chat, seasonID, targetID int64) int64 {
+	t.Helper()
+	gid, err := st.CreatePendingGame(chat, seasonID, 201, "medium", "hardcore")
+	if err != nil {
+		t.Fatalf("CreatePendingGame: %v", err)
+	}
+	if err := st.SetDuelTarget(gid, targetID); err != nil {
+		t.Fatalf("SetDuelTarget: %v", err)
+	}
+	return gid
+}
+
+// TestAcceptDuel: stamps once; a second accept or a late decline loses.
+func TestAcceptDuel(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-6002)
 	st.EnsureChat(chat, 1)
 	se, _ := st.ActiveSeason(chat)
 	st.RegisterPlayer(chat, 201, "Alice")
 	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
-	gid, err := st.CreatePendingGame(chat, se.ID, 201, "medium", "hardcore")
-	if err != nil {
-		t.Fatalf("CreatePendingGame: %v", err)
-	}
-	st.SetDuelTarget(gid, b.ID)
-	if err := st.MarkDuelAccepted(gid); err != nil {
-		t.Fatalf("MarkDuelAccepted: %v", err)
+	gid := openChallenge(t, st, chat, se.ID, b.ID)
+	if ok, err := st.AcceptDuel(gid); err != nil || !ok {
+		t.Fatalf("AcceptDuel: ok=%v err=%v", ok, err)
 	}
 	var accepted sql.NullString
 	if err := st.db.QueryRow(`SELECT accepted_at FROM games WHERE id=?`, gid).Scan(&accepted); err != nil {
@@ -552,6 +561,115 @@ func TestMarkDuelAccepted(t *testing.T) {
 	}
 	if !accepted.Valid || accepted.String == "" {
 		t.Errorf("accepted_at not stamped: %+v", accepted)
+	}
+	if ok, _ := st.AcceptDuel(gid); ok {
+		t.Error("second accept must lose")
+	}
+	if ok, _ := st.DeclineDuel(gid); ok {
+		t.Error("decline after accept must lose")
+	}
+	if ok, _ := st.RevokeDuel(gid); ok {
+		t.Error("revoke after accept must lose")
+	}
+}
+
+// TestDeclineAndRevokeDuel: the first transition wins; revoke leaves no decline stamp.
+func TestDeclineAndRevokeDuel(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6003)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	st.RegisterPlayer(chat, 201, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
+
+	g1 := openChallenge(t, st, chat, se.ID, b.ID)
+	if ok, err := st.DeclineDuel(g1); err != nil || !ok {
+		t.Fatalf("DeclineDuel: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := st.AcceptDuel(g1); ok {
+		t.Error("accept after decline must lose")
+	}
+	if ok, _ := st.DeclineDuel(g1); ok {
+		t.Error("second decline must lose")
+	}
+	if p, _ := st.ActivePendingGame(chat); p != nil {
+		t.Errorf("declined challenge must free the slot, got %+v", p)
+	}
+
+	g2 := openChallenge(t, st, chat, se.ID, b.ID)
+	if ok, err := st.RevokeDuel(g2); err != nil || !ok {
+		t.Fatalf("RevokeDuel: ok=%v err=%v", ok, err)
+	}
+	var declined sql.NullString
+	st.db.QueryRow(`SELECT declined_at FROM games WHERE id=?`, g2).Scan(&declined)
+	if declined.Valid {
+		t.Errorf("revoke must not stamp declined_at, got %q", declined.String)
+	}
+	if ok, _ := st.AcceptDuel(g2); ok {
+		t.Error("accept after revoke must lose")
+	}
+	if p, _ := st.ActivePendingGame(chat); p != nil {
+		t.Errorf("revoked challenge must free the slot, got %+v", p)
+	}
+}
+
+// TestRevokeDuelIgnoresPlainGames: a non-duel pending game is not a challenge.
+func TestRevokeDuelIgnoresPlainGames(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6004)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	gid, _ := st.CreatePendingGame(chat, se.ID, 201, "medium", "hardcore")
+	if ok, _ := st.RevokeDuel(gid); ok {
+		t.Error("revoke must not touch a season game")
+	}
+}
+
+// TestExpireStaleDuels: only open challenges past the cutoff close, and each
+// is reported once.
+func TestExpireStaleDuels(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6005)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	st.RegisterPlayer(chat, 201, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
+	age := func(gid int64, mins int) {
+		t.Helper()
+		if _, err := st.db.Exec(`UPDATE games SET created_at=datetime('now', ?) WHERE id=?`,
+			"-"+strconv.Itoa(mins)+" minutes", gid); err != nil {
+			t.Fatalf("age: %v", err)
+		}
+	}
+
+	fresh := openChallenge(t, st, chat, se.ID, b.ID)
+	if got, err := st.ExpireStaleDuels(20); err != nil || len(got) != 0 {
+		t.Fatalf("fresh challenge must stay: got %v err=%v", got, err)
+	}
+	st.RevokeDuel(fresh)
+
+	stale := openChallenge(t, st, chat, se.ID, b.ID)
+	age(stale, 25)
+	got, err := st.ExpireStaleDuels(20)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("want 1 expired, got %v err=%v", got, err)
+	}
+	if got[0].GameID != stale || got[0].ChatID != chat || got[0].TargetID != b.ID ||
+		!got[0].CreatedBy.Valid || got[0].CreatedBy.Int64 != 201 {
+		t.Errorf("expired row = %+v", got[0])
+	}
+	if again, _ := st.ExpireStaleDuels(20); len(again) != 0 {
+		t.Errorf("already closed must not be reported again, got %v", again)
+	}
+	if p, _ := st.ActivePendingGame(chat); p != nil {
+		t.Errorf("expiry must free the slot, got %+v", p)
+	}
+
+	accepted := openChallenge(t, st, chat, se.ID, b.ID)
+	st.AcceptDuel(accepted)
+	age(accepted, 60)
+	if got, _ := st.ExpireStaleDuels(20); len(got) != 0 {
+		t.Errorf("accepted duel must not expire, got %v", got)
 	}
 }
 

@@ -571,6 +571,22 @@ func TestDuelPostTexts(t *testing.T) {
 	}
 }
 
+func TestDuelExpiredText(t *testing.T) {
+	got := duelExpiredText("Vasya", "Pe<t>ya")
+	for _, want := range []string{"⌛", "Vasya", "Pe&lt;t&gt;ya", "→", "сгорел", "лига свободна"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("duelExpiredText: want %q in %q", want, got)
+		}
+	}
+}
+
+func TestDuelChallengeTextShowsTTL(t *testing.T) {
+	out := duelChallengeText("Vasya", storage.Player{Name: "Petya"}, "medium", "", false, 0, 0, 0, 0)
+	if !strings.Contains(out, "Сгорит через 20 мин, если не принять") {
+		t.Errorf("challenge must show the expiry line\ngot: %s", out)
+	}
+}
+
 func TestMilestoneLines(t *testing.T) {
 	if !gamesMilestones[250] || gamesMilestones[100] {
 		t.Errorf("gamesMilestones: 250 must be in, 100 must be out (badge covers it)")
