@@ -814,7 +814,7 @@ func seasonFinalDayText(number int, rows []storage.Standing) string {
 		if i == 3 {
 			break
 		}
-		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b>\n", medal(i+1), esc(r.Name), r.Points)
+		fmt.Fprintf(&b, "%s <b>%s</b>: <b>%d</b>\n", medal(i+1), esc(r.Name), r.Points)
 	}
 	b.WriteString("\nИграть можно до полуночи: /play")
 	return b.String()
@@ -1211,7 +1211,7 @@ func activityText(rows []storage.InitiativeRow, now time.Time, loc *time.Locatio
 		return b.String()
 	}
 	for i, r := range rows {
-		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> %s · <b>%d</b> %s <i>за 30 дн</i>\n",
+		fmt.Fprintf(&b, "%s <b>%s</b>: <b>%d</b> %s · <b>%d</b> %s <i>за 30 дн</i>\n",
 			medal(i+1), esc(r.Name), r.Games30, gamesWord(r.Games30), r.Duels30, duelsWord(r.Duels30))
 		fmt.Fprintf(&b, "   <i>всего: %d · %d · %s</i>\n",
 			r.GamesAll, r.DuelsAll, lastPlayedPhrase(r.LastPlayed, now, loc))
