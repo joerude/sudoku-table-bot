@@ -78,3 +78,56 @@ func TestScoreAndCheckAfterReopen(t *testing.T) {
 		t.Errorf("re-recorded result wrong: %+v", rows)
 	}
 }
+
+// TestScoreAndCheckEditInArchivedSeasonDoesNotReclose: fixing a game of a season
+// that already closed on reaching the target must rescore it quietly, without
+// rewriting the archive's winner or announcing a new season again.
+func TestScoreAndCheckEditInArchivedSeasonDoesNotReclose(t *testing.T) {
+	const chat = int64(-8003)
+	b, st, se, g := scoreFixture(t, chat)
+	if err := st.UpdateSeasonTarget(se.ID, 3); err != nil { // the winner's 3 pts reach it
+		t.Fatal(err)
+	}
+	_, seasonEnd, err := b.scoreAndCheck(g)
+	if err != nil {
+		t.Fatalf("first scoreAndCheck: %v", err)
+	}
+	if seasonEnd == "" {
+		t.Fatal("season should close on reaching the target")
+	}
+	if closed, err := st.SeasonByID(se.ID); err != nil || closed.Status != "archived" {
+		t.Fatalf("season not archived: %+v %v", closed, err)
+	}
+	_, _, _, winner, err := st.SeasonMeta(chat, se.ID)
+	if err != nil || winner != "Alice" {
+		t.Fatalf("archive winner = %q, %v; want Alice", winner, err)
+	}
+
+	// Edit: reopen and record the opposite order, so Bob now leads.
+	if err := st.ReopenGame(g.ID); err != nil {
+		t.Fatal(err)
+	}
+	players, _ := st.ListPlayers(chat)
+	for i := len(players) - 1; i >= 0; i-- {
+		st.AddPick(g.ID, players[i].ID)
+	}
+	result, seasonEnd, err := b.scoreAndCheck(g)
+	if err != nil {
+		t.Fatalf("scoreAndCheck on archived season: %v", err)
+	}
+	if result == "" {
+		t.Error("the edit should still render a result")
+	}
+	if seasonEnd != "" {
+		t.Errorf("no second season-end post expected, got %q", seasonEnd)
+	}
+	if _, _, _, winner, _ = st.SeasonMeta(chat, se.ID); winner != "Alice" {
+		t.Errorf("archive winner rewritten to %q", winner)
+	}
+	if nums, _ := st.ArchivedNumbers(chat); len(nums) != 1 {
+		t.Errorf("want 1 archived season, got %v", nums)
+	}
+	if act, _ := st.ActiveSeason(chat); act.Number != 2 {
+		t.Errorf("active season number = %d, want 2 (no extra season)", act.Number)
+	}
+}

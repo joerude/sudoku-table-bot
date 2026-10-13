@@ -622,20 +622,27 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		result += "\n\n" + strings.Join(lines, "\n")
 	}
 
-	if len(standings) > 0 && standings[0].Points >= season.Target {
+	// Only an active season can roll over: re-scoring a game of an archived one
+	// (edit) must not rewrite its winner or announce another season.
+	if season.Status == "active" && len(standings) > 0 && standings[0].Points >= season.Target {
 		newSeason, err := b.st.CloseSeason(season, standings[0].PlayerID)
-		if err != nil {
+		switch {
+		case errors.Is(err, storage.ErrSeasonNotActive):
+			// Closed meanwhile (e.g. by the deadline tick): no final to announce.
+			log.Printf("scoreAndCheck: season %d already closed", season.Number)
+		case err != nil:
 			return "", "", err
+		default:
+			if derr := b.st.SetSeasonDeadline(newSeason.ID,
+				fmtDBTime(domain.SeasonDeadline(time.Now(), loadLoc(b.chatTZ(game.ChatID))))); derr != nil {
+				log.Printf("scoreAndCheck.setdeadline: %v", derr) // the reminder tick fills it in
+			}
+			awards := b.seasonAwards(game.ChatID, season.ID, standings)
+			seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
+				awards, newSeason.Target, newSeason.Number)
+			log.Printf("🏁 season %d closed, winner=%s (%d pts) → season %d started",
+				season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
 		}
-		if derr := b.st.SetSeasonDeadline(newSeason.ID,
-			fmtDBTime(domain.SeasonDeadline(time.Now(), loadLoc(b.chatTZ(game.ChatID))))); derr != nil {
-			log.Printf("scoreAndCheck.setdeadline: %v", derr) // the reminder tick fills it in
-		}
-		awards := b.seasonAwards(game.ChatID, season.ID, standings)
-		seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
-			awards, newSeason.Target, newSeason.Number)
-		log.Printf("🏁 season %d closed, winner=%s (%d pts) → season %d started",
-			season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
 	}
 	log.Printf("✅ game %d scored", game.ID)
 	return result, seasonEnd, nil

@@ -224,3 +224,49 @@ func TestFinalizeGameDeletedIsNotPending(t *testing.T) {
 		t.Fatalf("want ErrGameNotPending for deleted game, got %v", err)
 	}
 }
+
+func TestCloseSeasonTwiceKeepsArchive(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7002)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se, _ := st.ActiveSeason(chat)
+	w1, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	w2, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	next, err := st.CloseSeason(se, w1.ID)
+	if err != nil {
+		t.Fatalf("first close: %v", err)
+	}
+	var endedAt string
+	if err := st.db.QueryRow(`SELECT ended_at FROM seasons WHERE id=?`, se.ID).Scan(&endedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.CloseSeason(se, w2.ID)
+	if !errors.Is(err, ErrSeasonNotActive) {
+		t.Fatalf("second close: want ErrSeasonNotActive, got %v", err)
+	}
+	if got != nil {
+		t.Errorf("second close returned a season: %+v", got)
+	}
+
+	var winner int64
+	var endedAt2 string
+	if err := st.db.QueryRow(`SELECT winner_id, ended_at FROM seasons WHERE id=?`, se.ID).
+		Scan(&winner, &endedAt2); err != nil {
+		t.Fatal(err)
+	}
+	if winner != w1.ID || endedAt2 != endedAt {
+		t.Errorf("archive rewritten: winner=%d ended_at=%q (want %d, %q)", winner, endedAt2, w1.ID, endedAt)
+	}
+	var total int
+	st.db.QueryRow(`SELECT COUNT(*) FROM seasons WHERE chat_id=?`, chat).Scan(&total)
+	if total != 2 {
+		t.Errorf("want 2 seasons (archived + next), got %d", total)
+	}
+	if act, _ := st.ActiveSeason(chat); act.ID != next.ID {
+		t.Errorf("active season changed: %d != %d", act.ID, next.ID)
+	}
+}
