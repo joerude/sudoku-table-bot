@@ -333,7 +333,7 @@ func TestWeeklyDigestRoundTrip(t *testing.T) {
 	}
 }
 
-func TestCompletedTodayCountsDuels(t *testing.T) {
+func TestCompletedBetweenCountsDuels(t *testing.T) {
 	st := openTemp(t)
 	const chat = int64(-3050)
 	st.EnsureChat(chat, 1)
@@ -345,13 +345,39 @@ func TestCompletedTodayCountsDuels(t *testing.T) {
 	makeNormalGame(t, st, chat, se.ID, a.ID, b.ID)
 	makeDuelGame(t, st, chat, se.ID, a.ID, a.ID, b.ID, b.ID)
 
-	today := time.Now().UTC().Format("2006-01-02")
-	n, err := st.CompletedToday(chat, today)
+	now := time.Now().UTC()
+	n, err := st.CompletedBetween(chat, dbTime(now.Add(-time.Hour)), dbTime(now.Add(time.Hour)))
 	if err != nil {
-		t.Fatalf("CompletedToday: %v", err)
+		t.Fatalf("CompletedBetween: %v", err)
 	}
 	if n != 2 {
-		t.Errorf("CompletedToday: want 2 (duel counts as played today), got %d", n)
+		t.Errorf("CompletedBetween: want 2 (duel counts as played today), got %d", n)
+	}
+}
+
+// TestCompletedBetweenLocalDay: a game finished at 01:00 local time (UTC+6) is
+// the previous UTC date, but must count for the local day the bounds describe.
+func TestCompletedBetweenLocalDay(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-3051)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	gid := makeNormalGame(t, st, chat, se.ID, a.ID, b.ID)
+	// 2026-07-21 01:00 +06:00 == 2026-07-20 19:00 UTC.
+	if _, err := st.db.Exec(`UPDATE games SET completed_at='2026-07-20 19:00:00' WHERE id=?`, gid); err != nil {
+		t.Fatal(err)
+	}
+	loc := time.FixedZone("UTC+6", 6*3600)
+	from := time.Date(2026, 7, 21, 0, 0, 0, 0, loc).UTC()
+	to := from.Add(24 * time.Hour)
+	if n, _ := st.CompletedBetween(chat, dbTime(from), dbTime(to)); n != 1 {
+		t.Errorf("local 21 July: want 1 night game, got %d", n)
+	}
+	prevFrom := from.Add(-24 * time.Hour)
+	if n, _ := st.CompletedBetween(chat, dbTime(prevFrom), dbTime(from)); n != 0 {
+		t.Errorf("local 20 July: want 0 (game is after local midnight), got %d", n)
 	}
 }
 

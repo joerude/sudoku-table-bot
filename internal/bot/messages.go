@@ -1058,6 +1058,39 @@ func digestText(se *storage.Season, top []storage.Standing, fastest *storage.Rec
 	return b.String()
 }
 
+// digestFinalLine closes the weekly digest with the season countdown and the
+// leader's lead, e.g. "📅 До финала 18 дней · Alice +3 (второй: Bob)". Empty
+// when the season has no (readable, future) deadline.
+func digestFinalLine(se *storage.Season, standings []storage.Standing, now time.Time, loc *time.Location) string {
+	if se == nil || !se.Deadline.Valid {
+		return ""
+	}
+	deadline, err := parseDBTime(se.Deadline.String)
+	if err != nil {
+		return ""
+	}
+	days := domain.SeasonDaysLeft(deadline, now, loc)
+	var line string
+	switch {
+	case days < 0:
+		return ""
+	case days == 0:
+		line = "📅 Финал сезона сегодня"
+	default:
+		line = fmt.Sprintf("📅 До финала %d %s", days, daysWord(days))
+	}
+	if len(standings) >= 2 && standings[0].Points > 0 {
+		if gap := standings[0].Points - standings[1].Points; gap > 0 {
+			line += fmt.Sprintf(" · <b>%s</b> +%d (второй: %s)",
+				esc(standings[0].Name), gap, esc(standings[1].Name))
+		} else {
+			line += fmt.Sprintf(" · <b>%s</b> и <b>%s</b> поровну",
+				esc(standings[0].Name), esc(standings[1].Name))
+		}
+	}
+	return "\n\n" + line
+}
+
 // --- small helpers ---
 
 func pointsWord(n int) string { return plural(n, "очко", "очка", "очков") }
