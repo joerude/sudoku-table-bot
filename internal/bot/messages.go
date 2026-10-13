@@ -672,10 +672,10 @@ func historyText(games []storage.HistoryGame, tz string) string {
 		return "История пуста. Запиши первую игру: /result"
 	}
 	loc := loadLoc(tz)
-	var b strings.Builder
-	b.WriteString("📜 <b>Последние игры</b>\n")
+	items := make([]string, 0, len(games))
 	season := -1 // sentinel: first game always opens a season block
 	for _, g := range games {
+		var b strings.Builder
 		if g.SeasonNumber != season {
 			season = g.SeasonNumber
 			fmt.Fprintf(&b, "\n<b>— Сезон %d —</b>\n", season)
@@ -690,8 +690,10 @@ func historyText(games []storage.HistoryGame, tz string) string {
 		}
 		when := fmtLocalDateTime(g.CompletedAt, loc)
 		b.WriteString(fmt.Sprintf("%s%s: %s\n", when, diff, strings.Join(order, " ")))
+		items = append(items, b.String())
 	}
-	return b.String()
+	// Leave room for the "/history all" hint some callers append.
+	return clipItems("📜 <b>Последние игры</b>\n", items, tgMaxText-100)
 }
 
 // seasonSummaryText renders the /season N view: final (or current) table of one
