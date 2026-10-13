@@ -3,7 +3,9 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -12,6 +14,7 @@ type Config struct {
 	Token       string        // Telegram bot token (BOT_TOKEN)
 	DBPath      string        // SQLite file path (DB_PATH)
 	PollTimeout time.Duration // long-poll timeout
+	OwnerID     int64         // Telegram id of the bot owner (OWNER_TG_ID), 0 = unset
 }
 
 // Load reads configuration from the environment, applying defaults.
@@ -23,6 +26,13 @@ func Load() (Config, error) {
 	}
 	if c.Token == "" {
 		return c, errors.New("BOT_TOKEN is not set")
+	}
+	if v := os.Getenv("OWNER_TG_ID"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return c, fmt.Errorf("OWNER_TG_ID must be a number: %w", err)
+		}
+		c.OwnerID = id
 	}
 	return c, nil
 }

@@ -36,7 +36,7 @@ func main() {
 	}
 	defer st.Close()
 
-	b, err := bot.New(cfg.Token, cfg.PollTimeout, st, cfg.DBPath)
+	b, err := bot.New(cfg.Token, cfg.PollTimeout, st, cfg.DBPath, cfg.OwnerID)
 	if err != nil {
 		log.Fatalf("bot: %v", err)
 	}

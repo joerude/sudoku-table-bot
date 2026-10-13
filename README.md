@@ -25,12 +25,17 @@
    ```bash
    cp .env.example .env
    # отредактируй BOT_TOKEN в .env
+   # по желанию: впиши свой Telegram id в OWNER_TG_ID
    ```
 3. Запусти:
    ```bash
    docker compose up -d --build
    ```
 4. Добавь бота в групповой чат и напиши `/start`.
+
+`OWNER_TG_ID` (необязательно) нужен для `/backup` и `/restore`: владелец может делать
+это в любом чате, включая личку с ботом. Без него бэкап и восстановление доступны
+только админам группы и только внутри группы.
 
 Данные лежат в `./data/sudoku.db` (примонтированный volume), переживают перезапуск.
 
@@ -59,6 +64,7 @@
 ```bash
 export BOT_TOKEN=...   # токен от BotFather
 export DB_PATH=./data/sudoku.db
+export OWNER_TG_ID=...  # необязательно, твой Telegram id
 go run ./cmd/bot
 ```
 

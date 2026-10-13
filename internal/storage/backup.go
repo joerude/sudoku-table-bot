@@ -2,7 +2,6 @@ package storage
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 )
@@ -15,6 +14,9 @@ func (s *Store) BackupTo(path string) error {
 	return err
 }
 
+// requiredTables are the tables a restored database must contain.
+var requiredTables = []string{"players", "games", "seasons", "game_results"}
+
 // ValidateDB checks that path is a SQLite database that looks like ours.
 func ValidateDB(path string) error {
 	db, err := sql.Open("sqlite", path)
@@ -22,14 +24,16 @@ func ValidateDB(path string) error {
 		return err
 	}
 	defer db.Close()
-	var n int
-	if err := db.QueryRow(
-		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='players'`).
-		Scan(&n); err != nil {
-		return err
-	}
-	if n == 0 {
-		return errors.New("not a sudoku database (no players table)")
+	for _, table := range requiredTables {
+		var n int
+		if err := db.QueryRow(
+			`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table).
+			Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("not a sudoku database (no %s table)", table)
+		}
 	}
 	return nil
 }
