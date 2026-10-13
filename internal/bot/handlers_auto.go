@@ -272,7 +272,7 @@ func (b *Bot) onClaimNick(c tele.Context) error {
 		return b.fail(c, "onClaimNick.player", err)
 	}
 	if player == nil {
-		return c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
+		return c.Respond(&tele.CallbackResponse{Text: guardJoinFirst})
 	}
 	claimed, err := b.st.ClaimNick(player.ID, nick)
 	if err != nil {

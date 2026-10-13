@@ -47,7 +47,7 @@ func (b *Bot) onJoinIn(c tele.Context) error {
 		return b.fail(c, "onJoinIn.player", err)
 	}
 	if player == nil {
-		return c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
+		return c.Respond(&tele.CallbackResponse{Text: guardJoinFirst})
 	}
 	nowIn, err := b.st.ToggleRsvp(gameID, player.ID)
 	if err != nil {

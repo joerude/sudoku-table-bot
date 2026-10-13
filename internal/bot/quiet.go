@@ -16,9 +16,3 @@ func withOptions(opts []interface{}, add ...interface{}) []interface{} {
 func (b *Bot) quiet(c tele.Context, what interface{}, opts ...interface{}) error {
 	return c.Send(what, withOptions(opts, tele.Silent)...)
 }
-
-// quietLink is quiet for text with a usdoku link: no notification and no link
-// preview card under the message.
-func (b *Bot) quietLink(c tele.Context, what interface{}, opts ...interface{}) error {
-	return c.Send(what, withOptions(opts, tele.Silent, tele.NoPreview)...)
-}
