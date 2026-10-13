@@ -101,6 +101,15 @@ func botCommands() []tele.Command {
 	}
 }
 
+// knownCommands lists every command routes() registers, for "did you mean"
+// hints on a mistyped command. TestKnownCommandsMatchRoutes keeps it in sync.
+var knownCommands = []string{
+	"start", "help", "join", "setnick", "players", "removeplayer", "export",
+	"play", "newgame", "code", "result", "duel", "invite", "learn",
+	"stats", "duels", "status", "season", "me", "rating", "history", "speed",
+	"weekly", "settings", "backup",
+}
+
 func (b *Bot) routes() {
 	b.tb.Handle("/start", b.onHelp)
 	b.tb.Handle("/help", b.onHelp)
