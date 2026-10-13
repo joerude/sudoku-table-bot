@@ -278,7 +278,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	chatID := c.Chat().ID
 	args := c.Args()
 	if len(args) == 0 {
-		return c.Send(b.settingsSummary(chatID, season))
+		return c.Send(b.settingsSummary(chatID, season, b.isAdmin(c)))
 	}
 	if !b.requireAdmin(c) {
 		return nil
@@ -351,7 +351,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 	}
 }
 
-func (b *Bot) settingsSummary(chatID int64, season *storage.Season) string {
+func (b *Bot) settingsSummary(chatID int64, season *storage.Season, admin bool) string {
 	daily := "выкл"
 	weekly := "вкл"
 	minPlayers := 2
@@ -373,7 +373,7 @@ func (b *Bot) settingsSummary(chatID int64, season *storage.Season) string {
 			"Мин. участников в игре: <b>%d</b>\n"+
 			"Ежедневное напоминание: <b>%s</b>\n"+
 			"Недельный дайджест: <b>%s</b>\n\n%s",
-		season.Target, formatTable(season.PointsTable), minPlayers, daily, weekly, settingsUsage)
+		season.Target, formatTable(season.PointsTable), minPlayers, daily, weekly, settingsFooter(admin))
 }
 
 // isAdmin reports whether the sender may perform privileged actions: in a group
