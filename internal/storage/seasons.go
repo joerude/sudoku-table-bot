@@ -3,9 +3,14 @@ package storage
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 )
+
+// ErrSeasonNotActive is returned by CloseSeason for a season that is not
+// active (already archived), so it was left untouched.
+var ErrSeasonNotActive = errors.New("season is not active")
 
 // Season is a points race that ends when someone reaches Target.
 type Season struct {
@@ -123,11 +128,20 @@ func (s *Store) CreateSeason(chatID int64, number, target int, table []int) (*Se
 
 // CloseSeason archives a season and records its winner, then opens the next one
 // inheriting the same target and points table. Returns the new season.
+// Only an active season can be closed: for an already archived one (a game of
+// it was edited later) it returns ErrSeasonNotActive and changes nothing, so
+// the archive keeps its winner and no extra season is opened.
 func (s *Store) CloseSeason(se *Season, winnerID int64) (*Season, error) {
-	if _, err := s.db.Exec(
+	res, err := s.db.Exec(
 		`UPDATE seasons SET status='archived', winner_id=?, ended_at=datetime('now')
-		 WHERE id=?`, winnerID, se.ID); err != nil {
+		 WHERE id=? AND status='active'`, winnerID, se.ID)
+	if err != nil {
 		return nil, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, err
+	} else if n == 0 {
+		return nil, ErrSeasonNotActive
 	}
 	pts, _ := json.Marshal(se.PointsTable)
 	if _, err := s.db.Exec(
