@@ -773,6 +773,11 @@ func (b *Bot) ratingFooter(game *storage.Game) string {
 func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 	noNick := b.backfillUsdokuTimes(game) // manual records: pull solve times from usdoku
 	result, seasonEnd, err := b.scoreAndCheck(game)
+	if errors.Is(err, storage.ErrGameNotPending) {
+		// Closed meanwhile by another tap or by auto-record: that path already
+		// posted the result, so stay quiet here.
+		return c.Respond(&tele.CallbackResponse{Text: "Уже записано"})
+	}
 	if err != nil {
 		return b.fail(c, "finalize", err)
 	}

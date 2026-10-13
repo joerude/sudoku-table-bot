@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -197,6 +198,10 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		}
 	}
 	result, seasonEnd, err := b.scoreAndCheck(game)
+	if errors.Is(err, storage.ErrGameNotPending) {
+		log.Printf("🤖 game %d already closed, skipping auto-post", game.ID)
+		return
+	}
 	if err != nil {
 		log.Printf("autoRecord.score: %v", err)
 		_, _ = b.tb.Send(to, "⚠️ Не удалось авто-записать результат. Запишите вручную:",
