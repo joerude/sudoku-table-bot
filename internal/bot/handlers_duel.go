@@ -2,6 +2,7 @@ package bot
 
 import (
 	"log"
+	"strconv"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -43,7 +44,7 @@ func (b *Bot) onDuel(c tele.Context) error {
 	if len(others) == 0 {
 		return b.ephemeral(c, "Нет соперников. Пусть кто-то ещё сделает /join.")
 	}
-	return c.Send("⚔️ Кого вызываешь на дуэль?", duelPickKeyboard(difficulty, others))
+	return c.Send("⚔️ Кого вызываешь на дуэль?", duelPickKeyboard(difficulty, others, me.ID))
 }
 
 // opponents lists the chat's active players except the caller.
@@ -64,13 +65,16 @@ func (b *Bot) opponents(chatID, callerID int64) ([]storage.Player, error) {
 // onDuelPick issues the challenge: creates the room, tags the target, posts
 // Accept/Decline. Only the target may answer.
 func (b *Bot) onDuelPick(c tele.Context) error {
-	difficulty, targetID := parseDuelPick(c.Data())
+	difficulty, targetID, ownerTg := parseDuelPick(c.Data())
 	if difficulty == "" || targetID == 0 {
 		return c.Respond(&tele.CallbackResponse{Text: "Не понял выбор"})
 	}
 	me := realSender(c)
 	if me == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Не вижу кто ты"})
+	}
+	if ownerTg != 0 && me.ID != ownerTg {
+		return c.Respond(&tele.CallbackResponse{Text: "Это не твой выбор"})
 	}
 	caller, err := b.st.PlayerByTg(c.Chat().ID, me.ID)
 	if err != nil {
@@ -168,7 +172,13 @@ func (b *Bot) onAccept(c tele.Context) error {
 }
 
 // onDuelCancel dismisses the opponent picker (no game was created yet).
+// Only whoever opened the picker may dismiss it.
 func (b *Bot) onDuelCancel(c tele.Context) error {
+	if owner, _ := strconv.ParseInt(c.Data(), 10, 64); owner != 0 {
+		if me := realSender(c); me == nil || me.ID != owner {
+			return c.Respond(&tele.CallbackResponse{Text: "Это не твой выбор"})
+		}
+	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
 	return c.Edit("✖️ Вызов отменён.")
 }

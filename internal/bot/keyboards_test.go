@@ -3,7 +3,20 @@ package bot
 import (
 	"reflect"
 	"testing"
+
+	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
+
+func TestDuelPickKeyboardCarriesOwner(t *testing.T) {
+	kb := duelPickKeyboard("hard", []storage.Player{{ID: 4, Name: "Petya"}}, 777)
+	if got := kb.InlineKeyboard[0][0].Data; got != "hard:4:777" {
+		t.Errorf("pick payload = %q, want %q", got, "hard:4:777")
+	}
+	last := kb.InlineKeyboard[len(kb.InlineKeyboard)-1][0]
+	if last.Data != "777" {
+		t.Errorf("cancel payload = %q, want %q", last.Data, "777")
+	}
+}
 
 func TestPendingConflictKeyboardPayload(t *testing.T) {
 	kb := pendingConflictKeyboard(5, "duel:medium")
