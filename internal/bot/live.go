@@ -48,7 +48,7 @@ var livePosts = map[int64]*livePost{} // gameID -> anchor (cache over the DB)
 // registerLive remembers which message to live-edit for a game. Kept for flows
 // that edit a pressed button's message into the card (the duel accept post);
 // the anchor is mirrored into the DB on first use.
-func registerLive(gameID int64, msg tele.Editable, base string, _ *tele.ReplyMarkup) {
+func registerLive(gameID int64, msg tele.Editable, base string) {
 	if m, ok := msg.(*tele.Message); msg == nil || (ok && m == nil) {
 		return
 	}
@@ -322,4 +322,28 @@ func isWatching(gameID int64) bool {
 	watchMu.Lock()
 	defer watchMu.Unlock()
 	return watching[gameID] > 0
+}
+
+// busyRooms remembers, per watched duel, whether somebody besides the challenger
+// sits in its usdoku room. The expiry ticker reads it instead of polling usdoku.
+var (
+	busyMu    sync.Mutex
+	busyRooms = map[int64]bool{}
+)
+
+func setRoomBusy(gameID int64, busy bool) {
+	busyMu.Lock()
+	defer busyMu.Unlock()
+	if busy {
+		busyRooms[gameID] = true
+	} else {
+		delete(busyRooms, gameID)
+	}
+}
+
+// roomBusy reports whether the last poll saw a non-challenger in the game's room.
+func roomBusy(gameID int64) bool {
+	busyMu.Lock()
+	defer busyMu.Unlock()
+	return busyRooms[gameID]
 }

@@ -81,6 +81,10 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE games ADD COLUMN post_msg_id INTEGER`,
 		`ALTER TABLE games ADD COLUMN post_text TEXT`,
 		`ALTER TABLE games ADD COLUMN post_kind TEXT`,
+		// A duel that was ever completed was answered: stamp it, so reopening it
+		// (edit) cannot make it look like an unanswered challenge to the expiry.
+		`UPDATE games SET accepted_at=COALESCE(accepted_at, completed_at, created_at)
+		 WHERE duel_target_id IS NOT NULL AND status='completed' AND accepted_at IS NULL`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;

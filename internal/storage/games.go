@@ -195,9 +195,12 @@ func (s *Store) ClearResults(gameID int64) error {
 }
 
 // FinalizeGame assigns points by rank from the table and marks the game
-// completed. The status flip comes first and is conditional on 'pending', so of
-// two concurrent finalizes (double tap, or manual vs auto-record) exactly one
-// wins; the other gets ErrGameNotPending and changes nothing.
+// completed. A duel closed this way counts as accepted (accepted_at is stamped
+// when missing), so reopening it never turns it back into an open challenge the
+// expiry ticker would burn. The status flip comes first and is conditional on
+// 'pending', so of two concurrent finalizes (double tap, or manual vs
+// auto-record) exactly one wins; the other gets ErrGameNotPending and changes
+// nothing.
 func (s *Store) FinalizeGame(gameID int64, table []int) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -206,7 +209,9 @@ func (s *Store) FinalizeGame(gameID int64, table []int) error {
 	defer tx.Rollback()
 
 	res, err := tx.Exec(
-		`UPDATE games SET status='completed', completed_at=datetime('now')
+		`UPDATE games SET status='completed', completed_at=datetime('now'),
+		        accepted_at=CASE WHEN duel_target_id IS NOT NULL
+		                         THEN COALESCE(accepted_at, datetime('now')) ELSE accepted_at END
 		 WHERE id=? AND status='pending' AND deleted=0`, gameID)
 	if err != nil {
 		return err

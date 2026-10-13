@@ -643,22 +643,24 @@ func TestExpireStaleDuels(t *testing.T) {
 	}
 
 	fresh := openChallenge(t, st, chat, se.ID, b.ID)
-	if got, err := st.ExpireStaleDuels(20); err != nil || len(got) != 0 {
+	if got, err := st.ExpireStaleDuels(20, nil); err != nil || len(got) != 0 {
 		t.Fatalf("fresh challenge must stay: got %v err=%v", got, err)
 	}
 	st.RevokeDuel(fresh)
 
 	stale := openChallenge(t, st, chat, se.ID, b.ID)
+	st.SetPostMsg(stale, 77)
 	age(stale, 25)
-	got, err := st.ExpireStaleDuels(20)
+	got, err := st.ExpireStaleDuels(20, nil)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("want 1 expired, got %v err=%v", got, err)
 	}
 	if got[0].GameID != stale || got[0].ChatID != chat || got[0].TargetID != b.ID ||
-		!got[0].CreatedBy.Valid || got[0].CreatedBy.Int64 != 201 {
+		!got[0].CreatedBy.Valid || got[0].CreatedBy.Int64 != 201 ||
+		!got[0].PostMsgID.Valid || got[0].PostMsgID.Int64 != 77 {
 		t.Errorf("expired row = %+v", got[0])
 	}
-	if again, _ := st.ExpireStaleDuels(20); len(again) != 0 {
+	if again, _ := st.ExpireStaleDuels(20, nil); len(again) != 0 {
 		t.Errorf("already closed must not be reported again, got %v", again)
 	}
 	if p, _ := st.ActivePendingGame(chat); p != nil {
@@ -668,7 +670,7 @@ func TestExpireStaleDuels(t *testing.T) {
 	accepted := openChallenge(t, st, chat, se.ID, b.ID)
 	st.AcceptDuel(accepted)
 	age(accepted, 60)
-	if got, _ := st.ExpireStaleDuels(20); len(got) != 0 {
+	if got, _ := st.ExpireStaleDuels(20, nil); len(got) != 0 {
 		t.Errorf("accepted duel must not expire, got %v", got)
 	}
 }
@@ -749,5 +751,95 @@ func TestDuelSpeedAndSpeedFor(t *testing.T) {
 	}
 	if spC.Games != 0 {
 		t.Errorf("DuelSpeedFor(Carol): want games0, got %+v", spC)
+	}
+}
+
+// ageGame backdates a game's creation by mins minutes.
+func ageGame(t *testing.T, st *Store, gid int64, mins int) {
+	t.Helper()
+	if _, err := st.db.Exec(`UPDATE games SET created_at=datetime('now', ?) WHERE id=?`,
+		"-"+strconv.Itoa(mins)+" minutes", gid); err != nil {
+		t.Fatalf("age: %v", err)
+	}
+}
+
+// TestReopenedDuelDoesNotExpire: finishing a duel answers it, so «Исправить»
+// (ReopenGame: pending again, no results, old created_at) must not turn it into
+// an open challenge the expiry ticker burns.
+func TestReopenedDuelDoesNotExpire(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6006)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 201, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
+
+	gid := openChallenge(t, st, chat, se.ID, b.ID) // never pressed «Принять»
+	st.AddPick(gid, a.ID)
+	st.AddPick(gid, b.ID)
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatalf("FinalizeGame: %v", err)
+	}
+	if err := st.ReopenGame(gid); err != nil {
+		t.Fatalf("ReopenGame: %v", err)
+	}
+	ageGame(t, st, gid, 90)
+	if got, err := st.ExpireStaleDuels(20, nil); err != nil || len(got) != 0 {
+		t.Fatalf("reopened duel must not expire: got %v err=%v", got, err)
+	}
+	if p, _ := st.ActivePendingGame(chat); p == nil || p.ID != gid {
+		t.Errorf("reopened duel must stay pending, got %+v", p)
+	}
+}
+
+// TestMigrateStampsCompletedDuels: a completed duel from before the stamp existed
+// gets accepted_at on the next open, so a later reopen is safe too.
+func TestMigrateStampsCompletedDuels(t *testing.T) {
+	path := t.TempDir() + "/old.db"
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const chat = int64(-6007)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 201, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
+	gid := makeDuelGame(t, st, chat, se.ID, 201, a.ID, b.ID, b.ID)
+	if _, err := st.db.Exec(`UPDATE games SET accepted_at=NULL WHERE id=?`, gid); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var accepted sql.NullString
+	if err := st.db.QueryRow(`SELECT accepted_at FROM games WHERE id=?`, gid).Scan(&accepted); err != nil {
+		t.Fatal(err)
+	}
+	if !accepted.Valid {
+		t.Error("completed duel must get accepted_at on migrate")
+	}
+}
+
+// TestExpireStaleDuelsKeep: a candidate the caller vouches for is left alone.
+func TestExpireStaleDuelsKeep(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-6008)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	st.RegisterPlayer(chat, 201, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 202, "Bob")
+	gid := openChallenge(t, st, chat, se.ID, b.ID)
+	ageGame(t, st, gid, 60)
+	got, err := st.ExpireStaleDuels(20, func(d ExpiredDuel) bool { return d.GameID == gid })
+	if err != nil || len(got) != 0 {
+		t.Fatalf("kept duel must not expire: got %v err=%v", got, err)
+	}
+	if got, _ := st.ExpireStaleDuels(20, nil); len(got) != 1 {
+		t.Errorf("without keep it expires, got %v", got)
 	}
 }

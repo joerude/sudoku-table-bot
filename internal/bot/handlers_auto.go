@@ -45,6 +45,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	defer dropLive(gameID)
 	markWatching(gameID)
 	defer unmarkWatching(gameID)
+	defer setRoomBusy(gameID, false)
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
 	for {
@@ -63,10 +64,12 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		cancel()
 		if err != nil {
 			log.Printf("watchGame.info %s: %v", code, err)
-		} else if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
-			b.autoRecord(g, info)
-			return
 		} else {
+			b.duelRoomSeen(g, info)
+			if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
+				b.autoRecord(g, info)
+				return
+			}
 			b.liveUpdate(gameID, info) // dedupes: edits only when the card text changes
 			if len(info.Players) > 0 && !info.Finished() {
 				interval = watchHotInterval
