@@ -76,3 +76,31 @@ func TestDuelKeyboardHasRevoke(t *testing.T) {
 		t.Errorf("revoke button = %+v", rev)
 	}
 }
+
+func TestRematchPayloadRoundTrip(t *testing.T) {
+	btn := rematchButton("hard", 3, 8)
+	if btn.Unique != cbRematch || btn.Data != "hard:3:8" {
+		t.Fatalf("rematch button = %+v", btn)
+	}
+	diff, a, b := parseRematch(btn.Data)
+	if diff != "hard" || a != 3 || b != 8 {
+		t.Errorf("parseRematch = (%s, %d, %d)", diff, a, b)
+	}
+	for _, bad := range []string{"", "hard", "hard:3", "weird:3:8", "hard:0:8", "hard:x:8", "hard:3:8:1"} {
+		if d, _, _ := parseRematch(bad); d != "" {
+			t.Errorf("parseRematch(%q) must be rejected, got difficulty %q", bad, d)
+		}
+	}
+}
+
+func TestDuelResultKeyboardAddsRematch(t *testing.T) {
+	rows := []storage.ResultRow{{PlayerID: 3}, {PlayerID: 8}}
+	kb := duelResultKeyboard(5, "medium", rows)
+	last := kb.InlineKeyboard[len(kb.InlineKeyboard)-1]
+	if len(kb.InlineKeyboard) != 2 || last[0].Unique != cbRematch {
+		t.Errorf("want result row + rematch row, got %+v", kb.InlineKeyboard)
+	}
+	if kb := duelResultKeyboard(5, "medium", rows[:1]); len(kb.InlineKeyboard) != 1 {
+		t.Errorf("one participant: no rematch, got %+v", kb.InlineKeyboard)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -35,6 +36,7 @@ const (
 	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>" — dismiss the opponent picker
 	cbAccept     = "accept"     // payload: "<gameID>"
 	cbDecline    = "decline"    // payload: "<gameID>"
+	cbRematch    = "rematch"    // payload: "<difficulty>:<playerAID>:<playerBID>" — rematch from a duel result
 	cbRevoke     = "revoke"     // payload: "<gameID>" — challenger withdraws an unanswered challenge
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
@@ -197,6 +199,38 @@ func duelKeyboard(gameID int64) *tele.ReplyMarkup {
 		),
 		m.Row(m.Data("🗑 Отозвать", cbRevoke, gid(gameID))),
 	)
+	return m
+}
+
+// rematchButton is the «Реванш» button for a finished duel between players a and
+// b (internal player ids). Either duelist may press it; the other becomes the target.
+func rematchButton(difficulty string, aID, bID int64) tele.Btn {
+	m := &tele.ReplyMarkup{}
+	return m.Data("🔁 Реванш", cbRematch, fmt.Sprintf("%s:%d:%d", difficulty, aID, bID))
+}
+
+// parseRematch splits a cbRematch payload "<difficulty>:<playerAID>:<playerBID>".
+func parseRematch(s string) (difficulty string, aID, bID int64) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 3 || !validDifficulty[parts[0]] {
+		return "", 0, 0
+	}
+	aID, _ = strconv.ParseInt(parts[1], 10, 64)
+	bID, _ = strconv.ParseInt(parts[2], 10, 64)
+	if aID == 0 || bID == 0 {
+		return "", 0, 0
+	}
+	return parts[0], aID, bID
+}
+
+// duelResultKeyboard is resultKeyboard plus a rematch row when both duelists
+// are known. Use it in place of resultKeyboard on a duel's result post.
+func duelResultKeyboard(gameID int64, difficulty string, rows []storage.ResultRow) *tele.ReplyMarkup {
+	m := resultKeyboard(gameID)
+	if len(rows) >= 2 && validDifficulty[difficulty] {
+		m.InlineKeyboard = append(m.InlineKeyboard,
+			[]tele.InlineButton{*rematchButton(difficulty, rows[0].PlayerID, rows[1].PlayerID).Inline()})
+	}
 	return m
 }
 
