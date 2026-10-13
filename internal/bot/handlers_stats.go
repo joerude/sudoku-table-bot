@@ -404,7 +404,7 @@ func (b *Bot) isGroupAdmin(c tele.Context) bool {
 }
 
 // statsView builds the dashboard text + tab keyboard for one tab. The "me" tab
-// is rendered for whoever triggered the update (c.Sender()).
+// is rendered for whoever triggered the update (realSender).
 func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, error) {
 	season, err := b.ensure(c)
 	if err != nil {

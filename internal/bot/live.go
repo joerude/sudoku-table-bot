@@ -223,6 +223,32 @@ func (b *Bot) suspendLive(c tele.Context, gameID int64) {
 	lp.mu.Unlock()
 }
 
+// resumeLive brings the card back after the manual picker was cancelled in its
+// message: the base text is restored from the DB (suspendLive only cleared the
+// in-memory copy) and the card is redrawn with its live section and buttons.
+// False when the pressed message is not the card or the card has no stored base
+// (retired, or a challenge not yet accepted), so the caller shows its own text.
+func (b *Bot) resumeLive(c tele.Context, gameID int64) bool {
+	lp := b.anchor(gameID)
+	if lp == nil || c.Message() == nil || int64(c.Message().ID) != lp.msgID {
+		return false
+	}
+	game, err := b.st.GameByID(gameID)
+	if err != nil || game == nil || game.Status != "pending" || game.Deleted || game.PostText.String == "" {
+		return false
+	}
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	lp.base = game.PostText.String
+	lp.lastSent = "" // the picker replaced the message: force the redraw
+	b.renderCard(gameID, lp)
+	if lp.lastSent == "" { // the edit failed
+		lp.base = ""
+		return false
+	}
+	return true
+}
+
 // retireCardText clears the stored base text so a restart does not bring the
 // live edits back for a card that has been turned into a note or closed.
 func (b *Bot) retireCardText(gameID int64) {

@@ -294,10 +294,17 @@ func (s *Store) SoftDeleteGame(gameID int64) error {
 	return err
 }
 
-// RestoreGame un-deletes a previously soft-deleted game.
-func (s *Store) RestoreGame(gameID int64) error {
-	_, err := s.db.Exec(`UPDATE games SET deleted=0 WHERE id=?`, gameID)
-	return err
+// RestoreGame un-deletes a previously soft-deleted game. A pending game is not
+// brought back while the chat has another live pending game (the league holds
+// one at a time): restored=false then, and nothing changes. Checked in the same
+// statement, so two restores cannot both win.
+func (s *Store) RestoreGame(gameID int64) (restored bool, err error) {
+	return s.execOne(
+		`UPDATE games SET deleted=0
+		 WHERE id=? AND (status<>'pending' OR NOT EXISTS (
+		     SELECT 1 FROM games o
+		     WHERE o.chat_id=games.chat_id AND o.status='pending' AND o.deleted=0 AND o.id<>games.id))`,
+		gameID)
 }
 
 // ResultRow is one finisher of a game, joined with the player name.
