@@ -832,15 +832,20 @@ func namesMissingNick(players []storage.Player) []string {
 	return out
 }
 
-// parseDuelPick splits a cbDuelPick payload "<difficulty>:<targetPlayerID>".
-func parseDuelPick(s string) (difficulty string, targetID int64) {
-	i := strings.IndexByte(s, ':')
-	if i < 0 {
-		return "", 0
+// parseDuelPick splits a cbDuelPick payload
+// "<difficulty>:<targetPlayerID>:<ownerTgID>". ownerTgID is the Telegram id of
+// whoever opened the picker; 0 for pickers posted before the owner was encoded.
+func parseDuelPick(s string) (difficulty string, targetID, ownerTg int64) {
+	parts := strings.Split(s, ":")
+	if len(parts) < 2 {
+		return "", 0, 0
 	}
-	difficulty = s[:i]
-	targetID, _ = strconv.ParseInt(s[i+1:], 10, 64)
-	return difficulty, targetID
+	difficulty = parts[0]
+	targetID, _ = strconv.ParseInt(parts[1], 10, 64)
+	if len(parts) >= 3 {
+		ownerTg, _ = strconv.ParseInt(parts[2], 10, 64)
+	}
+	return difficulty, targetID, ownerTg
 }
 
 // duelChallengeText is the posted challenge. code may be empty (manual fallback).

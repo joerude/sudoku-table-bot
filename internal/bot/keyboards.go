@@ -31,8 +31,8 @@ const (
 	cbQStatus = "qstatus"
 	cbQMe     = "qme"
 
-	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>"
-	cbDuelCancel = "duelcancel" // no payload — dismiss the opponent picker
+	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>:<ownerTgID>"
+	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>" — dismiss the opponent picker
 	cbAccept     = "accept"     // payload: "<gameID>"
 	cbDecline    = "decline"    // payload: "<gameID>"
 
@@ -164,11 +164,13 @@ func recordAndClaimKeyboard(gameID int64, unknown []string) *tele.ReplyMarkup {
 }
 
 // duelPickKeyboard lists candidate opponents; tapping one issues the challenge.
-func duelPickKeyboard(difficulty string, players []storage.Player) *tele.ReplyMarkup {
+// ownerTg (the opener's Telegram id) rides in every payload so only the opener
+// can use or dismiss the picker.
+func duelPickKeyboard(difficulty string, players []storage.Player, ownerTg int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	var btns []tele.Btn
 	for _, p := range players {
-		btns = append(btns, m.Data(p.Name, cbDuelPick, fmt.Sprintf("%s:%d", difficulty, p.ID)))
+		btns = append(btns, m.Data(p.Name, cbDuelPick, fmt.Sprintf("%s:%d:%d", difficulty, p.ID, ownerTg)))
 	}
 	var rows []tele.Row
 	for i := 0; i < len(btns); i += 2 {
@@ -178,7 +180,7 @@ func duelPickKeyboard(difficulty string, players []storage.Player) *tele.ReplyMa
 		}
 		rows = append(rows, m.Row(btns[i:end]...))
 	}
-	rows = append(rows, m.Row(m.Data("✖️ Отмена", cbDuelCancel)))
+	rows = append(rows, m.Row(m.Data("✖️ Отмена", cbDuelCancel, strconv.FormatInt(ownerTg, 10))))
 	m.Inline(rows...)
 	return m
 }

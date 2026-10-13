@@ -356,13 +356,17 @@ func TestMentionPlainFallback(t *testing.T) {
 }
 
 func TestParseDuelPick(t *testing.T) {
-	diff, id := parseDuelPick("medium:42")
-	if diff != "medium" || id != 42 {
-		t.Errorf("parseDuelPick valid: want (medium, 42), got (%s, %d)", diff, id)
+	diff, id, owner := parseDuelPick("medium:42:777")
+	if diff != "medium" || id != 42 || owner != 777 {
+		t.Errorf("parseDuelPick valid: want (medium, 42, 777), got (%s, %d, %d)", diff, id, owner)
 	}
-	diff, id = parseDuelPick("bad")
-	if diff != "" || id != 0 {
-		t.Errorf("parseDuelPick invalid: want (\"\", 0), got (%s, %d)", diff, id)
+	diff, id, owner = parseDuelPick("medium:42")
+	if diff != "medium" || id != 42 || owner != 0 {
+		t.Errorf("parseDuelPick legacy: want (medium, 42, 0), got (%s, %d, %d)", diff, id, owner)
+	}
+	diff, id, owner = parseDuelPick("bad")
+	if diff != "" || id != 0 || owner != 0 {
+		t.Errorf("parseDuelPick invalid: want (\"\", 0, 0), got (%s, %d, %d)", diff, id, owner)
 	}
 }
 

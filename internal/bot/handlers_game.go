@@ -491,7 +491,7 @@ func (b *Bot) resumeAfterDelete(c tele.Context, origin string) error {
 		}
 		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
 		return c.Edit(deletedNote+"\n\n⚔️ Кого вызываешь на дуэль?",
-			duelPickKeyboard(difficulty, others))
+			duelPickKeyboard(difficulty, others, me.ID))
 	case "game":
 		difficulty, mode := originArgs(parts)
 		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
