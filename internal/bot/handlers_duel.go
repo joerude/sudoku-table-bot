@@ -129,17 +129,50 @@ func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficul
 	}
 	nickWarn := !caller.UsdokuNick.Valid || caller.UsdokuNick.String == "" ||
 		!target.UsdokuNick.Valid || target.UsdokuNick.String == ""
-	eloC, eloT, gainC, gainT, serr := b.duelStakes(c.Chat().ID, caller.ID, target.ID)
+	ratC, ratT, gainC, gainT, serr := b.duelStakes(c.Chat().ID, caller.ID, target.ID)
 	if serr != nil {
 		log.Printf("issueDuel.stakes: %v", serr)
-		eloC = 0 // hide the stakes block, the challenge still posts
+		ratC = 0 // hide the stakes block, the challenge still posts
 	}
 	_ = c.Respond()
 	if err := c.Send(duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
-		eloC, eloT, gainC, gainT), duelKeyboard(room.gameID)); err != nil {
+		ratC, ratT, gainC, gainT), duelKeyboard(room.gameID)); err != nil {
 		return false, b.fail(c, "issueDuel.send", err)
 	}
 	return true, nil
+}
+
+// onRematch challenges the other duelist again, straight from a duel result
+// post. Payload: "<difficulty>:<playerAID>:<playerBID>"; only those two may press.
+func (b *Bot) onRematch(c tele.Context) error {
+	difficulty, aID, bID := parseRematch(c.Data())
+	if difficulty == "" {
+		return c.Respond(&tele.CallbackResponse{Text: "Не понял выбор"})
+	}
+	me := realSender(c)
+	if me == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Не вижу кто ты"})
+	}
+	caller, err := b.st.PlayerByTg(c.Chat().ID, me.ID)
+	if err != nil {
+		return b.fail(c, "onRematch.caller", err)
+	}
+	if caller == nil || (caller.ID != aID && caller.ID != bID) {
+		return c.Respond(&tele.CallbackResponse{Text: "Реванш просят только участники дуэли"})
+	}
+	otherID := aID
+	if caller.ID == aID {
+		otherID = bID
+	}
+	target, err := b.st.PlayerByID(otherID)
+	if err != nil {
+		return b.fail(c, "onRematch.target", err)
+	}
+	if target == nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
+	}
+	_, err = b.issueDuel(c, caller, target, difficulty)
+	return err
 }
 
 // duelTargetGuard returns the duel's target player and whether the presser IS
