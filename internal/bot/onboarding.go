@@ -57,3 +57,14 @@ func startText(players int) string {
 	}
 	return repeatStartText
 }
+
+const settingsReadOnlyNote = "Менять может админ группы."
+
+// settingsFooter ends the /settings view: the command list for admins, a plain
+// note for everyone else (who cannot use those commands anyway).
+func settingsFooter(admin bool) string {
+	if admin {
+		return settingsUsage
+	}
+	return settingsReadOnlyNote
+}

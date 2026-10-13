@@ -83,6 +83,19 @@ func TestStartText(t *testing.T) {
 	}
 }
 
+func TestSettingsFooter(t *testing.T) {
+	if got := settingsFooter(true); got != settingsUsage {
+		t.Errorf("admin must see the command list")
+	}
+	got := settingsFooter(false)
+	if strings.Contains(got, "/settings") {
+		t.Errorf("non-admin must not see usage, got %q", got)
+	}
+	if !strings.Contains(got, "админ") {
+		t.Errorf("non-admin footer must say who can change settings: %q", got)
+	}
+}
+
 func TestNickTakenText(t *testing.T) {
 	got := nickTakenText("Ace", "A<b>")
 	if !strings.Contains(got, "Ace") || !strings.Contains(got, "уже у") {
