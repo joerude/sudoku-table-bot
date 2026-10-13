@@ -7,6 +7,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
+	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
 // onDuel asks who to challenge: buttons of every active player except the caller.
@@ -104,23 +105,20 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 	if target == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
 	}
-	posted, err := b.issueDuel(c, caller, target, difficulty)
-	if err != nil || !posted {
-		return err
-	}
-	// The picker only confirms; the challenge itself went out as a NEW message
-	// (an edit would not notify the target).
-	if err := c.Edit(duelSentText); err != nil {
-		log.Printf("onDuelPick.edit: %v", err)
-	}
-	return nil
+	// The picker is the «Создаю комнату…» notice and ends as a confirmation; the
+	// challenge itself goes out as a NEW message (an edit would not notify the target).
+	_, err = b.issueDuel(c, caller, target, difficulty, placeAuto)
+	return err
 }
 
 // issueDuel creates the room, tags the target and posts the challenge as a new
-// message pinging the target. posted=false with a nil error means a guard
+// message pinging the target; that message becomes the game's card. The notice
+// shown while the room is made (the pressed message for placeAuto, a fresh one
+// for placeNew) ends as «Вызов отправлен». A button whose message must survive
+// (a result post) passes placeNew. posted=false with a nil error means a guard
 // already replied (e.g. a game is pending).
-func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficulty string) (posted bool, err error) {
-	room, err := b.createGameRoom(c, difficulty, "hardcore", "duel:"+difficulty)
+func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficulty string, place placement) (posted bool, err error) {
+	room, err := b.createGameRoomAt(c, difficulty, "hardcore", "duel:"+difficulty, place)
 	if err != nil {
 		return false, b.fail(c, "issueDuel.room", err)
 	}
@@ -139,9 +137,21 @@ func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficul
 		ratC = 0 // hide the stakes block, the challenge still posts
 	}
 	_ = c.Respond()
-	if err := c.Send(duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
-		ratC, ratT, gainC, gainT), duelKeyboard(room.gameID)); err != nil {
+	chatID := c.Chat().ID
+	sent, err := b.tb.Send(c.Chat(), duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
+		ratC, ratT, gainC, gainT), duelKeyboard(room.gameID))
+	if err != nil {
 		return false, b.fail(c, "issueDuel.send", err)
+	}
+	// The challenge post is the game's card. Its base text stays empty: live
+	// edits must not touch the buttons before the target answers (accept turns
+	// it into the live card). saveCard also replaces an anchor the watcher may
+	// have cached while the notice was still the card.
+	b.saveCard(room.gameID, chatID, int64(sent.ID), "", "")
+	if room.msg != nil {
+		if err := b.editPost(chatID, int64(room.msg.ID), duelSentText, nil); err != nil {
+			log.Printf("issueDuel.sent: %v", err)
+		}
 	}
 	return true, nil
 }
@@ -175,7 +185,8 @@ func (b *Bot) onRematch(c tele.Context) error {
 	if target == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
 	}
-	_, err = b.issueDuel(c, caller, target, difficulty)
+	// The result post stays as it is: the rematch notice and challenge are new messages.
+	_, err = b.issueDuel(c, caller, target, difficulty, placeNew)
 	return err
 }
 
@@ -233,7 +244,7 @@ func (b *Bot) onAccept(c tele.Context) error {
 	kb := recordKeyboard(gameID)
 	err = c.Edit(text, kb)
 	if err == nil && game.UsdokuCode.String != "" {
-		registerLive(gameID, c.Message(), text, kb)
+		registerLive(gameID, c.Message(), text)
 	}
 	b.replyToChallenger(c, game, duelAcceptReplyText)
 	return err
@@ -268,9 +279,15 @@ func (b *Bot) onRevoke(c tele.Context) error {
 }
 
 // expireStaleDuels burns challenges nobody answered within duelChallengeTTLMinutes,
-// freeing the league's single pending slot. Called from the reminder ticker.
+// freeing the league's single pending slot. Called from the reminder ticker. A
+// challenge whose room is being watched and already has somebody besides the
+// challenger in it is alive (the target may simply have joined by the link), so
+// it stays. The challenge post itself turns into the note and loses its buttons;
+// a separate message goes out only when that edit fails.
 func (b *Bot) expireStaleDuels() {
-	expired, err := b.st.ExpireStaleDuels(duelChallengeTTLMinutes)
+	expired, err := b.st.ExpireStaleDuels(duelChallengeTTLMinutes, func(d storage.ExpiredDuel) bool {
+		return isWatching(d.GameID) && roomBusy(d.GameID)
+	})
 	if err != nil {
 		log.Printf("expireStaleDuels: %v", err)
 	}
@@ -284,8 +301,19 @@ func (b *Bot) expireStaleDuels() {
 		if p, perr := b.st.PlayerByID(d.TargetID); perr == nil && p != nil {
 			target = p.Name
 		}
-		if _, serr := b.tb.Send(tele.ChatID(d.ChatID), duelExpiredText(challenger, target)); serr != nil {
-			log.Printf("expireStaleDuels send: %v", serr)
+		text := duelExpiredText(challenger, target)
+		edited := false
+		if d.PostMsgID.Valid {
+			if eerr := b.editPost(d.ChatID, d.PostMsgID.Int64, text, nil); eerr != nil {
+				log.Printf("expireStaleDuels edit: %v", eerr)
+			} else {
+				edited = true
+			}
+		}
+		if !edited {
+			if _, serr := b.tb.Send(tele.ChatID(d.ChatID), text); serr != nil {
+				log.Printf("expireStaleDuels send: %v", serr)
+			}
 		}
 		log.Printf("duel %d expired unanswered", d.GameID)
 	}
@@ -342,4 +370,62 @@ func (b *Bot) onDecline(c tele.Context) error {
 	err = c.Edit(duelDeclineText(*target))
 	b.replyToChallenger(c, game, duelDeclineReplyText)
 	return err
+}
+
+// duelRoomSeen reacts to who sits in a watched duel's usdoku room. The target
+// who joined by the link without pressing «Принять» has accepted in fact: the
+// challenge is accepted for them, so the expiry ticker cannot burn it mid-game.
+// It also records whether anybody besides the challenger is in the room, which
+// keeps expireStaleDuels away from a live game.
+func (b *Bot) duelRoomSeen(g *storage.Game, info *usdoku.GameInfo) {
+	targetID, isDuel, err := b.st.DuelTargetID(g.ID)
+	if err != nil || !isDuel {
+		return
+	}
+	var creatorID int64
+	if pair, perr := b.st.DuelPlayerIDs(g.ID); perr == nil && len(pair) == 2 {
+		creatorID = pair[0]
+	}
+	busy, targetIn := false, false
+	for _, p := range info.Players {
+		pl, _ := b.st.PlayerByNick(g.ChatID, p.Name)
+		switch {
+		case pl != nil && pl.ID == targetID:
+			targetIn, busy = true, true
+		case pl != nil && pl.ID == creatorID:
+			// the challenger alone does not make a duel
+		default:
+			busy = true
+		}
+	}
+	setRoomBusy(g.ID, busy)
+	if targetIn {
+		b.autoAcceptDuel(g.ID, targetID)
+	}
+}
+
+// autoAcceptDuel accepts the challenge on the target's behalf (atomic and
+// idempotent: only the first accept, from here or from the button, wins) and
+// turns the challenge post into the accepted card, without extra messages.
+func (b *Bot) autoAcceptDuel(gameID, targetID int64) {
+	won, err := b.st.AcceptDuel(gameID)
+	if err != nil {
+		log.Printf("autoAcceptDuel %d: %v", gameID, err)
+		return
+	}
+	if !won {
+		return
+	}
+	game, err := b.st.GameByID(gameID)
+	target, perr := b.st.PlayerByID(targetID)
+	if err != nil || perr != nil || game == nil || target == nil || !game.PostMsgID.Valid {
+		return
+	}
+	text := duelAcceptText(*target, game.UsdokuCode.String)
+	if err := b.editPost(game.ChatID, game.PostMsgID.Int64, text, recordKeyboard(gameID)); err != nil {
+		log.Printf("autoAcceptDuel.edit %d: %v", gameID, err)
+		return
+	}
+	b.saveCard(gameID, game.ChatID, game.PostMsgID.Int64, text, "")
+	log.Printf("duel %d accepted by joining the room", gameID)
 }

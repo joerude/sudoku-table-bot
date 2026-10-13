@@ -99,15 +99,21 @@ type ExpiredDuel struct {
 	ChatID    int64
 	CreatedBy sql.NullInt64 // challenger's tg id
 	TargetID  int64         // target player id
+	PostMsgID sql.NullInt64 // the challenge post, to edit it into the note
 }
 
 // ExpireStaleDuels soft-deletes open challenges older than the given minutes
 // and returns the ones this call closed. Each close is its own guarded UPDATE,
 // so a challenge answered a moment earlier is left alone and never reported.
-func (s *Store) ExpireStaleDuels(minutes int) ([]ExpiredDuel, error) {
+// keep (may be nil) spares a candidate the caller knows is alive, e.g. someone
+// already sits in its room. A game that ever had results or was completed is
+// never a candidate, whatever its stamps say.
+func (s *Store) ExpireStaleDuels(minutes int, keep func(ExpiredDuel) bool) ([]ExpiredDuel, error) {
 	rows, err := s.db.Query(`
-		SELECT id, chat_id, created_by, duel_target_id FROM games
+		SELECT id, chat_id, created_by, duel_target_id, post_msg_id FROM games
 		WHERE `+sqlOpenChallenge+` AND created_at <= datetime('now', ?)
+		  AND completed_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM game_results gr WHERE gr.game_id = games.id)
 		ORDER BY id`, "-"+strconv.Itoa(minutes)+" minutes")
 	if err != nil {
 		return nil, err
@@ -115,7 +121,7 @@ func (s *Store) ExpireStaleDuels(minutes int) ([]ExpiredDuel, error) {
 	var cands []ExpiredDuel
 	for rows.Next() {
 		var d ExpiredDuel
-		if err := rows.Scan(&d.GameID, &d.ChatID, &d.CreatedBy, &d.TargetID); err != nil {
+		if err := rows.Scan(&d.GameID, &d.ChatID, &d.CreatedBy, &d.TargetID, &d.PostMsgID); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -128,6 +134,9 @@ func (s *Store) ExpireStaleDuels(minutes int) ([]ExpiredDuel, error) {
 	rows.Close() // one connection: release it before the UPDATEs below
 	var out []ExpiredDuel
 	for _, d := range cands {
+		if keep != nil && keep(d) {
+			continue
+		}
 		ok, err := s.RevokeDuel(d.GameID)
 		if err != nil {
 			return out, err
