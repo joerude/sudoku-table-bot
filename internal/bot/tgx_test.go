@@ -75,6 +75,24 @@ func TestEditAndDeleteEphemeralParams(t *testing.T) {
 	}
 }
 
+// The Raw path must encode callback data the way telebot's router reads it,
+// without touching the caller's markup.
+func TestRawMarkupEncodesCallbackData(t *testing.T) {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(m.Data("a", "uniq", "7"), m.Data("b", "bare"), m.URL("c", "https://x")))
+	raw := rawMarkup(m)
+	row := raw.InlineKeyboard[0]
+	if row[0].Data != "\funiq|7" || row[1].Data != "\fbare" || row[2].Data != "" {
+		t.Errorf("encoded data = %q %q %q", row[0].Data, row[1].Data, row[2].Data)
+	}
+	if m.InlineKeyboard[0][0].Data != "7" {
+		t.Errorf("caller's markup changed: %q", m.InlineKeyboard[0][0].Data)
+	}
+	if got := mustJSON(t, sendEphemeralParams(1, 2, "", 0, "x", m)); !strings.Contains(got, `"callback_data":"\funiq|7"`) {
+		t.Errorf("params %s lack the encoded callback data", got)
+	}
+}
+
 // An ephemeral command arrives with message_id 0; the fork must keep its id.
 func TestMessageUnmarshalsEphemeralFields(t *testing.T) {
 	var m tele.Message

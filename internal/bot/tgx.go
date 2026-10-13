@@ -23,6 +23,28 @@ type ephemeralReply struct {
 // noPreview is LinkPreviewOptions with previews off: service text needs none.
 var noPreview = map[string]bool{"is_disabled": true}
 
+// rawMarkup is markup as telebot would send it: a button with a Unique gets the
+// callback_data "\f<unique>|<data>" that telebot's router expects. telebot does
+// this rewrite in place inside its own send path; tb.Raw skips it, so it is
+// done here on a copy, leaving markup intact for a fallback send.
+func rawMarkup(markup *tele.ReplyMarkup) *tele.ReplyMarkup {
+	out := *markup
+	out.InlineKeyboard = make([][]tele.InlineButton, len(markup.InlineKeyboard))
+	for i, row := range markup.InlineKeyboard {
+		out.InlineKeyboard[i] = make([]tele.InlineButton, len(row))
+		for j, btn := range row {
+			switch {
+			case btn.Unique != "" && btn.Data != "":
+				btn.Data = "\f" + btn.Unique + "|" + btn.Data
+			case btn.Unique != "":
+				btn.Data = "\f" + btn.Unique
+			}
+			out.InlineKeyboard[i][j] = btn
+		}
+	}
+	return &out
+}
+
 // sendEphemeralParams builds the sendMessage params for an ephemeral message to
 // receiverID. cbID (a callback just received) or replyEphemeralID (an incoming
 // ephemeral message) makes it an answer to that action; with neither, only a
@@ -39,7 +61,7 @@ func sendEphemeralParams(chatID, receiverID int64, cbID string, replyEphemeralID
 		p["reply_parameters"] = ephemeralReply{EphemeralMessageID: replyEphemeralID}
 	}
 	if markup != nil {
-		p["reply_markup"] = markup
+		p["reply_markup"] = rawMarkup(markup)
 	}
 	return p
 }
@@ -55,7 +77,7 @@ func editEphemeralTextParams(chatID, receiverID int64, ephemeralID int, text str
 		"link_preview_options": noPreview,
 	}
 	if markup != nil {
-		p["reply_markup"] = markup
+		p["reply_markup"] = rawMarkup(markup)
 	}
 	return p
 }
