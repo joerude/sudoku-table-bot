@@ -1049,8 +1049,12 @@ func digestText(se *storage.Season, top []storage.Standing, fastest *storage.Rec
 	}
 	fmt.Fprintf(&b, "\n🎮 Игр за неделю: <b>%d</b>", weekGames)
 	if fastest != nil {
-		fmt.Fprintf(&b, "\n⚡ Быстрейшее: <b>%s</b> · %s · %s",
-			fmtDuration(fastest.Secs), titleCase(fastest.Difficulty), esc(fastest.Name))
+		diff := ""
+		if fastest.Difficulty != "" {
+			diff = titleCase(fastest.Difficulty) + " · "
+		}
+		fmt.Fprintf(&b, "\n⚡ Быстрейшее: <b>%s</b> · %s%s",
+			fmtDuration(fastest.Secs), diff, esc(fastest.Name))
 	}
 	if streakName != "" && streakLen >= 2 {
 		fmt.Fprintf(&b, "\n🔥 Серия побед: <b>%s</b> ×%d", esc(streakName), streakLen)
