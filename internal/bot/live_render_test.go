@@ -123,3 +123,21 @@ func TestLiveKeyboardOffersRecordNowOnlyAfterAFinish(t *testing.T) {
 		t.Errorf("invite card keeps RSVP and gains record-now: %+v", inv.InlineKeyboard)
 	}
 }
+
+func TestNotCountedKeyboardOffersManualRecordAndCancel(t *testing.T) {
+	m := notCountedKeyboard(9)
+	if len(m.InlineKeyboard) != 1 || len(m.InlineKeyboard[0]) != 2 {
+		t.Fatalf("want one row with two buttons: %+v", m.InlineKeyboard)
+	}
+	rec, del := m.InlineKeyboard[0][0], m.InlineKeyboard[0][1]
+	if rec.Unique != cbRec || rec.Data != "9" || del.Unique != cbDel || del.Data != "9" {
+		t.Errorf("buttons must reuse the record and delete callbacks: %+v %+v", rec, del)
+	}
+}
+
+func TestNotCountedTextNamesTheMinimum(t *testing.T) {
+	got := notCountedText(3)
+	if !strings.Contains(got, "<b>3</b>") || !strings.Contains(got, "не засчитана") {
+		t.Errorf("got %q", got)
+	}
+}
