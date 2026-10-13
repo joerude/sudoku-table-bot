@@ -2,6 +2,7 @@ package bot
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -25,13 +26,32 @@ const openGameGraceMinutes = 180
 func (b *Bot) runReminders() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		b.remindStalePending()
-		b.remindDaily()
-		b.remindWeekly()
-		b.closeExpiredSeasons()
-		b.expireStaleDuels()
+	steps := []struct {
+		name string
+		run  func()
+	}{
+		{"remindStalePending", b.remindStalePending},
+		{"remindDaily", b.remindDaily},
+		{"remindWeekly", b.remindWeekly},
+		{"closeExpiredSeasons", b.closeExpiredSeasons},
+		{"expireStaleDuels", b.expireStaleDuels},
 	}
+	for range ticker.C {
+		for _, st := range steps {
+			runStep(st.name, st.run)
+		}
+	}
+}
+
+// runStep runs one ticker step and survives its panic: the panic is logged and
+// the next step (and the next tick) still run.
+func runStep(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("reminders %s panic: %v", name, r)
+		}
+	}()
+	fn()
 }
 
 // remindStalePending nudges about pending games with no result yet. A game with
@@ -89,7 +109,6 @@ func (b *Bot) dailyNudge(chatID int64, now time.Time, loc *time.Location) (strin
 	return dailyNudgeText, nil
 }
 
-
 // nudgeStale shows the «запишем?» prompt for one game: on its card when it has
 // one, else as a new message pinging the creator. False when nothing was shown.
 func (b *Bot) nudgeStale(sp storage.StalePending) bool {
@@ -142,6 +161,28 @@ func (b *Bot) remindDaily() {
 		}
 		b.postChat(ch.ChatID, text)
 	}
+}
+
+// normalizeHHMM parses a clock time such as "9:00" or "21:00" and returns it
+// zero-padded as HH:MM, the form the daily time is stored and compared in.
+func normalizeHHMM(s string) (string, bool) {
+	t, err := time.Parse("15:04", strings.TrimSpace(s))
+	if err != nil {
+		return "", false
+	}
+	return t.Format("15:04"), true
+}
+
+// dailyDue reports whether the chat-local clock (HH:MM) has reached the chat's
+// daily time. The stored value is normalised first, so a legacy "9:00" is read
+// as 09:00 and not compared as a string against "21:00". An unreadable stored
+// value falls back to the default evening time.
+func dailyDue(nowHHMM, dailyTime string) bool {
+	at, ok := normalizeHHMM(dailyTime)
+	if !ok {
+		at = "21:00"
+	}
+	return nowHHMM >= at
 }
 
 // buildWeeklyDigest assembles the trailing-7-day digest for a chat. hasGames is
