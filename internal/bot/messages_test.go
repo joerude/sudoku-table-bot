@@ -215,8 +215,8 @@ func TestDuelsTextNewBlocks(t *testing.T) {
 	}
 }
 
-// TestDuelsTextChallenges: the «Вызовы» block shows issued/received, declines
-// only when non-zero, and the 🙈 marker on the top decliner (≥2, unique max).
+// TestDuelsTextChallenges: the «Вызовы» block shows issued/received and the
+// decline count only when non-zero, with no badge on the top decliner.
 func TestDuelsTextChallenges(t *testing.T) {
 	rows := []storage.DuelStanding{{PlayerID: 1, Name: "Vasya", Wins: 1, Losses: 0}}
 	ch := []storage.ChallengeStat{
@@ -225,7 +225,7 @@ func TestDuelsTextChallenges(t *testing.T) {
 	}
 	out := duelsText(rows, nil, nil, nil, nil, ch, "Asia/Bishkek")
 	for _, want := range []string{"Вызовы", "бросил <b>7</b>", "получил <b>3</b>",
-		"отказов <b>4</b>", "🙈"} {
+		"отказов <b>4</b>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText challenges: want %q in output\ngot: %s", want, out)
 		}
@@ -236,17 +236,11 @@ func TestDuelsTextChallenges(t *testing.T) {
 			vasyaLine = line
 		}
 	}
-	if strings.Contains(vasyaLine, "отказов") || strings.Contains(vasyaLine, "🙈") {
-		t.Errorf("Vasya (0 declines): line must have no отказов/🙈, got %q", vasyaLine)
+	if strings.Contains(vasyaLine, "отказов") {
+		t.Errorf("Vasya (0 declines): line must have no отказов, got %q", vasyaLine)
 	}
-}
-
-// TestDuelsTextChallengesNoDuckUnderTwo: one decline doesn't earn the 🙈.
-func TestDuelsTextChallengesNoDuckUnderTwo(t *testing.T) {
-	ch := []storage.ChallengeStat{{PlayerID: 2, Name: "Masha", Issued: 1, Received: 2, Declined: 1}}
-	out := duelsText(nil, nil, nil, nil, nil, ch, "Asia/Bishkek")
 	if strings.Contains(out, "🙈") {
-		t.Errorf("single decline must not get 🙈:\n%s", out)
+		t.Errorf("no icon on the top decliner:\n%s", out)
 	}
 }
 
