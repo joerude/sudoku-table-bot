@@ -17,6 +17,10 @@ const stalePendingMinutes = 45
 // close. Below it, the month is treated as too quiet to crown anyone.
 const minSeasonPointsToClose = 10
 
+// openGameGraceMinutes is how long past the deadline a season waits for a game
+// that was started before it (3 hours covers a long hardcore session).
+const openGameGraceMinutes = 180
+
 // runReminders ticks once a minute, sending event-driven and daily nudges.
 func (b *Bot) runReminders() {
 	ticker := time.NewTicker(time.Minute)
@@ -293,6 +297,17 @@ func (b *Bot) closeExpiredSeasonAt(ch storage.ChatSettings, now time.Time) error
 		return b.nudgeSeason(season, deadline, now, loc)
 	}
 
+	// A game started before the deadline would be recorded into the already
+	// closed season's successor (or lost). Hold the close until it is recorded,
+	// cancelled, or too old to still be played.
+	open, err := b.st.HasOpenSeasonGame(season.ID, season.Deadline.String, openGameGraceMinutes)
+	if err != nil {
+		return err
+	}
+	if open {
+		return nil
+	}
+
 	standings, err := b.st.Standings(ch.ChatID, season.ID)
 	if err != nil {
 		return err
@@ -335,8 +350,8 @@ func (b *Bot) closeExpiredSeasonAt(ch storage.ChatSettings, now time.Time) error
 	}
 	log.Printf("🏁 season %d closed by deadline, winner=%s (%d pts) → season %d",
 		season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
-	_, err = b.tb.Send(tele.ChatID(ch.ChatID),
+	b.postChat(ch.ChatID,
 		seasonDeadlineEndText(season.Number, standings[0].Name, standings[0].Points,
 			awards, newSeason.Number, newSeason.Target, nextDeadline, loc))
-	return err
+	return nil
 }
