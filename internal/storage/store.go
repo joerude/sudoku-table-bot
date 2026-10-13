@@ -85,6 +85,9 @@ func migrate(db *sql.DB) {
 		// (edit) cannot make it look like an unanswered challenge to the expiry.
 		`UPDATE games SET accepted_at=COALESCE(accepted_at, completed_at, created_at)
 		 WHERE duel_target_id IS NOT NULL AND status='completed' AND accepted_at IS NULL`,
+		// Games floor for the calendar exit. Backfilled with the default for
+		// archived seasons too (harmless, they are never evaluated again).
+		`ALTER TABLE seasons ADD COLUMN min_games INTEGER NOT NULL DEFAULT 66`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;

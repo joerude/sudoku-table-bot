@@ -155,7 +155,7 @@ func (b *Bot) onSeason(c tele.Context) error {
 		return b.fail(c, "onSeason.leader", err)
 	}
 	text := seasonText(season, leader) +
-		seasonDeadlineLine(season, time.Now(), loadLoc(b.chatTZ(c.Chat().ID))) +
+		b.seasonStatus(c.Chat().ID, season) +
 		archiveHint(nums)
 	return c.Send(text, seasonsKeyboard(nums, season.Number))
 }
@@ -265,6 +265,7 @@ func (b *Bot) onHistory(c tele.Context) error {
 
 const settingsUsage = `⚙️ <b>Настройки</b>
 /settings target &lt;N&gt; — порог сезона (очки до победы)
+/settings mingames &lt;N&gt; — игр за сезон до закрытия по дедлайну
 /settings points &lt;a b c…&gt; — таблица очков по местам
 /settings minplayers &lt;N&gt; — мин. участников, чтобы игра засчиталась
 /settings daily &lt;HH:MM|off&gt; — ежедневное напоминание
@@ -304,6 +305,17 @@ func (b *Bot) onSettings(c tele.Context) error {
 			return b.fail(c, "onSettings.points", err)
 		}
 		return b.quiet(c, "✅ Таблица очков: "+formatTable(table))
+
+	case "mingames":
+		n, err := strconv.Atoi(argAt(args, 1))
+		if err != nil || n < 1 {
+			return b.ephemeral(c, "Сколько игр нужно сыграть за сезон: /settings mingames 66")
+		}
+		if err := b.st.UpdateSeasonMinGames(season.ID, n); err != nil {
+			return b.fail(c, "onSettings.mingames", err)
+		}
+		return b.quiet(c, fmt.Sprintf("✅ Сезон закроется по дедлайну, только если сыграно не меньше <b>%d</b> %s.",
+			n, plural(n, "игры", "игр", "игр")))
 
 	case "minplayers":
 		n, err := strconv.Atoi(argAt(args, 1))
@@ -370,11 +382,26 @@ func (b *Bot) settingsSummary(chatID int64, season *storage.Season, admin bool) 
 	return fmt.Sprintf(
 		"⚙️ <b>Настройки</b>\n"+
 			"Порог сезона: <b>%d</b>\n"+
+			"Игр за сезон: <b>%d</b>\n"+
 			"Таблица очков: <b>%s</b>\n"+
 			"Мин. участников в игре: <b>%d</b>\n"+
 			"Ежедневное напоминание: <b>%s</b>\n"+
 			"Недельный дайджест: <b>%s</b>\n\n%s",
-		season.Target, formatTable(season.PointsTable), minPlayers, daily, weekly, settingsFooter(admin))
+		season.Target, season.MinGames, formatTable(season.PointsTable), minPlayers,
+		daily, weekly, settingsFooter(admin))
+}
+
+// seasonStatus renders the deadline and games-floor block for a season panel.
+// The counter is left out when the count can't be read (the panel stays
+// useful without it).
+func (b *Bot) seasonStatus(chatID int64, season *storage.Season) string {
+	loc := loadLoc(b.chatTZ(chatID))
+	games, first, _, _, err := b.st.SeasonMeta(chatID, season.ID)
+	if err != nil {
+		log.Printf("seasonStatus: %v", err)
+		return seasonDeadlineLine(season, time.Now(), loc)
+	}
+	return seasonStatusBlock(season, games, first, time.Now(), loc)
 }
 
 // isAdmin reports whether the sender may perform privileged actions: in a group
@@ -463,7 +490,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = standingsText(season, standings) +
-			seasonDeadlineLine(season, time.Now(), loadLoc(b.chatTZ(chatID)))
+			b.seasonStatus(chatID, season)
 	}
 	if err != nil {
 		return "", nil, err

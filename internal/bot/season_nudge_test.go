@@ -39,8 +39,9 @@ func TestSeasonLastWeekText(t *testing.T) {
 	rows := []storage.Standing{
 		{Name: "Alice", Points: 40}, {Name: "Bob <b>", Points: 31}, {Name: "Cy", Points: 2},
 	}
-	got := seasonLastWeekText(7, rows)
-	for _, want := range []string{"🏁", "Последняя неделя сезона 7", "Alice</b> 40", "Bob &lt;b&gt;</b> 31", "(-9)"} {
+	got := seasonLastWeekText(7, rows, 40, 66)
+	for _, want := range []string{"🏁", "Последняя неделя сезона 7", "Alice</b> 40", "Bob &lt;b&gt;</b> 31", "(-9)",
+		"Игр: <b>40</b>/66", "не хватает <b>26</b> игр"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -48,13 +49,19 @@ func TestSeasonLastWeekText(t *testing.T) {
 	if strings.Contains(got, "Cy") {
 		t.Errorf("third place must not be in the one-line post: %q", got)
 	}
-	tie := seasonLastWeekText(7, []storage.Standing{{Name: "A", Points: 5}, {Name: "B", Points: 5}})
+	tie := seasonLastWeekText(7, []storage.Standing{{Name: "A", Points: 5}, {Name: "B", Points: 5}}, 66, 66)
 	if !strings.Contains(tie, "вровень") || strings.Contains(tie, "(-0)") {
 		t.Errorf("tie rendering: %q", tie)
 	}
-	solo := seasonLastWeekText(7, []storage.Standing{{Name: "A", Points: 5}})
+	if strings.Contains(tie, "не хватает") {
+		t.Errorf("floor met: no shortfall expected: %q", tie)
+	}
+	solo := seasonLastWeekText(7, []storage.Standing{{Name: "A", Points: 5}}, 65, 66)
 	if strings.Contains(solo, "(") {
 		t.Errorf("single player must have no gap: %q", solo)
+	}
+	if !strings.Contains(solo, "не хватает <b>1</b> игры") {
+		t.Errorf("shortfall of one game: %q", solo)
 	}
 }
 
@@ -76,8 +83,11 @@ func TestSeasonFinalDayText(t *testing.T) {
 func TestSeasonExtendedText(t *testing.T) {
 	loc := time.FixedZone("UTC+6", 6*3600)
 	until := time.Date(2026, 9, 1, 0, 0, 0, 0, loc).UTC()
-	got := seasonExtendedText(4, "Joe", 6, until, loc)
-	for _, want := range []string{"Сезон 4 продлён", "до 31 августа", "лидер Joe, 6 очк."} {
+	now := time.Date(2026, 8, 1, 0, 5, 0, 0, loc)
+	se := &storage.Season{Number: 4, Target: 100, MinGames: 66}
+	got := seasonExtendedText(se, 64, &storage.Standing{Name: "Joe", Points: 6}, until, now, loc)
+	for _, want := range []string{"Сезон 4 продлён", "Новый финал: 31 августа", "(через 30 дней)",
+		"не хватает <b>2</b> игр.", "Лидер: <b>Joe</b>, 6/100"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -118,6 +128,9 @@ func nudgeFixture(t *testing.T, chat int64, wins int) (*Bot, *storage.Season) {
 func TestCloseExpiredSeason_MarksWeekThenFinalOnce(t *testing.T) {
 	const chat = int64(-9101)
 	b, se := nudgeFixture(t, chat, 2)
+	if err := b.st.UpdateSeasonMinGames(se.ID, 2); err != nil { // floor met: the final is real
+		t.Fatalf("UpdateSeasonMinGames: %v", err)
+	}
 	ch := storage.ChatSettings{ChatID: chat, TZ: "UTC"}
 
 	// 25 July 11:00 UTC: six days left, past the nudge time of day.
@@ -142,6 +155,24 @@ func TestCloseExpiredSeason_MarksWeekThenFinalOnce(t *testing.T) {
 	}
 }
 
+// TestCloseExpiredSeason_NoFinalNudgeBelowFloor: short of the games floor the
+// deadline extends the season instead of closing it, so "final today" would
+// be a lie and is not sent (nor marked).
+func TestCloseExpiredSeason_NoFinalNudgeBelowFloor(t *testing.T) {
+	const chat = int64(-9104)
+	b, se := nudgeFixture(t, chat, 2) // 2 games, floor stays at the default 66
+	ch := storage.ChatSettings{ChatID: chat, TZ: "UTC"}
+	if err := b.st.SetSeasonNudge(se.ID, "week@2026-08-01 00:00:00"); err != nil {
+		t.Fatalf("SetSeasonNudge: %v", err)
+	}
+	if err := b.closeExpiredSeasonAt(ch, time.Date(2026, 7, 31, 11, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("closeExpiredSeasonAt: %v", err)
+	}
+	if got, _ := b.st.SeasonNudge(se.ID); got != "week@2026-08-01 00:00:00" {
+		t.Errorf("marker = %q, want the final nudge skipped below the floor", got)
+	}
+}
+
 func TestCloseExpiredSeason_NudgeSilentWithoutPoints(t *testing.T) {
 	const chat = int64(-9102)
 	b, se := nudgeFixture(t, chat, 0)
@@ -157,12 +188,12 @@ func TestCloseExpiredSeason_NudgeSilentWithoutPoints(t *testing.T) {
 
 func TestCloseExpiredSeason_ExtendedSeasonGetsFreshNudges(t *testing.T) {
 	const chat = int64(-9103)
-	b, se := nudgeFixture(t, chat, 2) // 6 points: below the close threshold
+	b, se := nudgeFixture(t, chat, 2) // 2 games: below the games floor
 	ch := storage.ChatSettings{ChatID: chat, TZ: "UTC"}
 	if err := b.st.SetSeasonNudge(se.ID, "final@2026-08-01 00:00:00"); err != nil {
 		t.Fatalf("SetSeasonNudge: %v", err)
 	}
-	// Deadline passed with 6 points: extended to 1 Sep.
+	// Deadline passed with 2 of 66 games: extended to 1 Sep.
 	if err := b.closeExpiredSeasonAt(ch, time.Date(2026, 8, 1, 0, 5, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("closeExpiredSeasonAt: %v", err)
 	}
