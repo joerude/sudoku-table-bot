@@ -119,14 +119,17 @@ func (s *Store) AllChats() ([]ChatSettings, error) {
 	return out, rows.Err()
 }
 
-// CompletedGamesOn counts games completed on a given local date (YYYY-MM-DD).
-// The comparison uses the chat timezone offset applied by the caller via date.
-func (s *Store) CompletedToday(chatID int64, date string) (int, error) {
+// CompletedBetween counts completed games (duels included: a duel means the
+// players played) whose completed_at falls in [fromUTC, toUTC). Callers pass
+// the UTC bounds of a chat-local day, so a game finished at 01:00 local time
+// belongs to that local day rather than to the UTC date.
+func (s *Store) CompletedBetween(chatID int64, fromUTC, toUTC string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`
 		SELECT COUNT(*) FROM games g
-		WHERE g.chat_id=? AND `+sqlCompletedGames+` AND date(g.completed_at)=?`,
-		chatID, date).Scan(&n)
+		WHERE g.chat_id=? AND `+sqlCompletedGames+`
+		  AND g.completed_at >= ? AND g.completed_at < ?`,
+		chatID, fromUTC, toUTC).Scan(&n)
 	return n, err
 }
 

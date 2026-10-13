@@ -54,7 +54,39 @@ func (b *Bot) remindStalePending() {
 	}
 }
 
-// remindDaily sends the catch-all evening nudge if nothing was recorded today.
+// dailyNudgeText is the evening nudge when nothing was played today.
+const dailyNudgeText = "🌙 Сегодня ещё без судоку. Партию? /play"
+
+// localDayBounds returns the UTC instants [from, to) of the chat-local calendar
+// day containing now.
+func localDayBounds(now time.Time, loc *time.Location) (from, to time.Time) {
+	n := now.In(loc)
+	from = time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, loc)
+	to = time.Date(n.Year(), n.Month(), n.Day()+1, 0, 0, 0, 0, loc)
+	return from.UTC(), to.UTC()
+}
+
+// dailyNudge returns the evening nudge for a chat, or "" when it should stay
+// quiet: no active players, a game is already waiting for its result, or
+// something was already played today (chat-local day, duels included).
+func (b *Bot) dailyNudge(chatID int64, now time.Time, loc *time.Location) (string, error) {
+	players, err := b.st.ListPlayers(chatID)
+	if err != nil || len(players) == 0 {
+		return "", err
+	}
+	pending, err := b.st.ActivePendingGame(chatID)
+	if err != nil || pending != nil {
+		return "", err
+	}
+	from, to := localDayBounds(now, loc)
+	cnt, err := b.st.CompletedBetween(chatID, fmtDBTime(from), fmtDBTime(to))
+	if err != nil || cnt > 0 {
+		return "", err
+	}
+	return dailyNudgeText, nil
+}
+
+// remindDaily sends the catch-all evening nudge if nothing was played today.
 func (b *Bot) remindDaily() {
 	chats, err := b.st.AllChats()
 	if err != nil {
@@ -65,10 +97,7 @@ func (b *Bot) remindDaily() {
 		if !ch.DailyReminder {
 			continue
 		}
-		loc, err := time.LoadLocation(ch.TZ)
-		if err != nil {
-			loc = time.UTC
-		}
+		loc := loadLoc(ch.TZ)
 		now := time.Now().In(loc)
 		date := now.Format("2006-01-02")
 		if ch.LastDaily == date || now.Format("15:04") < ch.DailyTime {
@@ -79,18 +108,15 @@ func (b *Bot) remindDaily() {
 		if err := b.st.SetLastDaily(ch.ChatID, date); err != nil {
 			log.Printf("remindDaily mark: %v", err)
 		}
-		cnt, err := b.st.CompletedToday(ch.ChatID, date)
+		text, err := b.dailyNudge(ch.ChatID, now, loc)
 		if err != nil {
-			log.Printf("remindDaily count: %v", err)
+			log.Printf("remindDaily: %v", err)
 			continue
 		}
-		if cnt > 0 {
-			continue // already played & recorded today, no need to nag
+		if text == "" {
+			continue
 		}
-		if _, err := b.tb.Send(tele.ChatID(ch.ChatID),
-			"🌙 Сегодня играли в судоку? Не забудьте записать результат: /result"); err != nil {
-			log.Printf("remindDaily send: %v", err)
-		}
+		b.postChat(ch.ChatID, text)
 	}
 }
 
@@ -113,6 +139,9 @@ func (b *Bot) buildWeeklyDigest(chatID int64) (text string, hasGames bool, err e
 	if err != nil {
 		return "", false, err
 	}
+	if len(standings) == 0 {
+		return "", false, nil // no active players: nobody to address
+	}
 	top := standings
 	if len(top) > 3 {
 		top = top[:3]
@@ -122,11 +151,18 @@ func (b *Bot) buildWeeklyDigest(chatID int64) (text string, hasGames bool, err e
 		log.Printf("buildWeeklyDigest fastest: %v", err)
 	}
 	streakName, streakLen := b.longestWinStreak(chatID)
-	return digestText(season, top, fastest, streakName, streakLen, weekGames), true, nil
+	text = digestText(season, top, fastest, streakName, streakLen, weekGames) +
+		digestFinalLine(season, standings, time.Now(), loadLoc(b.chatTZ(chatID)))
+	return text, true, nil
 }
 
-// remindWeekly posts a Monday digest at the chat's daily_time (chat tz),
-// at most once per day, skipped when no games were played in the trailing week.
+// weeklyDigestTime is the chat-local time of day the Monday digest goes out. It
+// is fixed (not daily_time) so the digest never lands in the same minute as the
+// evening nudge.
+const weeklyDigestTime = "10:00"
+
+// remindWeekly posts a Monday digest at weeklyDigestTime (chat tz), at most
+// once per day, skipped when no games were played in the trailing week.
 func (b *Bot) remindWeekly() {
 	chats, err := b.st.AllChats()
 	if err != nil {
@@ -140,7 +176,7 @@ func (b *Bot) remindWeekly() {
 		loc := loadLoc(ch.TZ)
 		now := time.Now().In(loc)
 		date := now.Format("2006-01-02")
-		if now.Weekday() != time.Monday || now.Format("15:04") < ch.DailyTime || ch.LastWeekly == date {
+		if now.Weekday() != time.Monday || now.Format("15:04") < weeklyDigestTime || ch.LastWeekly == date {
 			continue
 		}
 		// Mark handled regardless, so we post at most once.
@@ -155,9 +191,7 @@ func (b *Bot) remindWeekly() {
 		if !hasGames {
 			continue // quiet week, skip the digest
 		}
-		if _, err := b.tb.Send(tele.ChatID(ch.ChatID), text); err != nil {
-			log.Printf("remindWeekly send: %v", err)
-		}
+		b.postChat(ch.ChatID, text)
 	}
 }
 
