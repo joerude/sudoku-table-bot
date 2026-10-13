@@ -184,6 +184,20 @@ func notCountedText(min int) string {
 			"Можно записать вручную, отменить игру или изменить порог: /settings minplayers", min)
 }
 
+// staleNudgeText is the «game has no result» reminder. It replaces the game's
+// card; pingLine (may be "") is a mention of the creator, used only when there
+// is no card to edit and the nudge goes out as a new message.
+func staleNudgeText(code, pingLine string) string {
+	text := "⏰ <b>Результата нет, запишем?</b>"
+	if code != "" {
+		text += "\nКомната: https://www.usdoku.com/" + esc(code)
+	}
+	if pingLine != "" {
+		text += "\n" + pingLine
+	}
+	return text
+}
+
 // autoMappingText is shown when the bot can't fully map usdoku nicknames to players.
 func autoMappingText(orderNicks, unknown []string) string {
 	var b strings.Builder

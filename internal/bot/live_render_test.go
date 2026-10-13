@@ -158,3 +158,31 @@ func TestAutoMappingTextListsUnknownNicks(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestStaleNudgeText(t *testing.T) {
+	plain := staleNudgeText("", "")
+	if !strings.Contains(plain, "Результата нет, запишем?") || strings.Contains(plain, "usdoku.com") {
+		t.Errorf("no room, no ping: %q", plain)
+	}
+	full := staleNudgeText("LOVI", `<a href="tg://user?id=1">Аня</a>`)
+	if !strings.Contains(full, "https://www.usdoku.com/LOVI") || !strings.Contains(full, "Аня") {
+		t.Errorf("room link and ping expected: %q", full)
+	}
+}
+
+func TestWatchingRegistryCountsOverlappingWatchers(t *testing.T) {
+	const id = int64(987654)
+	if isWatching(id) {
+		t.Fatal("unknown game must not be watched")
+	}
+	markWatching(id)
+	markWatching(id)
+	unmarkWatching(id)
+	if !isWatching(id) {
+		t.Fatal("one watcher is still running")
+	}
+	unmarkWatching(id)
+	if isWatching(id) {
+		t.Fatal("all watchers are gone")
+	}
+}

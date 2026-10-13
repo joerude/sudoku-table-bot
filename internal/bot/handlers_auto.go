@@ -43,6 +43,8 @@ func (b *Bot) resumeWatches() {
 // game's chat post (liveUpdate).
 func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	defer dropLive(gameID)
+	markWatching(gameID)
+	defer unmarkWatching(gameID)
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
 	for {

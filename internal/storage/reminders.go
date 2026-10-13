@@ -7,15 +7,18 @@ import (
 
 // StalePending is a pending game old enough to warrant a nudge.
 type StalePending struct {
-	GameID int64
-	ChatID int64
+	GameID    int64
+	ChatID    int64
+	Code      string        // usdoku room code, "" = none
+	CreatedBy sql.NullInt64 // tg id of who started the game
+	PostMsgID sql.NullInt64 // the game's card, if it has one
 }
 
 // StalePendingGames returns pending games created more than minutes ago that
 // have not yet been reminded about.
 func (s *Store) StalePendingGames(minutes int) ([]StalePending, error) {
 	rows, err := s.db.Query(`
-		SELECT id, chat_id FROM games
+		SELECT id, chat_id, COALESCE(usdoku_code,''), created_by, post_msg_id FROM games
 		WHERE status='pending' AND reminded=0 AND deleted=0
 		  AND created_at <= datetime('now', ?)`, negMinutes(minutes))
 	if err != nil {
@@ -25,7 +28,7 @@ func (s *Store) StalePendingGames(minutes int) ([]StalePending, error) {
 	var out []StalePending
 	for rows.Next() {
 		var sp StalePending
-		if err := rows.Scan(&sp.GameID, &sp.ChatID); err != nil {
+		if err := rows.Scan(&sp.GameID, &sp.ChatID, &sp.Code, &sp.CreatedBy, &sp.PostMsgID); err != nil {
 			return nil, err
 		}
 		out = append(out, sp)
