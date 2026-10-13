@@ -104,3 +104,17 @@ func TestDuelResultKeyboardAddsRematch(t *testing.T) {
 		t.Errorf("one participant: no rematch, got %+v", kb.InlineKeyboard)
 	}
 }
+
+func TestResultKeyboardExtraButtonsGetTheirOwnRow(t *testing.T) {
+	plain := resultKeyboard(5)
+	if len(plain.InlineKeyboard) != 1 {
+		t.Fatalf("plain result keyboard must be one row: %+v", plain.InlineKeyboard)
+	}
+	with := resultKeyboard(5, againButton(5))
+	if len(with.InlineKeyboard) != 2 || len(with.InlineKeyboard[1]) != 1 {
+		t.Fatalf("extra button must sit in a second row: %+v", with.InlineKeyboard)
+	}
+	if b := with.InlineKeyboard[1][0]; b.Unique != cbAgain || b.Data != "5" {
+		t.Errorf("again button = %+v", b)
+	}
+}

@@ -69,3 +69,18 @@ func TestRoomParams(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatParams(t *testing.T) {
+	cases := []struct{ d, m, wantD, wantM string }{
+		{"hard", "original", "hard", "original"},
+		{"extreme", "hardcore", "extreme", "hardcore"},
+		{"", "", "medium", "hardcore"},
+		{"nope", "chaos", "medium", "hardcore"},
+	}
+	for _, tc := range cases {
+		d, m := repeatParams(tc.d, tc.m)
+		if d != tc.wantD || m != tc.wantM {
+			t.Errorf("repeatParams(%q, %q) = (%q, %q), want (%q, %q)", tc.d, tc.m, d, m, tc.wantD, tc.wantM)
+		}
+	}
+}

@@ -31,8 +31,9 @@ func (b *Bot) onPlayDiff(c tele.Context) error {
 	if !validDifficulty[diff] {
 		diff = "medium"
 	}
-	_ = c.Respond()
-	return b.startNewGame(c, diff, "hardcore")
+	err := b.startNewGame(c, diff, "hardcore")
+	_ = c.Respond() // after, so a «уже создаю» toast from the lock can still show
+	return err
 }
 
 // onPlayDuel routes to the existing duel opponent picker.
