@@ -96,3 +96,52 @@ func TestOpenAddsCardColumnsToOldDB(t *testing.T) {
 	}
 	st2.Close()
 }
+
+func TestAttachUsdokuCodeOnlyOnce(t *testing.T) {
+	st := openTemp(t)
+	_, gid := newCardGame(t, st)
+
+	ok, err := st.AttachUsdokuCode(gid, "LOVI")
+	if err != nil || !ok {
+		t.Fatalf("first attach = %v, %v; want true", ok, err)
+	}
+	ok, err = st.AttachUsdokuCode(gid, "QPHA")
+	if err != nil || ok {
+		t.Fatalf("second attach = %v, %v; want false, the first room stays", ok, err)
+	}
+	g, _ := st.GameByID(gid)
+	if g.UsdokuCode.String != "LOVI" {
+		t.Errorf("code = %q, want LOVI", g.UsdokuCode.String)
+	}
+}
+
+func TestAttachUsdokuCodeRefusesClosedGame(t *testing.T) {
+	st := openTemp(t)
+	_, gid := newCardGame(t, st)
+	if err := st.SoftDeleteGame(gid); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.AttachUsdokuCode(gid, "LOVI"); err != nil || ok {
+		t.Fatalf("attach to a deleted game = %v, %v; want false", ok, err)
+	}
+}
+
+func TestSetGameParamsKeepsOmittedValues(t *testing.T) {
+	st := openTemp(t)
+	_, gid := newCardGame(t, st) // medium / hardcore
+
+	if err := st.SetGameParams(gid, "hard", ""); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := st.GameByID(gid)
+	if g.Difficulty.String != "hard" || g.Mode.String != "hardcore" {
+		t.Fatalf("difficulty/mode = %q/%q, want hard/hardcore", g.Difficulty.String, g.Mode.String)
+	}
+	if err := st.SetGameParams(gid, "", "original"); err != nil {
+		t.Fatal(err)
+	}
+	g, _ = st.GameByID(gid)
+	if g.Difficulty.String != "hard" || g.Mode.String != "original" {
+		t.Fatalf("difficulty/mode = %q/%q, want hard/original", g.Difficulty.String, g.Mode.String)
+	}
+}

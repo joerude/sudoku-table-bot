@@ -13,6 +13,7 @@ import (
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
+	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
 var validDifficulty = map[string]bool{"easy": true, "medium": true, "hard": true, "extreme": true}
@@ -256,12 +257,48 @@ func (b *Bot) onSetCode(c tele.Context) error {
 			"У игры #%d уже есть комната: https://www.usdoku.com/%s",
 			pending.ID, pending.UsdokuCode.String))
 	}
-	if err := b.st.SetUsdokuCode(pending.ID, code); err != nil {
+	// Check the room exists before binding: a typo would otherwise start a
+	// watcher that polls nothing for three hours.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	info, err := b.ud.Info(ctx, code)
+	if err != nil {
+		log.Printf("onSetCode.info %s: %v", code, err)
+		return b.ephemeral(c, fmt.Sprintf("Комната <b>%s</b> не найдена на usdoku", esc(code)))
+	}
+	attached, err := b.st.AttachUsdokuCode(pending.ID, code)
+	if err != nil {
 		return b.fail(c, "onSetCode.set", err)
 	}
-	b.showCodeAttached(pending, code)
+	if !attached {
+		return b.ephemeral(c, "У игры уже есть комната или она закрыта")
+	}
+	// Personal bests and /speed group by difficulty and mode, so take the real
+	// ones from the room rather than whatever the game was created with.
+	if diff, mode := roomParams(info); diff != "" || mode != "" {
+		if err := b.st.SetGameParams(pending.ID, diff, mode); err != nil {
+			log.Printf("onSetCode.params: %v", err)
+		}
+	}
+	game, err := b.st.GameByID(pending.ID)
+	if err != nil || game == nil {
+		return b.fail(c, "onSetCode.reload", err)
+	}
+	b.showCodeAttached(game, code)
 	go b.watchGame(pending.ID, chatID, code)
 	return nil
+}
+
+// roomParams reads a usdoku room's difficulty and mode in the bot's vocabulary.
+// Anything unrecognised comes back empty, so it never overwrites a known value.
+func roomParams(info *usdoku.GameInfo) (difficulty, mode string) {
+	if d := strings.ToLower(info.Info.Difficulty); validDifficulty[d] {
+		difficulty = d
+	}
+	if m := strings.ToLower(info.Info.Mode); m == "hardcore" || m == "original" {
+		mode = m
+	}
+	return
 }
 
 // showCodeAttached turns the game's card into the «room is bound» view (or
