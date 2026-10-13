@@ -225,8 +225,12 @@ func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
 		// their own in 15-30 days, so a leader still under the threshold at
 		// deadline means the month was effectively dead, not just slow.
 		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
+		leaderPts := 0 // no players at all (e.g. a chat that only got /start)
+		if len(standings) > 0 {
+			leaderPts = standings[0].Points
+		}
 		log.Printf("📅 chat %d: quiet season %d (leader %d pts) extended to %s",
-			ch.ChatID, season.Number, standings[0].Points, ext)
+			ch.ChatID, season.Number, leaderPts, ext)
 		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext))
 	}
 

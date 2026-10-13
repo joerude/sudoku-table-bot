@@ -257,3 +257,47 @@ func TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold(t *testing.T) {
 		t.Errorf("deadline was not extended, still %q", got.Deadline.String)
 	}
 }
+
+// TestCloseExpiredSeason_NoPanicWhenChatHasNoPlayers: a chat that only ever got
+// a /start (no /join) has an empty standings table. The quiet-season log used to
+// index standings[0] and crash the process every minute after the deadline.
+func TestCloseExpiredSeason_NoPanicWhenChatHasNoPlayers(t *testing.T) {
+	st := openTempStore(t)
+	const chat = int64(-9005)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatalf("EnsureChat: %v", err)
+	}
+	se, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatalf("ActiveSeason: %v", err)
+	}
+	const staleDeadline = "2020-01-01 00:00:00"
+	if err := st.SetSeasonDeadline(se.ID, staleDeadline); err != nil {
+		t.Fatalf("SetSeasonDeadline: %v", err)
+	}
+	staleDL, err := parseDBTime(staleDeadline)
+	if err != nil {
+		t.Fatalf("parseDBTime(stale): %v", err)
+	}
+
+	b := &Bot{st: st}
+	ch := storage.ChatSettings{ChatID: chat, TZ: "UTC"}
+	if err := b.closeExpiredSeason(ch); err != nil {
+		t.Fatalf("closeExpiredSeason: %v", err)
+	}
+
+	got, err := st.ActiveSeason(chat)
+	if err != nil {
+		t.Fatalf("ActiveSeason after: %v", err)
+	}
+	if got.ID != se.ID {
+		t.Fatalf("empty chat must not close the season: got id %d, want %d", got.ID, se.ID)
+	}
+	dl, err := parseDBTime(got.Deadline.String)
+	if err != nil {
+		t.Fatalf("extended deadline unparseable: %q: %v", got.Deadline.String, err)
+	}
+	if !dl.After(staleDL) {
+		t.Errorf("extended deadline %s is not after the stale one %s", dl, staleDL)
+	}
+}
