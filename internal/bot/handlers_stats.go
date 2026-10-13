@@ -455,7 +455,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = activityText(init, time.Now())
+		text = activityText(init, time.Now(), loadLoc(b.chatTZ(chatID)))
 	default:
 		tab = "table"
 		standings, e := b.st.Standings(chatID, season.ID)

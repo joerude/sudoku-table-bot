@@ -1214,7 +1214,7 @@ func TestActivityText(t *testing.T) {
 			LastPlayed: "2026-07-14 08:00:00"},
 		{Name: "Ghost", LastPlayed: ""},
 	}
-	got := activityText(rows, now)
+	got := activityText(rows, now, time.UTC)
 
 	for _, want := range []string{
 		"Актив",
@@ -1233,7 +1233,7 @@ func TestActivityText(t *testing.T) {
 }
 
 func TestActivityTextEmpty(t *testing.T) {
-	got := activityText(nil, time.Now())
+	got := activityText(nil, time.Now(), time.UTC)
 	if !strings.Contains(got, "/join") {
 		t.Errorf("empty roster should hint at /join, got:\n%s", got)
 	}

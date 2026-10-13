@@ -1201,26 +1201,28 @@ func crownChangeLine(gr domain.GameRating, names map[int64]string) string {
 }
 
 // activityText renders the "who calls the games" tab: rounds started per
-// player (all-time and last 30 days) and how long since they last played.
-func activityText(rows []storage.InitiativeRow, now time.Time) string {
+// player over the last 30 days (the sort key) and in total, plus how long ago
+// they last played, counted in chat-local calendar days.
+func activityText(rows []storage.InitiativeRow, now time.Time, loc *time.Location) string {
 	var b strings.Builder
-	b.WriteString("🎯 <b>Актив</b> · кто зовёт играть\n\n")
+	b.WriteString("📣 <b>Актив</b> · кто зовёт играть\n\n")
 	if len(rows) == 0 {
 		b.WriteString("Пока нет игроков. /join")
 		return b.String()
 	}
 	for i, r := range rows {
-		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> %s · <b>%d</b> %s\n",
-			medal(i+1), esc(r.Name), r.GamesAll, gamesWord(r.GamesAll), r.DuelsAll, duelsWord(r.DuelsAll))
-		fmt.Fprintf(&b, "   <i>за 30 дн: %d · %d · %s</i>\n",
-			r.Games30, r.Duels30, lastPlayedPhrase(r.LastPlayed, now))
+		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b> %s · <b>%d</b> %s <i>за 30 дн</i>\n",
+			medal(i+1), esc(r.Name), r.Games30, gamesWord(r.Games30), r.Duels30, duelsWord(r.Duels30))
+		fmt.Fprintf(&b, "   <i>всего: %d · %d · %s</i>\n",
+			r.GamesAll, r.DuelsAll, lastPlayedPhrase(r.LastPlayed, now, loc))
 	}
-	b.WriteString("\n<i>Считаются только созданные игры: /play, /duel, /invite.</i>")
+	b.WriteString("\n<i>Считаются созданные игры: /play, /duel, /invite, /result. Порядок по последним 30 дням.</i>")
 	return b.String()
 }
 
-// lastPlayedPhrase renders how long ago a player last played a recorded game.
-func lastPlayedPhrase(lastPlayed string, now time.Time) string {
+// lastPlayedPhrase renders how long ago a player last played a recorded game,
+// by calendar date in loc (a game at 00:30 yesterday is "вчера", not "сегодня").
+func lastPlayedPhrase(lastPlayed string, now time.Time, loc *time.Location) string {
 	if lastPlayed == "" {
 		return "ещё не играл"
 	}
@@ -1228,11 +1230,13 @@ func lastPlayedPhrase(lastPlayed string, now time.Time) string {
 	if err != nil {
 		return "ещё не играл"
 	}
-	switch days := int(now.UTC().Sub(t).Hours() / 24); {
+	lt, ln := t.In(loc), now.In(loc)
+	day := func(x time.Time) time.Time { return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, time.UTC) }
+	switch days := int(day(ln).Sub(day(lt)) / (24 * time.Hour)); {
 	case days <= 0:
 		return "играл сегодня"
 	case days == 1:
-		return "не играл 1 дн"
+		return "играл вчера"
 	default:
 		return fmt.Sprintf("не играл %d %s", days, daysWord(days))
 	}
