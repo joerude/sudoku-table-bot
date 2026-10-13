@@ -110,7 +110,29 @@ func topPlayer(rating map[int64]int, incumbent int64) int64 {
 // ComputeRatings replays games in order, deriving current ratings, peaks, the
 // crown, and per-game deltas. Pure and deterministic: same input -> same output.
 func ComputeRatings(games []RatingGame) Ratings {
+	return ComputeRatingsActive(games, nil)
+}
+
+// ComputeRatingsActive is ComputeRatings with the crown and the ladder limited
+// to the active players. Ratings still come from the whole history (a removed
+// player keeps playing a part in everyone else's numbers), but they can neither
+// hold the crown nor appear on the ladder. A nil set means everyone is active.
+func ComputeRatingsActive(games []RatingGame, active map[int64]bool) Ratings {
 	type pair struct{ win, lose int64 }
+
+	// crownPool is the slice of ratings eligible for the crown.
+	crownPool := func(rating map[int64]int) map[int64]int {
+		if active == nil {
+			return rating
+		}
+		pool := make(map[int64]int, len(rating))
+		for id, r := range rating {
+			if active[id] {
+				pool[id] = r
+			}
+		}
+		return pool
+	}
 
 	rating := map[int64]int{}
 	peak := map[int64]int{}
@@ -178,7 +200,7 @@ func ComputeRatings(games []RatingGame) Ratings {
 			gr.Delta[id] = d
 			gr.NewRating[id] = rating[id]
 		}
-		crown = topPlayer(rating, crown)
+		crown = topPlayer(crownPool(rating), crown)
 		gr.CrownAfter = crown
 		perGame = append(perGame, gr)
 	}
@@ -194,7 +216,9 @@ func ComputeRatings(games []RatingGame) Ratings {
 			Provisional: played[id] < ProvisionalGames,
 		}
 		players[id] = pr
-		ladder = append(ladder, pr)
+		if active == nil || active[id] {
+			ladder = append(ladder, pr)
+		}
 	}
 	sort.Slice(ladder, func(i, j int) bool {
 		if ladder[i].Rating != ladder[j].Rating {

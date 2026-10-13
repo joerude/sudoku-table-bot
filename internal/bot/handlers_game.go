@@ -752,7 +752,7 @@ func (b *Bot) ratingFooter(game *storage.Game) string {
 		log.Printf("ratingFooter.games: %v", err)
 		return ""
 	}
-	r := domain.ComputeRatings(games)
+	r := domain.ComputeRatingsActive(games, b.activePlayerSet(game.ChatID))
 	var gr *domain.GameRating
 	for i := range r.PerGame {
 		if r.PerGame[i].GameID == game.ID {

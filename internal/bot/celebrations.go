@@ -286,3 +286,19 @@ func (b *Bot) duelUpsetGain(game *storage.Game, winnerID, loserID int64) int {
 	}
 	return 0
 }
+
+// activePlayerSet returns the chat's active player ids for the rating's crown
+// and ladder. nil (everyone counts) on a storage error, so a hiccup never
+// blanks the ladder.
+func (b *Bot) activePlayerSet(chatID int64) map[int64]bool {
+	players, err := b.st.ListPlayers(chatID)
+	if err != nil {
+		log.Printf("activePlayerSet: %v", err)
+		return nil
+	}
+	set := make(map[int64]bool, len(players))
+	for _, p := range players {
+		set[p.ID] = true
+	}
+	return set
+}

@@ -193,3 +193,43 @@ func TestUpsetGain(t *testing.T) {
 		t.Error("unknown player must not report an upset")
 	}
 }
+
+func TestComputeRatingsActiveLimitsCrownAndLadder(t *testing.T) {
+	// 10 beats 20 and 30 twice: 10 is the clear leader.
+	games := []RatingGame{game(1, []int64{10, 20, 30}), game(2, []int64{10, 30, 20})}
+	all := ComputeRatings(games)
+	if all.Crown != 10 || len(all.Ladder) != 3 {
+		t.Fatalf("baseline: crown=%d ladder=%d", all.Crown, len(all.Ladder))
+	}
+
+	active := map[int64]bool{20: true, 30: true} // 10 was removed
+	r := ComputeRatingsActive(games, active)
+	if r.Crown == 10 || r.Crown == 0 {
+		t.Errorf("removed leader must not hold the crown, got %d", r.Crown)
+	}
+	for _, p := range r.Ladder {
+		if p.PlayerID == 10 {
+			t.Errorf("removed player must not be on the ladder: %+v", r.Ladder)
+		}
+	}
+	if len(r.Ladder) != 2 || r.Ladder[0].PlayerID != r.Crown {
+		t.Errorf("ladder top must be the crown holder, ladder=%+v crown=%d", r.Ladder, r.Crown)
+	}
+	// Ratings come from the full history, unchanged by the filter.
+	if r.Players[20].Rating != all.Players[20].Rating {
+		t.Errorf("filter must not change ratings: %d vs %d", r.Players[20].Rating, all.Players[20].Rating)
+	}
+	for _, gr := range r.PerGame {
+		if gr.CrownBefore == 10 || gr.CrownAfter == 10 {
+			t.Errorf("per-game crown must ignore the removed player: %+v", gr)
+		}
+	}
+}
+
+func TestComputeRatingsActiveNilMeansEveryone(t *testing.T) {
+	games := []RatingGame{game(1, []int64{10, 20})}
+	a, b := ComputeRatings(games), ComputeRatingsActive(games, nil)
+	if a.Crown != b.Crown || len(a.Ladder) != len(b.Ladder) {
+		t.Errorf("nil active set must equal ComputeRatings: %+v vs %+v", a, b)
+	}
+}
