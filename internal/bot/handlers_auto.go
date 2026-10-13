@@ -46,7 +46,6 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	defer dropLive(gameID)
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
-	lastFinishers := 0
 	for {
 		g, err := b.st.GameByID(gameID)
 		if err != nil {
@@ -67,10 +66,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 			b.autoRecord(g, info)
 			return
 		} else {
-			if n := len(info.FinishOrder()); n > lastFinishers {
-				lastFinishers = n
-				b.liveUpdate(gameID, info)
-			}
+			b.liveUpdate(gameID, info) // dedupes: edits only when the card text changes
 			if len(info.Players) > 0 && !info.Finished() {
 				interval = watchHotInterval
 			}
@@ -91,6 +87,13 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 // scores 0. Otherwise it asks for a manual entry instead of guessing.
 func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	to := tele.ChatID(game.ChatID)
+
+	// The watcher and a «Записать сейчас» tap can both get here: one at a time,
+	// and the loser finds the game already closed.
+	defer recordingGames.Lock(game.ID)()
+	if cur, err := b.st.GameByID(game.ID); err != nil || cur == nil || cur.Status != "pending" || cur.Deleted {
+		return
+	}
 
 	// A duel counts only its two participants — anyone else in the room is a
 	// guest and must not end up in the duel's results (that skews every duel
@@ -247,4 +250,33 @@ func (b *Bot) onClaimNick(c tele.Context) error {
 	_ = c.Respond(&tele.CallbackResponse{Text: "Готово: ник " + nick + " привязан"})
 	return c.Send(fmt.Sprintf("✅ <b>%s</b> = usdoku <code>%s</code>. Дальше учёт сам.",
 		esc(player.Name), esc(nick)))
+}
+
+// onRecordNow records the game from a fresh usdoku poll without waiting for the
+// drain timer. The watcher notices the game is completed and exits; if it gets
+// to autoRecord first, one of the two finds the game closed and does nothing.
+func (b *Bot) onRecordNow(c tele.Context) error {
+	game, err := b.st.GameByID(parseID(c.Data()))
+	if err != nil {
+		return b.fail(c, "onRecordNow.game", err)
+	}
+	if game == nil || game.Status != "pending" || game.Deleted {
+		return c.Respond(&tele.CallbackResponse{Text: "Игра уже закрыта"})
+	}
+	if !game.UsdokuCode.Valid || game.UsdokuCode.String == "" {
+		return c.Respond(&tele.CallbackResponse{Text: "У игры нет комнаты usdoku"})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	info, err := b.ud.Info(ctx, game.UsdokuCode.String)
+	if err != nil {
+		log.Printf("onRecordNow.info %s: %v", game.UsdokuCode.String, err)
+		return c.Respond(&tele.CallbackResponse{Text: "usdoku не отвечает, попробуй ещё раз"})
+	}
+	if len(info.FinishOrder()) == 0 {
+		return c.Respond(&tele.CallbackResponse{Text: "Пока никто не финишировал"})
+	}
+	_ = c.Respond(&tele.CallbackResponse{Text: "Записываю…"})
+	b.autoRecord(game, info)
+	return nil
 }
