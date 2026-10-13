@@ -168,7 +168,7 @@ func TestDuelsText(t *testing.T) {
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, nil, "Asia/Bishkek")
-	for _, want := range []string{"🥇", "Vasya", "8–2", "(80%)", "Masha", "(50%)"} {
+	for _, want := range []string{"🥇", "Vasya", "8-2", "(80%)", "Masha", "(50%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText: want %q in output\ngot: %s", want, out)
 		}
@@ -877,7 +877,7 @@ func TestDuelsTextShowsScore(t *testing.T) {
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, nil, "Asia/Bishkek")
-	for _, want := range []string{"Дуэли</b> · счёт", "8–2", "(80%)"} {
+	for _, want := range []string{"Дуэли</b> · счёт", "8-2", "(80%)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText score: want %q in output\ngot: %s", want, out)
 		}

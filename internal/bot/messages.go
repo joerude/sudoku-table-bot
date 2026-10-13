@@ -430,7 +430,7 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 		if i > 0 && rows[0].Points > r.Points {
 			gap = fmt.Sprintf("-%d · ", rows[0].Points-r.Points)
 		}
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%s%d поб · %d %s)</i>\n",
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> · <b>%d</b>   <i>(%s%d поб · %d %s)</i>\n",
 			medal(i+1), esc(r.Name), r.Points, gap, r.Wins, r.Games, gamesWord(r.Games)))
 	}
 	if leader := rows[0]; leader.Points > 0 {
@@ -588,7 +588,7 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 		if total := r.Wins + r.Losses; total > 0 {
 			pct = r.Wins * 100 / total
 		}
-		fmt.Fprintf(&b, "%s <b>%s</b> — %d–%d <i>(%d%%)</i>",
+		fmt.Fprintf(&b, "%s <b>%s</b> · %d-%d <i>(%d%%)</i>",
 			medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
 		if s := streaks[r.PlayerID]; s.Current >= 2 {
 			fmt.Fprintf(&b, " 🔥%d", s.Current)
@@ -649,7 +649,7 @@ func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.Sp
 			minGames, titleCase(difficulty))
 	} else {
 		for i, r := range ranked {
-			fmt.Fprintf(&b, "%s <b>%s</b> — %s   <i>(%d %s · ⚡ %s)</i>\n",
+			fmt.Fprintf(&b, "%s <b>%s</b> · %s   <i>(%d %s · ⚡ %s)</i>\n",
 				medal(i+1), esc(r.Name), fmtDuration(r.AvgSecs), r.Games, gamesWord(r.Games), fmtDuration(r.BestSecs))
 		}
 	}
@@ -716,7 +716,7 @@ func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, f
 			continue
 		}
 		shown++
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> — <b>%d</b>   <i>(%d поб · %d %s)</i>\n",
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> · <b>%d</b>   <i>(%d поб · %d %s)</i>\n",
 			medal(shown), esc(r.Name), r.Points, r.Wins, r.Games, gamesWord(r.Games)))
 	}
 	if shown == 0 {
@@ -754,7 +754,7 @@ func seasonEndText(number int, winner string, points int, awards []string, nextT
 	if len(awards) > 0 {
 		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
 	}
-	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d %s. Поехали! 🔥",
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s. Поехали! 🔥",
 		nextNumber, nextTarget, pointsWord(nextTarget))
 	return b.String()
 }
@@ -770,7 +770,7 @@ func seasonDeadlineEndText(number int, winner string, points int, awards []strin
 	if len(awards) > 0 {
 		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
 	}
-	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b> — все с нуля. Цель: %d %s, финал %s. Поехали! 🔥",
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s, финал %s. Поехали! 🔥",
 		nextNumber, nextTarget, pointsWord(nextTarget), fmtRuDate(nextDeadline.Add(-time.Second), loc))
 	return b.String()
 }
@@ -951,7 +951,7 @@ var difficultyRank = map[string]int{"easy": 0, "medium": 1, "hard": 2, "extreme"
 // championship-title tally. Empty only when there is neither.
 func recordsText(rows []storage.RecordRow, titles []storage.TitleRow) string {
 	if len(rows) == 0 && len(titles) == 0 {
-		return "⏱ <b>Рекорды всех времён</b>\nПока нет рекордов — сыграйте авто-игру (нужен /setnick), и время попадёт сюда."
+		return "⏱ <b>Рекорды всех времён</b>\nПока нет рекордов, сыграйте авто-игру (нужен /setnick), и время попадёт сюда."
 	}
 	var b strings.Builder
 	b.WriteString("⏱ <b>Рекорды всех времён</b> · лучшее время\n")
