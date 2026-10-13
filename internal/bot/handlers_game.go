@@ -134,8 +134,8 @@ func (b *Bot) createGameRoomAt(c tele.Context, difficulty, mode, origin string, 
 		return nil, nil
 	}
 	var createdBy int64
-	if c.Sender() != nil {
-		createdBy = c.Sender().ID
+	if u := realSender(c); u != nil {
+		createdBy = u.ID
 	}
 	gameID, err := b.st.CreatePendingGame(chatID, season.ID, createdBy, difficulty, mode)
 	if err != nil {
@@ -443,8 +443,8 @@ func (b *Bot) onResult(c tele.Context) error {
 		gameID = pending.ID
 	} else {
 		var createdBy int64
-		if c.Sender() != nil {
-			createdBy = c.Sender().ID
+		if u := realSender(c); u != nil {
+			createdBy = u.ID
 		}
 		gameID, err = b.st.CreatePendingGame(chatID, season.ID, createdBy, "", "")
 		if err != nil {
@@ -599,6 +599,9 @@ func (b *Bot) onCancelRecord(c tele.Context) error {
 	if err := b.st.ClearResults(gameID); err != nil {
 		return b.fail(c, "onCancelRecord.clear", err)
 	}
+	if b.resumeLive(c, gameID) { // the picker sat in the game card: bring the card back
+		return c.Respond(&tele.CallbackResponse{Text: "Отменено"})
+	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
 	return c.Edit("✖️ Запись отменена. Нажми «📝 Записать результат», когда будете готовы.",
 		recordKeyboard(gameID))
@@ -742,11 +745,30 @@ func (b *Bot) onDeleteCancel(c tele.Context) error {
 	return c.Edit(recordKeyboard(gameID))
 }
 
+// restoreBlockedToast answers «Вернуть» while another game is waiting for its result.
+const restoreBlockedToast = "Уже есть незавершённая игра, сначала закрой её"
+
 // onRestore un-deletes a game and rebuilds its view.
 func (b *Bot) onRestore(c tele.Context) error {
 	gameID := parseID(c.Data())
-	if err := b.st.RestoreGame(gameID); err != nil {
+	game, err := b.st.GameByID(gameID)
+	if err != nil {
+		return b.fail(c, "onRestore.game", err)
+	}
+	if game == nil {
+		return c.Respond(&tele.CallbackResponse{Text: guardGameGone})
+	}
+	restored, err := b.st.RestoreGame(gameID)
+	if err != nil {
 		return b.fail(c, "onRestore.restore", err)
+	}
+	if !restored {
+		return c.Respond(&tele.CallbackResponse{Text: restoreBlockedToast})
+	}
+	// The watcher stopped when the game was deleted: a restored pending game
+	// with a room needs a new one, or it never auto-records.
+	if game.Status == "pending" && game.UsdokuCode.String != "" && !isWatching(gameID) {
+		go b.watchGame(gameID, game.ChatID, game.UsdokuCode.String)
 	}
 	text, markup, err := b.gameView(gameID)
 	if err != nil {

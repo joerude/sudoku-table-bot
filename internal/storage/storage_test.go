@@ -155,8 +155,8 @@ func TestSoftDeleteRestore(t *testing.T) {
 	}
 
 	// ...and restore brings it back.
-	if err := st.RestoreGame(gid); err != nil {
-		t.Fatal(err)
+	if ok, err := st.RestoreGame(gid); err != nil || !ok {
+		t.Fatalf("RestoreGame: ok=%v err=%v", ok, err)
 	}
 	if after := mustStandings(t, st, chat, se.ID); after[0].Points != 3 {
 		t.Errorf("restore should bring points back, got %d", after[0].Points)
@@ -497,5 +497,27 @@ func TestHasResults(t *testing.T) {
 	st.ClearResults(gid)
 	if has, _ := st.HasResults(gid); has {
 		t.Error("cleared picker must report no results")
+	}
+}
+
+// Restoring a deleted pending game must not create a second live pending game.
+func TestRestoreGameBlockedByOtherPending(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7102)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	old, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	st.SoftDeleteGame(old)
+	cur, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+
+	if ok, err := st.RestoreGame(old); err != nil || ok {
+		t.Fatalf("restore next to a live pending game: ok=%v err=%v, want refused", ok, err)
+	}
+	if g, _ := st.GameByID(old); !g.Deleted {
+		t.Error("refused restore must leave the game deleted")
+	}
+	st.SoftDeleteGame(cur)
+	if ok, err := st.RestoreGame(old); err != nil || !ok {
+		t.Fatalf("restore with the slot free: ok=%v err=%v", ok, err)
 	}
 }
