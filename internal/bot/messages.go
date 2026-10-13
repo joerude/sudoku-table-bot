@@ -874,9 +874,12 @@ func duelChallengeText(challenger string, target storage.Player, difficulty, cod
 	return b.String()
 }
 
+// duelSentText replaces the opponent picker once the challenge went out.
+const duelSentText = "⚔️ Вызов отправлен"
+
 func duelAcceptText(target storage.Player, code string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🔥 %s принял вызов! Поехали.\n", mention(target))
+	fmt.Fprintf(&b, "🔥 Вызов принят: %s. Поехали.\n", mention(target))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s", code)
 	} else {
@@ -888,7 +891,17 @@ func duelAcceptText(target storage.Player, code string) string {
 }
 
 func duelDeclineText(target storage.Player) string {
-	return fmt.Sprintf("❌ %s отказался. Дуэль отменена.", mention(target))
+	return fmt.Sprintf("❌ Вызов отклонён: %s. Дуэль отменена.", mention(target))
+}
+
+// duelAcceptReplyText is the reply under the challenge post that pings the
+// challenger: edits do not notify, a fresh reply does.
+func duelAcceptReplyText(challenger storage.Player) string {
+	return fmt.Sprintf("🔥 Вызов принят, %s! Поехали", mention(challenger))
+}
+
+func duelDeclineReplyText(challenger storage.Player) string {
+	return fmt.Sprintf("❌ Вызов отклонён, %s", mention(challenger))
 }
 
 // inviteText is the /invite post: a ping of everyone, the room link, and the
