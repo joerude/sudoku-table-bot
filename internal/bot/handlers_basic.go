@@ -14,12 +14,18 @@ func (b *Bot) onHelp(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onHelp.ensure", err)
 	}
+	if isPrivate(c) {
+		return c.Send(helpText) // quick buttons are group-only
+	}
 	return c.Send(helpText, quickMenuKeyboard())
 }
 
 // onStart greets a chat that nobody has joined yet with the full onboarding. A
 // repeated /start gets a one-line pointer that deletes itself.
 func (b *Bot) onStart(c tele.Context) error {
+	if isPrivate(c) {
+		return c.Send(privateStartText)
+	}
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onStart.ensure", err)
 	}

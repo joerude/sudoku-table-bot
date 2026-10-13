@@ -34,7 +34,7 @@ func New(token string, pollTimeout time.Duration, st *storage.Store, dbPath stri
 		return nil, err
 	}
 	b := &Bot{tb: tb, st: st, ud: usdoku.New(), dbPath: dbPath, ownerID: ownerID}
-	tb.Use(logUpdate)
+	tb.Use(logUpdate, b.privateGate)
 	b.routes()
 	return b, nil
 }
@@ -222,8 +222,13 @@ func (b *Bot) routes() {
 	b.tb.Handle(tele.OnDocument, b.onDocument)
 }
 
-// ensure guarantees a chat row + active season exist, returning the season.
+// ensure guarantees a chat row + active season exist, returning the season. A
+// private chat has no league: nothing is created and the season is nil (the
+// private gate lets only handlers that ignore the season get that far).
 func (b *Bot) ensure(c tele.Context) (*storage.Season, error) {
+	if isPrivate(c) {
+		return nil, nil
+	}
 	chatID := c.Chat().ID
 	adminID := int64(0)
 	if u := realSender(c); u != nil {
