@@ -15,11 +15,13 @@ type StalePending struct {
 }
 
 // StalePendingGames returns pending games created more than minutes ago that
-// have not yet been reminded about.
+// have not yet been reminded about. A game with picks is being recorded by hand
+// right now (its picker lives in the card's message), so it is not stale.
 func (s *Store) StalePendingGames(minutes int) ([]StalePending, error) {
 	rows, err := s.db.Query(`
 		SELECT id, chat_id, COALESCE(usdoku_code,''), created_by, post_msg_id FROM games
 		WHERE status='pending' AND reminded=0 AND deleted=0
+		  AND NOT EXISTS (SELECT 1 FROM game_results gr WHERE gr.game_id = games.id)
 		  AND created_at <= datetime('now', ?)`, negMinutes(minutes))
 	if err != nil {
 		return nil, err
@@ -99,11 +101,12 @@ func (s *Store) ChatAdmin(chatID int64) (int64, error) {
 	return admin.Int64, nil
 }
 
-// AllChats returns settings for every known chat.
+// AllChats returns settings for every known group chat. Private chats (positive
+// ids) have no league, so the reminder ticker never walks them.
 func (s *Store) AllChats() ([]ChatSettings, error) {
 	rows, err := s.db.Query(`
 		SELECT chat_id, tz, daily_reminder, daily_time, COALESCE(last_daily,''), weekly_digest, COALESCE(last_weekly,'')
-		FROM chats`)
+		FROM chats WHERE chat_id < 0`)
 	if err != nil {
 		return nil, err
 	}

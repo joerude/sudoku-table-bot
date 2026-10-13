@@ -301,3 +301,56 @@ func TestCloseExpiredSeason_NoPanicWhenChatHasNoPlayers(t *testing.T) {
 		t.Errorf("extended deadline %s is not after the stale one %s", dl, staleDL)
 	}
 }
+
+func TestNormalizeHHMM(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"21:00", "21:00", true},
+		{"9:00", "09:00", true},
+		{" 7:05 ", "07:05", true},
+		{"24:00", "", false},
+		{"abc", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := normalizeHHMM(tc.in)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("normalizeHHMM(%q) = %q, %v; want %q, %v", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// A daily time saved unpadded ("9:00") must not be compared as a string
+// against the clock: "9:00" > "21:00" would hold the nudge back until 21:00.
+func TestDailyDue(t *testing.T) {
+	cases := []struct {
+		now, daily string
+		want       bool
+	}{
+		{"08:59", "9:00", false},
+		{"09:00", "9:00", true},
+		{"10:30", "9:00", true},
+		{"20:59", "21:00", false},
+		{"21:00", "21:00", true},
+		{"20:00", "garbage", false}, // unreadable: default 21:00
+		{"21:30", "garbage", true},
+	}
+	for _, tc := range cases {
+		if got := dailyDue(tc.now, tc.daily); got != tc.want {
+			t.Errorf("dailyDue(%q, %q) = %v, want %v", tc.now, tc.daily, got, tc.want)
+		}
+	}
+}
+
+// One panicking step must not take the ticker down.
+func TestRunStepSurvivesPanic(t *testing.T) {
+	ran := false
+	runStep("boom", func() { panic("boom") })
+	runStep("after", func() { ran = true })
+	if !ran {
+		t.Error("the step after a panic must still run")
+	}
+}

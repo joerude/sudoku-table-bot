@@ -250,9 +250,11 @@ func (s *Store) FinalizeGame(gameID int64, table []int) error {
 	return tx.Commit()
 }
 
-// ReopenGame moves a completed game back to pending and clears its picks.
-// Returns ErrGameNotCompleted (changing nothing) if the game is not completed
-// or is soft-deleted, so a repeated or stale "edit" cannot wipe a game that is
+// ReopenGame moves a completed game back to pending and clears its picks. The
+// game is marked reminded: the creator is editing it right now, so the stale
+// nudge must not rewrite the picker they are using. Returns
+// ErrGameNotCompleted (changing nothing) if the game is not completed or is
+// soft-deleted, so a repeated or stale "edit" cannot wipe a game that is
 // already being re-recorded.
 func (s *Store) ReopenGame(gameID int64) error {
 	tx, err := s.db.Begin()
@@ -261,7 +263,7 @@ func (s *Store) ReopenGame(gameID int64) error {
 	}
 	defer tx.Rollback()
 	res, err := tx.Exec(
-		`UPDATE games SET status='pending', completed_at=NULL
+		`UPDATE games SET status='pending', completed_at=NULL, reminded=1
 		 WHERE id=? AND status='completed' AND deleted=0`, gameID)
 	if err != nil {
 		return err

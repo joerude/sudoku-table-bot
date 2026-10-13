@@ -72,3 +72,48 @@ func TestStalePendingGamesCarriesCardAndRoom(t *testing.T) {
 		t.Errorf("stale game lost its context: %+v", sp)
 	}
 }
+
+// A reopened game is marked reminded (its creator is editing it), and a game
+// with picks is mid-recording: neither gets the stale nudge.
+func TestStalePendingGamesSkipsReopenedAndPicked(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7003)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+
+	reopened := makeNormalGame(t, st, chat, se.ID, a.ID, b.ID)
+	if err := st.ReopenGame(reopened); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(`UPDATE games SET created_at = datetime('now', '-2 hours')`); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.StalePendingGames(45); err != nil || len(got) != 0 {
+		t.Fatalf("reopened game must not be nudged: %+v err=%v", got, err)
+	}
+
+	picked, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	st.AddPick(picked, a.ID)
+	if _, err := st.db.Exec(`UPDATE games SET created_at = datetime('now', '-2 hours'), reminded=0 WHERE id=?`, picked); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.StalePendingGames(45); len(got) != 0 {
+		t.Fatalf("game with picks must not be nudged: %+v", got)
+	}
+}
+
+// Private chats (positive ids) have no league: the ticker must not walk them.
+func TestAllChatsSkipsPrivate(t *testing.T) {
+	st := openTemp(t)
+	st.EnsureChat(-7004, 1)
+	st.EnsureChat(555, 555)
+	got, err := st.AllChats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ChatID != -7004 {
+		t.Fatalf("AllChats = %+v, want only the group", got)
+	}
+}

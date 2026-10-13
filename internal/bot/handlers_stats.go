@@ -323,7 +323,8 @@ func (b *Bot) onSettings(c tele.Context) error {
 			}
 			return b.quiet(c, "🔕 Ежедневные напоминания выключены.")
 		}
-		if _, err := time.Parse("15:04", val); err != nil {
+		val, ok := normalizeHHMM(val)
+		if !ok {
 			return b.ephemeral(c, "Формат времени HH:MM, например: /settings daily 21:00")
 		}
 		if err := b.st.SetDailyReminder(chatID, true, val); err != nil {
