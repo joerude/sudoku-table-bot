@@ -16,7 +16,7 @@ type StalePending struct {
 func (s *Store) StalePendingGames(minutes int) ([]StalePending, error) {
 	rows, err := s.db.Query(`
 		SELECT id, chat_id FROM games
-		WHERE status='pending' AND reminded=0
+		WHERE status='pending' AND reminded=0 AND deleted=0
 		  AND created_at <= datetime('now', ?)`, negMinutes(minutes))
 	if err != nil {
 		return nil, err
