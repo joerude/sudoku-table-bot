@@ -4,6 +4,8 @@ FROM golang:1.25-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
+# go.mod replaces telebot with the patched copy in third_party (see its PATCHES.md).
+COPY third_party ./third_party
 RUN go mod download
 
 COPY . .

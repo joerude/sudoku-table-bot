@@ -3,6 +3,7 @@ package bot
 
 import (
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ type Bot struct {
 	dbPath string
 	// ownerID is the Telegram id allowed to /backup and /restore anywhere (0 = unset).
 	ownerID int64
+	// botAdmins caches whether the bot is an admin per chat (ephemeral replies).
+	botAdmins botAdminCache
 }
 
 // New constructs a Bot using long-polling.
@@ -102,11 +105,23 @@ type commandMenu struct {
 // bot lives in the group). Telegram picks the narrowest matching scope.
 func commandMenus() []commandMenu {
 	return []commandMenu{
-		{tele.CommandScope{Type: tele.CommandScopeDefault}, groupCommands()},
-		{tele.CommandScope{Type: tele.CommandScopeAllPrivateChats}, privateCommands()},
-		{tele.CommandScope{Type: tele.CommandScopeAllGroupChats}, groupCommands()},
-		{tele.CommandScope{Type: tele.CommandScopeAllChatAdmin}, adminCommands()},
+		{tele.CommandScope{Type: tele.CommandScopeDefault}, markEphemeral(groupCommands())},
+		{tele.CommandScope{Type: tele.CommandScopeAllPrivateChats}, markEphemeral(privateCommands())},
+		{tele.CommandScope{Type: tele.CommandScopeAllGroupChats}, markEphemeral(groupCommands())},
+		{tele.CommandScope{Type: tele.CommandScopeAllChatAdmin}, markEphemeral(adminCommands())},
 	}
+}
+
+// ephemeralCommands are sent invisibly to the rest of the chat (is_ephemeral in
+// the menu). Their handlers see EphemeralMessageID and answer the sender alone.
+var ephemeralCommands = []string{"help", "learn", "setnick", "me"}
+
+// markEphemeral sets IsEphemeral on the menu entries listed in ephemeralCommands.
+func markEphemeral(cmds []tele.Command) []tele.Command {
+	for i := range cmds {
+		cmds[i].IsEphemeral = slices.Contains(ephemeralCommands, cmds[i].Text)
+	}
+	return cmds
 }
 
 // groupCommands is the menu every group member sees. /players, /join and the
@@ -115,6 +130,7 @@ func groupCommands() []tele.Command {
 	return []tele.Command{
 		{Text: "play", Description: "новая игра, дуэль или позвать всех"},
 		{Text: "stats", Description: "таблица, моё, скорость, дуэли, история"},
+		{Text: "me", Description: "моя статистика (видна только мне)"},
 		{Text: "rating", Description: "рейтинг игроков"},
 		{Text: "setnick", Description: "ник на usdoku (регистрирует и включает авто-учёт)"},
 		{Text: "learn", Description: "справочник техник решения"},
@@ -249,27 +265,6 @@ func realSender(c tele.Context) *tele.User {
 		return nil
 	}
 	return u
-}
-
-// ephemeralTTL is how long a self-deleting service message lives.
-const ephemeralTTL = 20 * time.Second
-
-// ephemeral sends a transient service message (error / guard / validation) that
-// deletes itself after ephemeralTTL, along with the user command that triggered
-// it. Deleting the user's message needs the bot to be a group admin and is
-// silently skipped otherwise. Use for noise only — never for results, stats,
-// confirmations, or messages with action buttons.
-func (b *Bot) ephemeral(c tele.Context, text string, opts ...interface{}) error {
-	msg, err := b.tb.Send(c.Recipient(), text, opts...)
-	if err != nil {
-		return err
-	}
-	var userCmd *tele.Message
-	if c.Callback() == nil { // c.Message() is the user's command, not a bot msg
-		userCmd = c.Message()
-	}
-	b.scheduleDelete(ephemeralTTL, msg, userCmd)
-	return nil
 }
 
 // scheduleDelete removes the given messages after d (best-effort; survives only

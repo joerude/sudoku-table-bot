@@ -18,7 +18,7 @@ func commandTexts(cmds []tele.Command) []string {
 }
 
 func TestGroupMenu(t *testing.T) {
-	want := []string{"play", "stats", "rating", "setnick", "learn", "help"}
+	want := []string{"play", "stats", "me", "rating", "setnick", "learn", "help"}
 	if got := commandTexts(groupCommands()); !reflect.DeepEqual(got, want) {
 		t.Errorf("group menu = %v, want %v", got, want)
 	}
@@ -73,5 +73,28 @@ func TestMenuCommandsAreValid(t *testing.T) {
 				t.Errorf("%s: /%s is not a routed command", m.scope.Type, c.Text)
 			}
 		}
+	}
+}
+
+func TestEphemeralCommandsMarkedInEveryScope(t *testing.T) {
+	for _, m := range commandMenus() {
+		for _, c := range m.cmds {
+			if want := slices.Contains(ephemeralCommands, c.Text); c.IsEphemeral != want {
+				t.Errorf("%s: /%s is_ephemeral = %v, want %v", m.scope.Type, c.Text, c.IsEphemeral, want)
+			}
+		}
+	}
+	for _, name := range ephemeralCommands {
+		if !slices.Contains(commandTexts(groupCommands()), name) {
+			t.Errorf("/%s is ephemeral but not in the group menu", name)
+		}
+	}
+}
+
+func TestCommandMarshalsIsEphemeral(t *testing.T) {
+	got := mustJSON(t, markEphemeral([]tele.Command{{Text: "help", Description: "справка"}, {Text: "play", Description: "игра"}}))
+	want := `[{"command":"help","description":"справка","is_ephemeral":true},{"command":"play","description":"игра"}]`
+	if got != want {
+		t.Errorf("commands JSON = %s, want %s", got, want)
 	}
 }

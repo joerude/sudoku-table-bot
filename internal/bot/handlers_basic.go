@@ -14,6 +14,9 @@ func (b *Bot) onHelp(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onHelp.ensure", err)
 	}
+	if b.privately(c, helpText, nil) { // an ephemeral /help: no quick buttons, they post publicly
+		return nil
+	}
 	if isPrivate(c) {
 		return c.Send(helpText, tele.NoPreview) // quick buttons are group-only
 	}
@@ -144,6 +147,9 @@ func (b *Bot) onSetNick(c tele.Context) error {
 			return b.ephemeral(c, nickTakenText(taken.Nick, taken.Holder))
 		}
 		return b.fail(c, "onSetNick.set", err)
+	}
+	if b.privately(c, setNickDoneText(nick, created), nil) {
+		return nil
 	}
 	return b.quiet(c, setNickDoneText(nick, created))
 }

@@ -61,11 +61,31 @@ const (
 	cbLearnRand = "lrand" // no payload — random technique
 )
 
+// Button colors (Bot API style). Clients that do not know them show a plain button.
+const (
+	styleSuccess = "success" // green: the main positive action
+	styleDanger  = "danger"  // red: delete, decline, withdraw
+	stylePrimary = "primary" // blue: play again
+)
+
+// styled returns btn colored with style.
+func styled(btn tele.Btn, style string) tele.Btn {
+	btn.Style = style
+	return btn
+}
+
+// disabled returns btn as an inactive button: it stays visible but cannot be
+// pressed. Older clients still send its callback, so its handler must cope.
+func disabled(btn tele.Btn) tele.Btn {
+	btn.Disabled = &struct{}{}
+	return btn
+}
+
 // quickMenuKeyboard offers one-tap shortcuts for the most common actions.
 func quickMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
-		m.Data("🎮 Играть", cbQGame),
+		styled(m.Data("🎮 Играть", cbQGame), styleSuccess),
 		m.Data("📊 Таблица", cbQStatus),
 		m.Data("❓ Помощь", cbQHelp),
 	))
@@ -112,7 +132,7 @@ func resultKeyboard(gameID int64, extra ...tele.Btn) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	rows := []tele.Row{m.Row(
 		m.Data("✏️ Исправить", cbEdit, gid(gameID)),
-		m.Data("🗑 Удалить", cbDel, gid(gameID)),
+		styled(m.Data("🗑 Удалить", cbDel, gid(gameID)), styleDanger),
 	)}
 	if len(extra) > 0 {
 		rows = append(rows, m.Row(extra...))
@@ -124,7 +144,7 @@ func resultKeyboard(gameID int64, extra ...tele.Btn) *tele.ReplyMarkup {
 // againButton is «Ещё одну» on a regular game's result: same difficulty and mode.
 func againButton(gameID int64) tele.Btn {
 	m := &tele.ReplyMarkup{}
-	return m.Data("🔁 Ещё одну", cbAgain, gid(gameID))
+	return styled(m.Data("🔁 Ещё одну", cbAgain, gid(gameID)), stylePrimary)
 }
 
 // confirmDeleteKeyboard asks the user to confirm deletion. origin (may be
@@ -133,7 +153,7 @@ func confirmDeleteKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	payload := delPayload(gameID, origin)
 	m.Inline(m.Row(
-		m.Data("✅ Да, удалить", cbDelY, payload),
+		styled(m.Data("✅ Да, удалить", cbDelY, payload), styleDanger),
 		m.Data("↩️ Отмена", cbDelN, payload),
 	))
 	return m
@@ -155,10 +175,15 @@ func restoreKeyboard(gameID int64) *tele.ReplyMarkup {
 	return m
 }
 
+// recordButton is the green «Записать результат» button of a pending game.
+func recordButton(m *tele.ReplyMarkup, gameID int64) tele.Btn {
+	return styled(m.Data("📝 Записать результат", cbRec, gid(gameID)), styleSuccess)
+}
+
 // recordKeyboard offers a single "record result" button for a pending game.
 func recordKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID))))
+	m.Inline(m.Row(recordButton(m, gameID)))
 	return m
 }
 
@@ -172,10 +197,10 @@ func liveKeyboard(gameID int64, kind string, hasFinishers bool, rsvp int) *tele.
 		rows = append(rows, m.Row(m.Data(fmt.Sprintf("✅ Я в деле (%d)", rsvp), cbJoinIn, gid(gameID))))
 	}
 	if hasFinishers {
-		rows = append(rows, m.Row(m.Data("🏁 Записать сейчас", cbRecNow, gid(gameID))))
+		rows = append(rows, m.Row(styled(m.Data("🏁 Записать сейчас", cbRecNow, gid(gameID)), styleSuccess)))
 	}
 	if kind != cardKindInvite || hasFinishers {
-		rows = append(rows, m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID))))
+		rows = append(rows, m.Row(recordButton(m, gameID)))
 	}
 	m.Inline(rows...)
 	return m
@@ -187,7 +212,7 @@ func liveKeyboard(gameID int64, kind string, hasFinishers bool, rsvp int) *tele.
 // the text body for manual /setnick instead).
 func recordAndClaimKeyboard(gameID int64, unknown []string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	rows := []tele.Row{m.Row(m.Data("📝 Записать результат", cbRec, gid(gameID)))}
+	rows := []tele.Row{m.Row(recordButton(m, gameID))}
 	for _, n := range unknown {
 		data := fmt.Sprintf("%d:%s", gameID, n)
 		if len(data) > 64 {
@@ -206,7 +231,7 @@ func notCountedKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
 		m.Data("📝 Всё равно записать", cbRec, gid(gameID)),
-		m.Data("🗑 Отменить", cbDel, gid(gameID)),
+		styled(m.Data("🗑 Отменить", cbDel, gid(gameID)), styleDanger),
 	))
 	return m
 }
@@ -239,11 +264,21 @@ func duelKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(
 		m.Row(
-			m.Data("✅ Принять", cbAccept, gid(gameID)),
-			m.Data("❌ Отказ", cbDecline, gid(gameID)),
+			styled(m.Data("✅ Принять", cbAccept, gid(gameID)), styleSuccess),
+			styled(m.Data("❌ Отказ", cbDecline, gid(gameID)), styleDanger),
 		),
-		m.Row(m.Data("🗑 Отозвать", cbRevoke, gid(gameID))),
+		m.Row(styled(m.Data("🗑 Отозвать", cbRevoke, gid(gameID)), styleDanger)),
 	)
+	return m
+}
+
+// closedDuelKeyboard replaces the challenge buttons once the challenge is over
+// (label says why: expired or revoked) with one inactive button. A tap from a
+// client that ignores "disabled" reaches onAccept, which toasts that the
+// challenge is closed.
+func closedDuelKeyboard(gameID int64, label string) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	m.Inline(m.Row(disabled(m.Data(label, cbAccept, gid(gameID)))))
 	return m
 }
 
@@ -251,7 +286,7 @@ func duelKeyboard(gameID int64) *tele.ReplyMarkup {
 // b (internal player ids). Either duelist may press it; the other becomes the target.
 func rematchButton(difficulty string, aID, bID int64) tele.Btn {
 	m := &tele.ReplyMarkup{}
-	return m.Data("🔁 Реванш", cbRematch, fmt.Sprintf("%s:%d:%d", difficulty, aID, bID))
+	return styled(m.Data("🔁 Реванш", cbRematch, fmt.Sprintf("%s:%d:%d", difficulty, aID, bID)), stylePrimary)
 }
 
 // parseRematch splits a cbRematch payload "<difficulty>:<playerAID>:<playerBID>".
@@ -292,8 +327,8 @@ func inviteKeyboard(gameID int64, count int) *tele.ReplyMarkup {
 func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
-		m.Data("📝 Записать результат", cbRec, gid(gameID)),
-		m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)),
+		recordButton(m, gameID),
+		styled(m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)), styleDanger),
 	))
 	return m
 }
@@ -320,7 +355,7 @@ const recentSeasonButtons = 4
 func playMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(
-		m.Row(m.Data("🆕 Обычная игра", cbPlayGame)),
+		m.Row(styled(m.Data("🆕 Обычная игра", cbPlayGame), styleSuccess)),
 		m.Row(
 			m.Data("⚔️ Дуэль", cbPlayDuel),
 			m.Data("📣 Позвать всех", cbPlayInvite),
@@ -389,7 +424,8 @@ func learnTechKeyboard(t domain.Technique) *tele.ReplyMarkup {
 	return m
 }
 
-// statsKeyboard renders the dashboard tab row; the active tab gets a "•" marker.
+// statsKeyboard renders the dashboard tab row; the active tab gets a "•" marker
+// and is disabled (re-tapping it would change nothing).
 // The speed tab carries an extra toggle row: current season <-> all seasons
 // (active "speed_all" highlights the speed tab). The table tab carries a season
 // row when the chat has archived seasons (seasonNumber = the active season).
@@ -401,11 +437,11 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 	}
 	var btns []tele.Btn
 	for _, t := range statsTabs {
-		label := t.label
+		btn := m.Data(t.label, cbStatsTab, t.id)
 		if t.id == tabActive {
-			label = "• " + label
+			btn = disabled(m.Data("• "+t.label, cbStatsTab, t.id))
 		}
-		btns = append(btns, m.Data(label, cbStatsTab, t.id))
+		btns = append(btns, btn)
 	}
 	var rows []tele.Row
 	for i := 0; i < len(btns); i += statsTabsPerRow {
