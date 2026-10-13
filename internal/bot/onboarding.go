@@ -46,3 +46,14 @@ func setNickDoneText(nick string, created bool) string {
 	fmt.Fprintf(&sb, "✅ usdoku-ник: <b>%s</b> сохранён.\n<i>%s</i>", esc(nick), setNickMatches)
 	return sb.String()
 }
+
+const repeatStartText = "Я уже в чате. Играть: /play, таблица: /stats, все команды: /help"
+
+// startText is the reply to /start: the full welcome while nobody has registered
+// in the chat yet, a one-line pointer afterwards.
+func startText(players int) string {
+	if players == 0 {
+		return welcomeText
+	}
+	return repeatStartText
+}

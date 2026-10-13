@@ -26,6 +26,63 @@ func TestJoinName(t *testing.T) {
 	}
 }
 
+func TestWelcomeTextTeachesPlayFlow(t *testing.T) {
+	for _, want := range []string{"/setnick", "/play", "/help", "удалять сообщения"} {
+		if !strings.Contains(welcomeText, want) {
+			t.Errorf("welcomeText missing %q", want)
+		}
+	}
+	if strings.Contains(welcomeText, "/newgame") || strings.Contains(welcomeText, "/join") {
+		t.Errorf("welcomeText must teach /setnick + /play, not /join or /newgame")
+	}
+}
+
+func TestHelpTextCoversMenuCommands(t *testing.T) {
+	all := botCommands()
+	for _, c := range all {
+		if c.Text != "help" && !strings.Contains(helpText, "/"+c.Text) {
+			t.Errorf("helpText missing menu command /%s", c.Text)
+		}
+	}
+	for _, want := range []string{"/players", "/backup", "/learn", "/rating"} {
+		if !strings.Contains(helpText, want) {
+			t.Errorf("helpText missing %q", want)
+		}
+	}
+}
+
+func TestQuickMenuKeyboard(t *testing.T) {
+	row := quickMenuKeyboard().InlineKeyboard[0]
+	want := []struct{ text, unique string }{
+		{"🎮 Играть", cbQGame},
+		{"📊 Таблица", cbQStatus},
+		{"❓ Помощь", cbQHelp},
+	}
+	if len(row) != len(want) {
+		t.Fatalf("want %d buttons, got %d", len(want), len(row))
+	}
+	for i, w := range want {
+		if row[i].Text != w.text || row[i].Unique != w.unique {
+			t.Errorf("button %d = (%q, %q), want (%q, %q)", i, row[i].Text, row[i].Unique, w.text, w.unique)
+		}
+	}
+}
+
+func TestStartText(t *testing.T) {
+	if got := startText(0); got != welcomeText {
+		t.Errorf("first /start in an empty chat must show the welcome")
+	}
+	short := startText(3)
+	if short == welcomeText || len(short) >= len(welcomeText) {
+		t.Errorf("repeat /start must be a short pointer, got %q", short)
+	}
+	for _, want := range []string{"/play", "/stats", "/help"} {
+		if !strings.Contains(short, want) {
+			t.Errorf("repeat /start missing %q", want)
+		}
+	}
+}
+
 func TestNickTakenText(t *testing.T) {
 	got := nickTakenText("Ace", "A<b>")
 	if !strings.Contains(got, "Ace") || !strings.Contains(got, "уже у") {
