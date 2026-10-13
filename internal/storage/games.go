@@ -11,6 +11,10 @@ import (
 // completed one (already reopened, or soft-deleted), so nothing was changed.
 var ErrGameNotCompleted = errors.New("game is not completed")
 
+// ErrGameNotPending is returned by FinalizeGame when the game is already
+// completed (or soft-deleted): someone else closed it first, nothing was changed.
+var ErrGameNotPending = errors.New("game is not pending")
+
 // Game is one recorded (or in-progress) sudoku round.
 type Game struct {
 	ID         int64
@@ -170,13 +174,28 @@ func (s *Store) ClearResults(gameID int64) error {
 	return err
 }
 
-// FinalizeGame assigns points by rank from the table and marks the game completed.
+// FinalizeGame assigns points by rank from the table and marks the game
+// completed. The status flip comes first and is conditional on 'pending', so of
+// two concurrent finalizes (double tap, or manual vs auto-record) exactly one
+// wins; the other gets ErrGameNotPending and changes nothing.
 func (s *Store) FinalizeGame(gameID int64, table []int) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
+	res, err := tx.Exec(
+		`UPDATE games SET status='completed', completed_at=datetime('now')
+		 WHERE id=? AND status='pending' AND deleted=0`, gameID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrGameNotPending
+	}
 
 	rows, err := tx.Query(`SELECT id, rank FROM game_results WHERE game_id=?`, gameID)
 	if err != nil {
@@ -202,11 +221,6 @@ func (s *Store) FinalizeGame(gameID int64, table []int) error {
 		if _, err := tx.Exec(`UPDATE game_results SET points=? WHERE id=?`, pts, r.id); err != nil {
 			return err
 		}
-	}
-	if _, err := tx.Exec(
-		`UPDATE games SET status='completed', completed_at=datetime('now') WHERE id=?`,
-		gameID); err != nil {
-		return err
 	}
 	return tx.Commit()
 }

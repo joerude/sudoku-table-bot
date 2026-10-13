@@ -191,3 +191,36 @@ func TestReopenGameSkipsPendingAndDeleted(t *testing.T) {
 		t.Errorf("deleted game status changed to %s", g.Status)
 	}
 }
+
+func TestFinalizeGameTwiceReturnsSentinel(t *testing.T) {
+	st, se, a, b, gid := integrityFixture(t)
+	st.AddPick(gid, a.ID)
+	st.AddPick(gid, b.ID)
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatalf("first finalize: %v", err)
+	}
+	before := pointsOf(t, st, gid)
+
+	// A different table on the second call would change points if it ran.
+	err := st.FinalizeGame(gid, []int{99, 98})
+	if !errors.Is(err, ErrGameNotPending) {
+		t.Fatalf("second finalize: want ErrGameNotPending, got %v", err)
+	}
+	after := pointsOf(t, st, gid)
+	for name, p := range before {
+		if after[name] != p {
+			t.Errorf("%s points changed %d -> %d", name, p, after[name])
+		}
+	}
+}
+
+func TestFinalizeGameDeletedIsNotPending(t *testing.T) {
+	st, se, a, _, gid := integrityFixture(t)
+	st.AddPick(gid, a.ID)
+	if err := st.SoftDeleteGame(gid); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinalizeGame(gid, se.PointsTable); !errors.Is(err, ErrGameNotPending) {
+		t.Fatalf("want ErrGameNotPending for deleted game, got %v", err)
+	}
+}
