@@ -40,8 +40,8 @@ func (b *Bot) badgeState(chatID, playerID int64, tz string) (in domain.BadgeInpu
 	}
 	in = domain.BadgeInput{
 		Wins: wins, Games: games, BestSecs: best,
-		WinStreak:  domain.WinStreak(ranks),
-		DayStreak:  domain.DayStreak(dates, today),
+		WinStreak:  domain.LongestWinRun(ranks), // best of the career: badges are earned once
+		DayStreak:  domain.LongestDayStreak(dates),
 		SeasonsWon: seasonsWon,
 	}
 	return
@@ -112,13 +112,13 @@ func (b *Bot) celebrations(game *storage.Game, rows []storage.ResultRow) []strin
 			before.BestSecs = bestB
 		}
 		if len(ranks) > 0 {
-			before.WinStreak = domain.WinStreak(ranks[1:])
+			before.WinStreak = domain.LongestWinRun(ranks[1:])
 		}
-		before.DayStreak = domain.DayStreak(removeOneToday(dates, today), today)
+		before.DayStreak = domain.LongestDayStreak(removeOneToday(dates, today))
 
 		earned := newBadges(domain.Badges(before), domain.Badges(after))
-		if r.Rank == 1 && after.WinStreak >= 3 && !containsBadge(earned, "🔥") {
-			lines = append(lines, winStreakLine(r.Name, after.WinStreak))
+		if cur := domain.WinStreak(ranks); r.Rank == 1 && cur >= 3 && !containsBadge(earned, "🔥") {
+			lines = append(lines, winStreakLine(r.Name, cur))
 		}
 		if len(earned) > 0 {
 			lines = append(lines, badgeLine(r.Name, earned))
