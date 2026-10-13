@@ -99,8 +99,14 @@ func editDistance(a, b string) int {
 
 const mentionCmdHint = "Команды пиши с «/» в начале и без упоминания, например /start или /help."
 
+// restoreHintText answers a plain-text /restore: it works only as a caption.
+const restoreHintText = "/restore работает только с файлом: пришли файл бэкапа с подписью /restore."
+
 // unknownCommandText is the reply to a mistyped command.
 func unknownCommandText(typed, suggestion string) string {
+	if strings.EqualFold(typed, "restore") { // not a route: onDocument reads the caption
+		return restoreHintText
+	}
 	if r := []rune(typed); len(r) > 32 {
 		typed = string(r[:32])
 	}
