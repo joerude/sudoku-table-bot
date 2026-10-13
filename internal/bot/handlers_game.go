@@ -66,14 +66,6 @@ func (b *Bot) onNewGame(c tele.Context) error {
 	return b.startNewGame(c, difficulty, mode)
 }
 
-// onQuickGame starts a default medium/hardcore game from the quick menu.
-func (b *Bot) onQuickGame(c tele.Context) error {
-	// The quick menu rides on the help message, which must survive: new card.
-	err := b.startNewGameAt(c, "medium", "hardcore", placeNew)
-	_ = c.Respond() // after, so a «уже создаю» toast from the lock can still show
-	return err
-}
-
 // gameRoom is a freshly created pending game; code is empty when usdoku room
 // creation failed (manual fallback: players use /result). msg is the chat
 // message that currently shows «Создаю комнату…» and becomes the game's card;
@@ -250,7 +242,7 @@ func (b *Bot) onAgain(c tele.Context) error {
 		return b.fail(c, "onAgain.game", err)
 	}
 	if game == nil {
-		return c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+		return c.Respond(&tele.CallbackResponse{Text: guardGameGone})
 	}
 	difficulty, mode := repeatParams(game.Difficulty.String, game.Mode.String)
 	err = b.startNewGameAt(c, difficulty, mode, placeNew)
@@ -636,7 +628,7 @@ func (b *Bot) onDeleteAsk(c tele.Context) error {
 		return b.fail(c, "onDeleteAsk.game", err)
 	}
 	if game == nil {
-		return c.Respond(&tele.CallbackResponse{Text: "Игра не найдена"})
+		return c.Respond(&tele.CallbackResponse{Text: guardGameGone})
 	}
 	_ = c.Respond()
 	return c.Edit(confirmDeleteKeyboard(gameID, origin))
@@ -694,7 +686,7 @@ func (b *Bot) resumeAfterDelete(c tele.Context, origin string) error {
 			return b.fail(c, "resumeAfterDelete.caller", err)
 		}
 		if caller == nil {
-			_ = c.Respond(&tele.CallbackResponse{Text: "Сначала /join"})
+			_ = c.Respond(&tele.CallbackResponse{Text: guardJoinFirst})
 			return c.Edit(deletedNote)
 		}
 		others, err := b.opponents(c.Chat().ID, caller.ID)

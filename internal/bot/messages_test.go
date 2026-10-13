@@ -679,12 +679,15 @@ func TestNamesMissingNick(t *testing.T) {
 	}
 }
 
-func TestClaimNickKeyboardSkipsOverlongNicks(t *testing.T) {
+func TestRecordAndClaimKeyboardSkipsOverlongNicks(t *testing.T) {
 	long := strings.Repeat("я", 40) // ~80 bytes → payload exceeds 64
-	m := claimNickKeyboard(42, []string{"joe", long})
+	m := recordAndClaimKeyboard(42, []string{"joe", long})
 	var data []string
 	for _, row := range m.InlineKeyboard {
 		for _, btn := range row {
+			if btn.Unique != cbClaimNick {
+				continue // the «Записать результат» button
+			}
 			if len(btn.Data) > 64 {
 				t.Errorf("callback_data exceeds 64 bytes: %d", len(btn.Data))
 			}
@@ -757,13 +760,13 @@ func TestSpeedTextAllSeasons(t *testing.T) {
 	}
 }
 
-func TestClaimNickKeyboardOneButtonPerNick(t *testing.T) {
-	m := claimNickKeyboard(42, []string{"joe", "max"})
+func TestRecordAndClaimKeyboardOneClaimPerNick(t *testing.T) {
+	m := recordAndClaimKeyboard(42, []string{"joe", "max"})
 	var data []string
 	for _, row := range m.InlineKeyboard {
 		for _, btn := range row {
 			if btn.Unique != cbClaimNick {
-				t.Errorf("unexpected unique %q", btn.Unique)
+				continue // the «Записать результат» button
 			}
 			data = append(data, btn.Data)
 		}

@@ -41,34 +41,10 @@ func addDays(date string, n int) string {
 	return t.AddDate(0, 0, n).Format("2006-01-02")
 }
 
-// DayStreak counts consecutive calendar days with at least one play, anchored
-// at the most recent played day, but only if that day is today or yesterday
-// (otherwise the streak is considered broken and returns 0). dates may contain
-// duplicates and any order; today is YYYY-MM-DD in the chat's timezone.
-func DayStreak(dates []string, today string) int {
-	set := make(map[string]bool, len(dates))
-	for _, d := range dates {
-		set[d] = true
-	}
-	cur := today
-	if !set[cur] {
-		cur = addDays(today, -1)
-		if !set[cur] {
-			return 0
-		}
-	}
-	n := 0
-	for set[cur] {
-		n++
-		cur = addDays(cur, -1)
-	}
-	return n
-}
-
 // LongestDayStreak returns the longest run of consecutive calendar days with at
 // least one play, over the whole history. dates may contain duplicates and any
-// order (YYYY-MM-DD). Unlike DayStreak it does not decay, so a badge built on
-// it is earned once and kept.
+// order (YYYY-MM-DD). It does not decay, so a badge built on it is earned once
+// and kept.
 func LongestDayStreak(dates []string) int {
 	uniq := make(map[string]bool, len(dates))
 	for _, d := range dates {
