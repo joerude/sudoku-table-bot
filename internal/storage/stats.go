@@ -493,7 +493,7 @@ func (s *Store) GamesSince(chatID int64, sinceUTC string) (int, error) {
 func (s *Store) FastestSince(chatID int64, sinceUTC string) (*RecordRow, error) {
 	var r RecordRow
 	err := s.db.QueryRow(`
-		SELECT g.difficulty, gr.duration_secs, p.name
+		SELECT COALESCE(g.difficulty,''), gr.duration_secs, p.name
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		JOIN players p ON p.id = gr.player_id
