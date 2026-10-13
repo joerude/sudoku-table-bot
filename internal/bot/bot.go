@@ -21,6 +21,8 @@ type Bot struct {
 	dbPath string
 	// ownerID is the Telegram id allowed to /backup and /restore anywhere (0 = unset).
 	ownerID int64
+	// botAdmins caches whether the bot is an admin per chat (ephemeral replies).
+	botAdmins botAdminCache
 }
 
 // New constructs a Bot using long-polling.
@@ -249,27 +251,6 @@ func realSender(c tele.Context) *tele.User {
 		return nil
 	}
 	return u
-}
-
-// ephemeralTTL is how long a self-deleting service message lives.
-const ephemeralTTL = 20 * time.Second
-
-// ephemeral sends a transient service message (error / guard / validation) that
-// deletes itself after ephemeralTTL, along with the user command that triggered
-// it. Deleting the user's message needs the bot to be a group admin and is
-// silently skipped otherwise. Use for noise only — never for results, stats,
-// confirmations, or messages with action buttons.
-func (b *Bot) ephemeral(c tele.Context, text string, opts ...interface{}) error {
-	msg, err := b.tb.Send(c.Recipient(), text, opts...)
-	if err != nil {
-		return err
-	}
-	var userCmd *tele.Message
-	if c.Callback() == nil { // c.Message() is the user's command, not a bot msg
-		userCmd = c.Message()
-	}
-	b.scheduleDelete(ephemeralTTL, msg, userCmd)
-	return nil
 }
 
 // scheduleDelete removes the given messages after d (best-effort; survives only
