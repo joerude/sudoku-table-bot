@@ -32,7 +32,8 @@ const (
 	// Quick-action menu (no payload).
 	cbQGame   = "qgame"
 	cbQStatus = "qstatus"
-	cbQMe     = "qme"
+	cbQMe     = "qme" // legacy: old welcome messages still carry it
+	cbQHelp   = "qhelp"
 
 	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>:<ownerTgID>"
 	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>", dismiss the opponent picker
@@ -64,9 +65,9 @@ const (
 func quickMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
-		m.Data("🆕 Игра", cbQGame),
+		m.Data("🎮 Играть", cbQGame),
 		m.Data("📊 Таблица", cbQStatus),
-		m.Data("👤 Я", cbQMe),
+		m.Data("❓ Помощь", cbQHelp),
 	))
 	return m
 }

@@ -17,6 +17,22 @@ func (b *Bot) onHelp(c tele.Context) error {
 	return c.Send(helpText, quickMenuKeyboard())
 }
 
+// onStart greets a chat that nobody has joined yet with the full onboarding. A
+// repeated /start gets a one-line pointer that deletes itself.
+func (b *Bot) onStart(c tele.Context) error {
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onStart.ensure", err)
+	}
+	players, err := b.st.ListPlayers(c.Chat().ID)
+	if err != nil {
+		return b.fail(c, "onStart.players", err)
+	}
+	if len(players) == 0 {
+		return c.Send(welcomeText, quickMenuKeyboard())
+	}
+	return b.ephemeral(c, startText(len(players)))
+}
+
 // onAddedToGroup greets the chat with onboarding when the bot is added.
 func (b *Bot) onAddedToGroup(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
@@ -49,6 +65,17 @@ func (b *Bot) onText(c tele.Context) error {
 func (b *Bot) onQuickStatus(c tele.Context) error {
 	_ = c.Respond()
 	return b.onStatus(c)
+}
+
+// onQuickPlay opens the same hub as /play.
+func (b *Bot) onQuickPlay(c tele.Context) error {
+	_ = c.Respond()
+	return b.onPlay(c)
+}
+
+func (b *Bot) onQuickHelp(c tele.Context) error {
+	_ = c.Respond()
+	return c.Send(helpText)
 }
 
 func (b *Bot) onQuickMe(c tele.Context) error {

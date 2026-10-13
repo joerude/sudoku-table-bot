@@ -111,7 +111,7 @@ var knownCommands = []string{
 }
 
 func (b *Bot) routes() {
-	b.tb.Handle("/start", b.onHelp)
+	b.tb.Handle("/start", b.onStart)
 	b.tb.Handle("/help", b.onHelp)
 	b.tb.Handle("/join", b.onJoin)
 	b.tb.Handle("/setnick", b.onSetNick)
@@ -174,9 +174,10 @@ func (b *Bot) routes() {
 	b.tb.Handle(&tele.Btn{Unique: cbClaimNick}, b.onClaimNick)
 	b.registerGameCardRoutes()
 
-	b.tb.Handle(&tele.Btn{Unique: cbQGame}, b.onQuickGame)
+	b.tb.Handle(&tele.Btn{Unique: cbQGame}, b.onQuickPlay)
 	b.tb.Handle(&tele.Btn{Unique: cbQStatus}, b.onQuickStatus)
 	b.tb.Handle(&tele.Btn{Unique: cbQMe}, b.onQuickMe)
+	b.tb.Handle(&tele.Btn{Unique: cbQHelp}, b.onQuickHelp)
 
 	b.tb.Handle(tele.OnAddedToGroup, b.onAddedToGroup)
 	b.tb.Handle(tele.OnText, b.onText)
