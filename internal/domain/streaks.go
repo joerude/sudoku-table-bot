@@ -94,13 +94,13 @@ type BadgeStatus struct {
 // thresholds and order live in exactly one place.
 func BadgeProgress(in BadgeInput) []BadgeStatus {
 	return []BadgeStatus{
-		{Emoji: "🏅", Earned: in.SeasonsWon >= 1, Cur: in.SeasonsWon, Target: 1}, // season champion
-		{Emoji: "🔥", Earned: in.WinStreak >= 3, Cur: in.WinStreak, Target: 3},   // hot streak
+		{Emoji: "🏅", Earned: in.SeasonsWon >= 1, Cur: in.SeasonsWon, Target: 1},                               // season champion
+		{Emoji: "🔥", Earned: in.WinStreak >= 3, Cur: in.WinStreak, Target: 3},                                 // hot streak
 		{Emoji: "⚡", Earned: in.BestSecs > 0 && in.BestSecs < 120, Cur: in.BestSecs, Target: 120, Time: true}, // sub-2:00 solve
-		{Emoji: "💪", Earned: in.Wins >= 10, Cur: in.Wins, Target: 10},   // 10+ wins
-		{Emoji: "💯", Earned: in.Wins >= 50, Cur: in.Wins, Target: 50},   // 50+ wins
-		{Emoji: "🎯", Earned: in.Games >= 100, Cur: in.Games, Target: 100}, // 100+ games
-		{Emoji: "📅", Earned: in.DayStreak >= 7, Cur: in.DayStreak, Target: 7}, // week-long play streak
+		{Emoji: "💪", Earned: in.Wins >= 10, Cur: in.Wins, Target: 10},                                         // 10+ wins
+		{Emoji: "💯", Earned: in.Wins >= 50, Cur: in.Wins, Target: 50},                                         // 50+ wins
+		{Emoji: "🎯", Earned: in.Games >= 100, Cur: in.Games, Target: 100},                                     // 100+ games
+		{Emoji: "📅", Earned: in.DayStreak >= 7, Cur: in.DayStreak, Target: 7},                                 // week-long play streak
 	}
 }
 

@@ -98,9 +98,9 @@ func TestMigrateDropsDuelGuestRows(t *testing.T) {
 		}
 		return gid
 	}
-	duel := seed(11, true)     // Alice challenged Bob; Zed crashed the room
-	normal := seed(11, false)  // 3-player season game, must keep all rows
-	orphan := seed(999, true)  // creator not a player — cleanup must not guess
+	duel := seed(11, true)    // Alice challenged Bob; Zed crashed the room
+	normal := seed(11, false) // 3-player season game, must keep all rows
+	orphan := seed(999, true) // creator not a player — cleanup must not guess
 
 	if err := st.Close(); err != nil {
 		t.Fatalf("close: %v", err)
