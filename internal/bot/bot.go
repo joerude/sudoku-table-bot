@@ -3,6 +3,7 @@ package bot
 
 import (
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -104,11 +105,23 @@ type commandMenu struct {
 // bot lives in the group). Telegram picks the narrowest matching scope.
 func commandMenus() []commandMenu {
 	return []commandMenu{
-		{tele.CommandScope{Type: tele.CommandScopeDefault}, groupCommands()},
-		{tele.CommandScope{Type: tele.CommandScopeAllPrivateChats}, privateCommands()},
-		{tele.CommandScope{Type: tele.CommandScopeAllGroupChats}, groupCommands()},
-		{tele.CommandScope{Type: tele.CommandScopeAllChatAdmin}, adminCommands()},
+		{tele.CommandScope{Type: tele.CommandScopeDefault}, markEphemeral(groupCommands())},
+		{tele.CommandScope{Type: tele.CommandScopeAllPrivateChats}, markEphemeral(privateCommands())},
+		{tele.CommandScope{Type: tele.CommandScopeAllGroupChats}, markEphemeral(groupCommands())},
+		{tele.CommandScope{Type: tele.CommandScopeAllChatAdmin}, markEphemeral(adminCommands())},
 	}
+}
+
+// ephemeralCommands are sent invisibly to the rest of the chat (is_ephemeral in
+// the menu). Their handlers see EphemeralMessageID and answer the sender alone.
+var ephemeralCommands = []string{"help", "learn", "setnick", "me"}
+
+// markEphemeral sets IsEphemeral on the menu entries listed in ephemeralCommands.
+func markEphemeral(cmds []tele.Command) []tele.Command {
+	for i := range cmds {
+		cmds[i].IsEphemeral = slices.Contains(ephemeralCommands, cmds[i].Text)
+	}
+	return cmds
 }
 
 // groupCommands is the menu every group member sees. /players, /join and the
@@ -117,6 +130,7 @@ func groupCommands() []tele.Command {
 	return []tele.Command{
 		{Text: "play", Description: "новая игра, дуэль или позвать всех"},
 		{Text: "stats", Description: "таблица, моё, скорость, дуэли, история"},
+		{Text: "me", Description: "моя статистика (видна только мне)"},
 		{Text: "rating", Description: "рейтинг игроков"},
 		{Text: "setnick", Description: "ник на usdoku (регистрирует и включает авто-учёт)"},
 		{Text: "learn", Description: "справочник техник решения"},
