@@ -14,10 +14,6 @@ import (
 // stalePendingMinutes is how long a pending game waits before the bot nudges.
 const stalePendingMinutes = 45
 
-// minSeasonPointsToClose is the leader's point floor for a calendar-deadline
-// close. Below it, the month is treated as too quiet to crown anyone.
-const minSeasonPointsToClose = 10
-
 // openGameGraceMinutes is how long past the deadline a season waits for a game
 // that was started before it (3 hours covers a long hardcore session).
 const openGameGraceMinutes = 180
@@ -281,9 +277,9 @@ func (b *Bot) longestWinStreak(chatID int64) (name string, length int) {
 
 // closeExpiredSeasons ends seasons whose calendar deadline has passed, and
 // assigns a deadline to seasons that have none yet (older rows, and the season
-// opened by CloseSeason). A season whose month produced no points is extended
-// silently instead of crowning a champion with nothing — that also keeps the
-// bot quiet in chats that no longer play.
+// opened by CloseSeason). A season that hasn't been played enough (fewer than
+// MinGames games) is extended a month instead of crowning a champion out of a
+// half-played season; the shortfall is announced so the chat can close it.
 func (b *Bot) closeExpiredSeasons() {
 	chats, err := b.st.AllChats()
 	if err != nil {
@@ -341,7 +337,10 @@ func (b *Bot) postChat(chatID int64, text string) {
 
 // nudgeSeason sends the one-off "last week" / "final day" posts for an active
 // season whose deadline is still ahead. Chats without active players or
-// without any points in the season stay silent.
+// without any points in the season stay silent. The final-day post only goes
+// out once the games floor is met: short of it the deadline extends the season
+// instead, so there is no final to announce (it is not marked either, so it
+// still fires if the floor is reached later that day).
 func (b *Bot) nudgeSeason(season *storage.Season, deadline, now time.Time, loc *time.Location) error {
 	last, err := b.st.SeasonNudge(season.ID)
 	if err != nil {
@@ -350,6 +349,13 @@ func (b *Bot) nudgeSeason(season *storage.Season, deadline, now time.Time, loc *
 	kind := seasonNudgeKind(domain.SeasonDaysLeft(deadline, now, loc),
 		now.In(loc).Format("15:04"), season.Deadline.String, last)
 	if kind == "" {
+		return nil
+	}
+	games, err := b.st.SeasonGameCount(season.ChatID, season.ID)
+	if err != nil {
+		return err
+	}
+	if kind == "final" && games < season.MinGames {
 		return nil
 	}
 	// Mark first so the post goes out at most once, even if sending fails.
@@ -366,7 +372,7 @@ func (b *Bot) nudgeSeason(season *storage.Season, deadline, now time.Time, loc *
 	if kind == "final" {
 		b.postChat(season.ChatID, seasonFinalDayText(season.Number, standings))
 	} else {
-		b.postChat(season.ChatID, seasonLastWeekText(season.Number, standings))
+		b.postChat(season.ChatID, seasonLastWeekText(season.Number, standings, games, season.MinGames))
 	}
 	return nil
 }
@@ -396,45 +402,39 @@ func (b *Bot) closeExpiredSeasonAt(ch storage.ChatSettings, now time.Time) error
 		return b.nudgeSeason(season, deadline, now, loc)
 	}
 
-	// A game started before the deadline would be recorded into the already
-	// closed season's successor (or lost). Hold the close until it is recorded,
-	// cancelled, or too old to still be played.
+	standings, err := b.st.Standings(ch.ChatID, season.ID)
+	if err != nil {
+		return err
+	}
+	games, err := b.st.SeasonGameCount(ch.ChatID, season.ID)
+	if err != nil {
+		return err
+	}
+	if len(standings) == 0 || games < season.MinGames {
+		// Not played enough to crown anyone: roll the deadline forward a month
+		// and say so out loud. Silence is what let season 5 drift to a hollow
+		// finish; a visible counter is the only pressure the bot can apply.
+		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
+		if err := b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext)); err != nil {
+			return err
+		}
+		log.Printf("📅 chat %d: season %d under-played (%d/%d games) extended to %s",
+			ch.ChatID, season.Number, games, season.MinGames, ext)
+		if games == 0 || len(standings) == 0 {
+			return nil // nothing played or no active players: extend silently, don't nag a dead chat
+		}
+		b.postChat(ch.ChatID, seasonExtendedText(season, games, &standings[0], ext, now, loc))
+		return nil
+	}
+
+	// The floor is met and the season will close. A game started before the
+	// deadline would be recorded into the successor (or lost), so hold the
+	// close until it is recorded, cancelled, or too old to still be played.
 	open, err := b.st.HasOpenSeasonGame(season.ID, season.Deadline.String, openGameGraceMinutes)
 	if err != nil {
 		return err
 	}
 	if open {
-		return nil
-	}
-
-	standings, err := b.st.Standings(ch.ChatID, season.ID)
-	if err != nil {
-		return err
-	}
-	if len(standings) == 0 || standings[0].Points < minSeasonPointsToClose {
-		// Too quiet to crown anyone: roll the deadline forward instead. Historical
-		// seasons in this chat ran 65-84 games and hit the 100-point target on
-		// their own in 15-30 days, so a leader still under the threshold at
-		// deadline means the month was effectively dead, not just slow.
-		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
-		if err := b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext)); err != nil {
-			return err
-		}
-		if len(standings) == 0 {
-			return nil // no active players: nobody to tell
-		}
-		log.Printf("📅 chat %d: quiet season %d (leader %d pts) extended to %s",
-			ch.ChatID, season.Number, standings[0].Points, ext)
-		// Players saw "final: today" all month, so tell them why it didn't
-		// happen. A month with no games at all stays silent.
-		games, _, _, _, err := b.st.SeasonMeta(ch.ChatID, season.ID)
-		if err != nil {
-			return err
-		}
-		if games > 0 {
-			b.postChat(ch.ChatID, seasonExtendedText(season.Number, standings[0].Name,
-				standings[0].Points, ext, loc))
-		}
 		return nil
 	}
 

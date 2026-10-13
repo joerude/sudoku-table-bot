@@ -789,12 +789,15 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		} else if isDuel {
 			return b.duelResult(game, rows), b.resultKB(gameID), nil
 		}
-		target := 0
+		target, minGames, games := 0, 0, 0
 		if season, err := b.st.SeasonByID(game.SeasonID); err == nil && season != nil {
-			target = season.Target
+			target, minGames = season.Target, season.MinGames
+			if n, cerr := b.st.SeasonGameCount(game.ChatID, season.ID); cerr == nil {
+				games = n
+			}
 		}
 		leader, _ := b.st.Leader(game.ChatID, game.SeasonID)
-		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target),
+		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target, games, minGames),
 			b.resultKB(gameID), nil
 	}
 	return "🧩 Игра ожидает результата — жми «📝 Записать результат».", recordKeyboard(gameID), nil
@@ -841,7 +844,12 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 	if len(standings) > 0 {
 		leader = &standings[0]
 	}
-	result = resultText(rows, game.Difficulty.String, game.Mode.String, leader, season.Target)
+	games, err := b.st.SeasonGameCount(game.ChatID, season.ID)
+	if err != nil {
+		log.Printf("scoreAndCheck.gamecount: %v", err) // counter hidden, scoring unaffected
+	}
+	result = resultText(rows, game.Difficulty.String, game.Mode.String, leader, season.Target,
+		games, season.MinGames)
 	if line := movesLine(standingsMoves(before, standings)); line != "" {
 		result += "\n" + line
 	}
