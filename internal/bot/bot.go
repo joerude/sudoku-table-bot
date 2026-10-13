@@ -82,22 +82,60 @@ func senderName(c tele.Context) string {
 func (b *Bot) Start() {
 	go b.runReminders()
 	b.resumeWatches()
-	if err := b.tb.SetCommands(botCommands()); err != nil {
-		log.Printf("set commands: %v", err)
+	for _, m := range commandMenus() {
+		if err := b.tb.SetCommands(m.cmds, m.scope); err != nil {
+			log.Printf("set commands (%s): %v", m.scope.Type, err)
+		}
 	}
 	log.Println("bot started")
 	b.tb.Start()
 }
 
-// botCommands is the menu shown by Telegram's "/" button.
-func botCommands() []tele.Command {
+// commandMenu is one "/" button menu and the Telegram scope it applies to.
+type commandMenu struct {
+	scope tele.CommandScope
+	cmds  []tele.Command
+}
+
+// commandMenus lists the menus to register at start: a short one for everyone
+// in groups, a longer one for group admins, a minimal one in private chats (the
+// bot lives in the group). Telegram picks the narrowest matching scope.
+func commandMenus() []commandMenu {
+	return []commandMenu{
+		{tele.CommandScope{Type: tele.CommandScopeDefault}, groupCommands()},
+		{tele.CommandScope{Type: tele.CommandScopeAllPrivateChats}, privateCommands()},
+		{tele.CommandScope{Type: tele.CommandScopeAllGroupChats}, groupCommands()},
+		{tele.CommandScope{Type: tele.CommandScopeAllChatAdmin}, adminCommands()},
+	}
+}
+
+// groupCommands is the menu every group member sees. /players, /join and the
+// rest still work, they are just not advertised.
+func groupCommands() []tele.Command {
 	return []tele.Command{
-		{Text: "play", Description: "новая игра / дуэль / позвать всех"},
+		{Text: "play", Description: "новая игра, дуэль или позвать всех"},
 		{Text: "stats", Description: "таблица, моё, скорость, дуэли, история"},
-		{Text: "join", Description: "зарегистрироваться"},
-		{Text: "setnick", Description: "ник на usdoku (для авто-учёта)"},
-		{Text: "players", Description: "игроки и их usdoku-ники"},
+		{Text: "rating", Description: "рейтинг игроков"},
+		{Text: "setnick", Description: "ник на usdoku (регистрирует и включает авто-учёт)"},
+		{Text: "learn", Description: "справочник техник решения"},
 		{Text: "help", Description: "справка и все команды"},
+	}
+}
+
+// adminCommands is the group menu plus the admin-only commands.
+func adminCommands() []tele.Command {
+	return append(groupCommands(),
+		tele.Command{Text: "settings", Description: "настройки: порог, очки, напоминания"},
+		tele.Command{Text: "removeplayer", Description: "убрать игрока"},
+		tele.Command{Text: "backup", Description: "скачать базу"},
+	)
+}
+
+// privateCommands is the menu in a private chat with the bot.
+func privateCommands() []tele.Command {
+	return []tele.Command{
+		{Text: "help", Description: "справка"},
+		{Text: "learn", Description: "справочник техник решения"},
 	}
 }
 

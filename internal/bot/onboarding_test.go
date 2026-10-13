@@ -38,7 +38,7 @@ func TestWelcomeTextTeachesPlayFlow(t *testing.T) {
 }
 
 func TestHelpTextCoversMenuCommands(t *testing.T) {
-	all := botCommands()
+	all := append(groupCommands(), adminCommands()...)
 	for _, c := range all {
 		if c.Text != "help" && !strings.Contains(helpText, "/"+c.Text) {
 			t.Errorf("helpText missing menu command /%s", c.Text)
