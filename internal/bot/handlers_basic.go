@@ -22,10 +22,22 @@ func (b *Bot) onAddedToGroup(c tele.Context) error {
 	return c.Send(welcomeText, quickMenuKeyboard())
 }
 
-// onText nudges users who type a command incorrectly (e.g. "@bot /start").
+// onText nudges users who type a command incorrectly: an unknown "/cmd" gets a
+// "did you mean" hint, "@bot /start" gets the mention hint. Any other text,
+// including links and "1/2", is ignored (a group-admin bot sees every message).
 func (b *Bot) onText(c tele.Context) error {
-	if c.Message() != nil && strings.Contains(c.Message().Text, "/") {
-		return c.Reply("Команды пиши с «/» в начале и без упоминания — например /start или /help.")
+	if c.Message() == nil {
+		return nil
+	}
+	botName := ""
+	if b.tb.Me != nil {
+		botName = b.tb.Me.Username
+	}
+	switch hint, cmd := classifyText(c.Message().Text, botName); hint {
+	case hintUnknown:
+		return b.ephemeral(c, unknownCommandText(cmd, suggestCommand(cmd, knownCommands)))
+	case hintMentioned:
+		return b.ephemeral(c, mentionCmdHint)
 	}
 	return nil
 }
