@@ -27,6 +27,30 @@ type Game struct {
 	CreatedBy  sql.NullInt64 // tg id of who started the game
 	CreatedAt  string        // UTC datetime "2006-01-02 15:04:05"
 	Deleted    bool
+	// The game's single chat card: its message id, the base text the live
+	// updates append to, and the card kind ("invite" adds the RSVP button).
+	PostMsgID sql.NullInt64
+	PostText  sql.NullString
+	PostKind  sql.NullString
+}
+
+// gameCols is the column list every Game scan shares (see scanGame).
+const gameCols = `id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by,
+	created_at, deleted, post_msg_id, post_text, post_kind`
+
+func scanGame(row interface{ Scan(...any) error }) (*Game, error) {
+	var g Game
+	var deleted int
+	err := row.Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode,
+		&g.UsdokuCode, &g.CreatedBy, &g.CreatedAt, &deleted, &g.PostMsgID, &g.PostText, &g.PostKind)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	g.Deleted = deleted != 0
+	return &g, nil
 }
 
 // CreatePendingGame opens a new pending game for the chat's active season.
@@ -43,39 +67,35 @@ func (s *Store) CreatePendingGame(chatID, seasonID, createdBy int64, difficulty,
 
 // ActivePendingGame returns the chat's latest pending game, or nil.
 func (s *Store) ActivePendingGame(chatID int64) (*Game, error) {
-	var g Game
-	err := s.db.QueryRow(
-		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by, created_at
-		 FROM games WHERE chat_id=? AND status='pending' AND deleted=0
-		 ORDER BY id DESC LIMIT 1`, chatID).
-		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode,
-			&g.CreatedBy, &g.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &g, nil
+	return scanGame(s.db.QueryRow(
+		`SELECT `+gameCols+` FROM games WHERE chat_id=? AND status='pending' AND deleted=0
+		 ORDER BY id DESC LIMIT 1`, chatID))
 }
 
 // GameByID fetches a single game.
 func (s *Store) GameByID(id int64) (*Game, error) {
-	var g Game
-	var deleted int
-	err := s.db.QueryRow(
-		`SELECT id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by, created_at, deleted
-		 FROM games WHERE id=?`, id).
-		Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode, &g.UsdokuCode,
-			&g.CreatedBy, &g.CreatedAt, &deleted)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	g.Deleted = deleted != 0
-	return &g, nil
+	return scanGame(s.db.QueryRow(`SELECT `+gameCols+` FROM games WHERE id=?`, id))
+}
+
+// SetPostMsg remembers which chat message is the game's card.
+func (s *Store) SetPostMsg(gameID, msgID int64) error {
+	_, err := s.db.Exec(`UPDATE games SET post_msg_id=? WHERE id=?`, msgID, gameID)
+	return err
+}
+
+// SetPostCard stores the card's message id together with its base text and kind,
+// so live edits can be rebuilt after a restart.
+func (s *Store) SetPostCard(gameID, msgID int64, text, kind string) error {
+	_, err := s.db.Exec(
+		`UPDATE games SET post_msg_id=?, post_text=?, post_kind=? WHERE id=?`,
+		msgID, nullStr(text), nullStr(kind), gameID)
+	return err
+}
+
+// SetPostText replaces the card's stored base text (e.g. after an RSVP refresh).
+func (s *Store) SetPostText(gameID int64, text string) error {
+	_, err := s.db.Exec(`UPDATE games SET post_text=? WHERE id=?`, nullStr(text), gameID)
+	return err
 }
 
 // WatchableGame is a pending game that has a usdoku code to poll for results.

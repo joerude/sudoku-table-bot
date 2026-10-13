@@ -24,7 +24,8 @@ func (b *Bot) startInvite(c tele.Context, difficulty, mode string) error {
 	if err != nil {
 		return b.fail(c, "onInvite.players", err)
 	}
-	return c.Send(inviteText(difficulty, room.code, players, nil), inviteKeyboard(room.gameID, 0))
+	return b.publishCard(room, c.Chat().ID, cardKindInvite,
+		inviteText(difficulty, room.code, players, nil), inviteKeyboard(room.gameID, 0))
 }
 
 // onJoinIn toggles the presser's RSVP and refreshes the roster in place.
@@ -65,8 +66,9 @@ func (b *Bot) onJoinIn(c tele.Context) error {
 		resp = "Вышел из игры"
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: resp})
-	return c.Edit(
-		inviteText(game.Difficulty.String, game.UsdokuCode.String, players, roster),
-		inviteKeyboard(gameID, len(roster)),
-	)
+	text := inviteText(game.Difficulty.String, game.UsdokuCode.String, players, roster)
+	if b.setCardBase(gameID, text) {
+		return nil // the card keeps its live lines under the refreshed roster
+	}
+	return c.Edit(text, inviteKeyboard(gameID, len(roster)))
 }

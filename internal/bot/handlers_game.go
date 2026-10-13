@@ -68,22 +68,45 @@ func (b *Bot) onNewGame(c tele.Context) error {
 // onQuickGame starts a default medium/hardcore game from the quick menu.
 func (b *Bot) onQuickGame(c tele.Context) error {
 	_ = c.Respond()
-	return b.startNewGame(c, "medium", "hardcore")
+	// The quick menu rides on the help message, which must survive: new card.
+	return b.startNewGameAt(c, "medium", "hardcore", placeNew)
 }
 
 // gameRoom is a freshly created pending game; code is empty when usdoku room
-// creation failed (manual fallback — players use /result).
+// creation failed (manual fallback: players use /result). msg is the chat
+// message that currently shows «Создаю комнату…» and becomes the game's card;
+// callers turn it into the card with publishCard.
 type gameRoom struct {
 	gameID int64
 	code   string
+	msg    *tele.Message
 }
+
+// placement says where the «Создаю комнату…» notice, and so the game card, goes.
+type placement int
+
+const (
+	// placeAuto edits the message of the pressed button (the /play hub, a
+	// conflict post, a duel picker) and sends a fresh message for a command.
+	placeAuto placement = iota
+	// placeNew always sends a fresh message, for buttons whose message must
+	// survive (the result post, the help message).
+	placeNew
+)
 
 // createGameRoom runs the shared setup for /newgame, /duel and /invite: guards,
 // creates the pending game, tries to open a usdoku room, starts the watcher. It
-// does NOT post a chat message. Returns (nil, nil) when a guard already replied
-// to the user (caller should just return nil). origin names the caller's flow
-// for the pending-conflict continuation (see resumeAfterDelete).
+// does NOT post the final chat message: it only shows «Создаю комнату…» and
+// leaves that message in gameRoom.msg for the caller to render the card into.
+// Returns (nil, nil) when a guard already replied to the user (caller should
+// just return nil). origin names the caller's flow for the pending-conflict
+// continuation (see resumeAfterDelete).
 func (b *Bot) createGameRoom(c tele.Context, difficulty, mode, origin string) (*gameRoom, error) {
+	return b.createGameRoomAt(c, difficulty, mode, origin, placeAuto)
+}
+
+// createGameRoomAt is createGameRoom with an explicit notice placement.
+func (b *Bot) createGameRoomAt(c tele.Context, difficulty, mode, origin string, place placement) (*gameRoom, error) {
 	season, err := b.ensure(c)
 	if err != nil {
 		return nil, err
@@ -108,7 +131,12 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode, origin string) (*
 	if err != nil {
 		return nil, err
 	}
-	room := &gameRoom{gameID: gameID}
+	room := &gameRoom{gameID: gameID, msg: b.showCreating(c, place)}
+	if room.msg != nil {
+		if err := b.st.SetPostMsg(gameID, int64(room.msg.ID)); err != nil {
+			log.Printf("createGameRoom.postmsg: %v", err)
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	code, err := b.ud.Create(ctx, difficulty, mode, "private")
@@ -123,6 +151,49 @@ func (b *Bot) createGameRoom(c tele.Context, difficulty, mode, origin string) (*
 	log.Printf("🎮 game %d created on usdoku: %s (%s/%s)", gameID, code, difficulty, mode)
 	go b.watchGame(gameID, chatID, code)
 	return room, nil
+}
+
+// showCreating gives instant feedback while the usdoku room is being made: the
+// pressed button's message turns into «Создаю комнату…» (dropping its stale
+// keyboard), or a fresh notice is sent. The returned message becomes the card.
+func (b *Bot) showCreating(c tele.Context, place placement) *tele.Message {
+	if place == placeAuto && c.Callback() != nil && c.Callback().Message != nil {
+		if err := c.Edit(creatingText); err != nil {
+			log.Printf("showCreating.edit: %v", err)
+		}
+		return c.Callback().Message
+	}
+	msg, err := b.tb.Send(c.Chat(), creatingText)
+	if err != nil {
+		log.Printf("showCreating.send: %v", err)
+		return nil
+	}
+	return msg
+}
+
+// publishCard turns the room's notice message into the game card (text + kb),
+// sending a fresh message if there is none or the edit fails, and stores the
+// card so /code, live edits and the final close find it again, restart included.
+func (b *Bot) publishCard(room *gameRoom, chatID int64, kind, text string, kb *tele.ReplyMarkup) error {
+	var msgID int64
+	if room.msg != nil {
+		err := b.editPost(chatID, int64(room.msg.ID), text, kb)
+		if err == nil {
+			msgID = int64(room.msg.ID)
+		} else {
+			log.Printf("publishCard.edit: %v", err)
+		}
+	}
+	if msgID == 0 {
+		msg, err := b.tb.Send(tele.ChatID(chatID), text, kb)
+		if err != nil {
+			return err
+		}
+		room.msg = msg
+		msgID = int64(msg.ID)
+	}
+	b.saveCard(room.gameID, chatID, msgID, text, kind)
+	return nil
 }
 
 // pendingConflict posts the "unfinished game" warning with the pending game's
@@ -170,22 +241,57 @@ func (b *Bot) onSetCode(c tele.Context) error {
 	if err := b.st.SetUsdokuCode(pending.ID, code); err != nil {
 		return b.fail(c, "onSetCode.set", err)
 	}
-	text := fmt.Sprintf(
-		"🔗 Комната привязана к игре #%d: https://www.usdoku.com/%s\n"+
-			"🤖 Слежу за ней — результат подтянется автоматически (у кого задан /setnick).",
-		pending.ID, code)
-	kb := recordKeyboard(pending.ID)
-	msg, err := b.tb.Send(c.Chat(), text, kb)
-	if err == nil {
-		registerLive(pending.ID, msg, text, kb)
-	}
+	b.showCodeAttached(pending, code)
 	go b.watchGame(pending.ID, chatID, code)
-	return err
+	return nil
 }
 
-// startNewGame creates a usdoku game (or falls back to a link) and posts it.
+// showCodeAttached turns the game's card into the «room is bound» view (or
+// sends one when the game has no card yet), keeping the card kind.
+func (b *Bot) showCodeAttached(game *storage.Game, code string) {
+	kind := game.PostKind.String
+	var text string
+	rsvp := 0
+	switch {
+	case kind == cardKindInvite:
+		players, _ := b.st.ListPlayers(game.ChatID)
+		roster, _ := b.st.RsvpPlayers(game.ID)
+		rsvp = len(roster)
+		text = inviteText(game.Difficulty.String, code, players, roster)
+	case game.Difficulty.String != "":
+		text = newGameWithCodeText(game.Difficulty.String, game.Mode.String, code)
+	default:
+		text = fmt.Sprintf(
+			"🔗 Комната привязана к игре #%d: https://www.usdoku.com/%s\n"+
+				"🤖 Слежу за ней, результат подтянется автоматически (у кого задан /setnick).",
+			game.ID, code)
+	}
+	kb := liveKeyboard(game.ID, kind, false, rsvp)
+	if game.PostMsgID.Valid {
+		err := b.editPost(game.ChatID, game.PostMsgID.Int64, text, kb)
+		if err == nil {
+			b.saveCard(game.ID, game.ChatID, game.PostMsgID.Int64, text, kind)
+			return
+		}
+		log.Printf("showCodeAttached.edit: %v", err)
+	}
+	msg, err := b.tb.Send(tele.ChatID(game.ChatID), text, kb)
+	if err != nil {
+		log.Printf("showCodeAttached.send: %v", err)
+		return
+	}
+	b.saveCard(game.ID, game.ChatID, int64(msg.ID), text, kind)
+}
+
+// startNewGame creates a usdoku game (or falls back to a link) and shows it as
+// the game card.
 func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
-	room, err := b.createGameRoom(c, difficulty, mode, "game:"+difficulty+":"+mode)
+	return b.startNewGameAt(c, difficulty, mode, placeAuto)
+}
+
+// startNewGameAt is startNewGame with an explicit card placement.
+func (b *Bot) startNewGameAt(c tele.Context, difficulty, mode string, place placement) error {
+	room, err := b.createGameRoomAt(c, difficulty, mode, "game:"+difficulty+":"+mode, place)
 	if err != nil {
 		return b.fail(c, "startNewGame", err)
 	}
@@ -205,12 +311,7 @@ func (b *Bot) startNewGame(c tele.Context, difficulty, mode string) error {
 				esc(strings.Join(missing, ", ")))
 		}
 	}
-	kb := recordKeyboard(room.gameID)
-	msg, err := b.tb.Send(c.Chat(), text, kb)
-	if err == nil && room.code != "" {
-		registerLive(room.gameID, msg, text, kb)
-	}
-	return err
+	return b.publishCard(room, c.Chat().ID, "", text, recordKeyboard(room.gameID))
 }
 
 func (b *Bot) onResult(c tele.Context) error {
@@ -434,6 +535,7 @@ func (b *Bot) onDeleteConfirm(c tele.Context) error {
 	if err := b.st.SoftDeleteGame(gameID); err != nil {
 		return b.fail(c, "onDeleteConfirm.delete", err)
 	}
+	b.closeOtherCard(c, gameID)
 	if origin != "" {
 		return b.resumeAfterDelete(c, origin)
 	}
@@ -793,6 +895,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 	if err := c.Edit(result, resultKeyboard(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
 	}
+	b.closeOtherCard(c, game.ID) // the result landed in the picker, not on the card
 	if seasonEnd != "" {
 		return c.Send(seasonEnd)
 	}

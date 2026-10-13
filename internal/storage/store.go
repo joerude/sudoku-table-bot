@@ -77,6 +77,10 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE seasons ADD COLUMN deadline TEXT`,
 		// Once-per-deadline marker for the "last week" / "final day" posts.
 		`ALTER TABLE seasons ADD COLUMN last_nudge TEXT`,
+		// The game's chat card (one message edited through the whole game).
+		`ALTER TABLE games ADD COLUMN post_msg_id INTEGER`,
+		`ALTER TABLE games ADD COLUMN post_text TEXT`,
+		`ALTER TABLE games ADD COLUMN post_kind TEXT`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;

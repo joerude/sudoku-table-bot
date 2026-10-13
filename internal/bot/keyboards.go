@@ -148,6 +148,15 @@ func recordKeyboard(gameID int64) *tele.ReplyMarkup {
 	return m
 }
 
+// liveKeyboard is the game card's keyboard: the invite card keeps its RSVP
+// button (rsvp = roster size); every other card offers the manual record button.
+func liveKeyboard(gameID int64, kind string, hasFinishers bool, rsvp int) *tele.ReplyMarkup {
+	if kind == cardKindInvite {
+		return inviteKeyboard(gameID, rsvp)
+	}
+	return recordKeyboard(gameID)
+}
+
 // recordAndClaimKeyboard combines the "record result" button with one claim-nick
 // button per unrecognised usdoku nick, so the auto-record fallback is a single post.
 // Nicks whose payload would exceed Telegram's 64-byte limit are skipped (listed in
