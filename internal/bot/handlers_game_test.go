@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
+	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
 func TestOriginArgs(t *testing.T) {
@@ -46,6 +47,25 @@ func TestGameToast(t *testing.T) {
 	for _, tc := range cases {
 		if got := gameToast(tc.g, tc.want); got != tc.toast {
 			t.Errorf("%s: gameToast = %q, want %q", tc.name, got, tc.toast)
+		}
+	}
+}
+
+func TestRoomParams(t *testing.T) {
+	cases := []struct {
+		name, diff, mode string
+		wantD, wantM     string
+	}{
+		{"both known", "Hard", "ORIGINAL", "hard", "original"},
+		{"unknown values ignored", "insane", "chaos", "", ""},
+		{"empty", "", "", "", ""},
+		{"mode only", "", "hardcore", "", "hardcore"},
+	}
+	for _, tc := range cases {
+		info := &usdoku.GameInfo{Info: usdoku.Info{Difficulty: tc.diff, Mode: tc.mode}}
+		d, m := roomParams(info)
+		if d != tc.wantD || m != tc.wantM {
+			t.Errorf("%s: roomParams = (%q, %q), want (%q, %q)", tc.name, d, m, tc.wantD, tc.wantM)
 		}
 	}
 }

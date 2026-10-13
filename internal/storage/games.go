@@ -350,6 +350,31 @@ func (s *Store) SetUsdokuCode(gameID int64, code string) error {
 	return err
 }
 
+// AttachUsdokuCode binds a usdoku room to a live pending game that has none yet.
+// False means nothing changed: the game already has a room, or is closed or
+// deleted. Conditional so two /code calls cannot start two watchers.
+func (s *Store) AttachUsdokuCode(gameID int64, code string) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE games SET usdoku_code=?
+		 WHERE id=? AND status='pending' AND deleted=0
+		   AND (usdoku_code IS NULL OR usdoku_code='')`, code, gameID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// SetGameParams overwrites a game's difficulty and mode; an empty value keeps
+// the current one. Used to align a game with the room it was bound to.
+func (s *Store) SetGameParams(gameID int64, difficulty, mode string) error {
+	_, err := s.db.Exec(
+		`UPDATE games SET difficulty=COALESCE(NULLIF(?, ''), difficulty),
+		                  mode=COALESCE(NULLIF(?, ''), mode)
+		 WHERE id=?`, difficulty, mode, gameID)
+	return err
+}
+
 // SetDuelTarget records which player a duel game challenges (NULL = open invite).
 func (s *Store) SetDuelTarget(gameID, targetPlayerID int64) error {
 	_, err := s.db.Exec(`UPDATE games SET duel_target_id=? WHERE id=?`, targetPlayerID, gameID)
