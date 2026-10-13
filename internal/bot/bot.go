@@ -19,10 +19,12 @@ type Bot struct {
 	st     *storage.Store
 	ud     *usdoku.Client
 	dbPath string
+	// ownerID is the Telegram id allowed to /backup and /restore anywhere (0 = unset).
+	ownerID int64
 }
 
 // New constructs a Bot using long-polling.
-func New(token string, pollTimeout time.Duration, st *storage.Store, dbPath string) (*Bot, error) {
+func New(token string, pollTimeout time.Duration, st *storage.Store, dbPath string, ownerID int64) (*Bot, error) {
 	tb, err := tele.NewBot(tele.Settings{
 		Token:     token,
 		Poller:    &tele.LongPoller{Timeout: pollTimeout},
@@ -31,7 +33,7 @@ func New(token string, pollTimeout time.Duration, st *storage.Store, dbPath stri
 	if err != nil {
 		return nil, err
 	}
-	b := &Bot{tb: tb, st: st, ud: usdoku.New(), dbPath: dbPath}
+	b := &Bot{tb: tb, st: st, ud: usdoku.New(), dbPath: dbPath, ownerID: ownerID}
 	tb.Use(logUpdate)
 	b.routes()
 	return b, nil

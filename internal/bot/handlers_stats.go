@@ -385,8 +385,15 @@ func (b *Bot) isAdmin(c tele.Context) bool {
 	if chat == nil || chat.Type == tele.ChatPrivate {
 		return true
 	}
+	return b.isGroupAdmin(c)
+}
+
+// isGroupAdmin reports whether the sender is a Telegram admin/creator of the
+// current chat. False for anonymous senders and on API errors.
+func (b *Bot) isGroupAdmin(c tele.Context) bool {
+	chat := c.Chat()
 	u := realSender(c)
-	if u == nil {
+	if chat == nil || u == nil {
 		return false
 	}
 	m, err := b.tb.ChatMemberOf(chat, u)
