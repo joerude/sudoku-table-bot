@@ -155,7 +155,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		if mappedJoined < 2 || len(picks) == 0 {
 			log.Printf("🤖 duel %d → manual: mappedJoined=%d picks=%d finishers=%v",
 				game.ID, mappedJoined, len(picks), finisherNicks)
-			_, _ = b.tb.Send(to, "⚔️ Не смог авто-записать дуэль — запишите результат вручную:",
+			b.cardNote(game.ID, game.ChatID, "⚔️ Не смог авто-записать дуэль — запишите результат вручную:",
 				recordKeyboard(game.ID))
 			return
 		}
@@ -165,16 +165,16 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		// Too few known players actually joined — don't count it (anti-farming).
 		if len(unknown) == 0 && mappedJoined < min {
 			log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
-			_, _ = b.tb.Send(to, fmt.Sprintf(
+			b.cardNote(game.ID, game.ChatID, fmt.Sprintf(
 				"🚫 Игра не засчитана: участвовало меньше <b>%d</b> игроков (текущий минимум).\n"+
-					"Изменить: /settings minplayers", min))
+					"Изменить: /settings minplayers", min), nil)
 			return
 		}
 
 		if len(unknown) > 0 || len(picks) == 0 {
 			log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
 				game.ID, finisherNicks, unknown, mappedJoined)
-			_, _ = b.tb.Send(to, autoMappingText(finisherNicks, unknown),
+			b.cardNote(game.ID, game.ChatID, autoMappingText(finisherNicks, unknown),
 				recordAndClaimKeyboard(game.ID, unknown))
 			return
 		}
@@ -204,12 +204,17 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 	}
 	if err != nil {
 		log.Printf("autoRecord.score: %v", err)
-		_, _ = b.tb.Send(to, "⚠️ Не удалось авто-записать результат. Запишите вручную:",
+		b.cardNote(game.ID, game.ChatID, "⚠️ Не удалось авто-записать результат. Запишите вручную:",
 			recordKeyboard(game.ID))
 		return
 	}
 	result += b.ratingFooter(game)
-	_, _ = b.tb.Send(to, autoResultHeader()+result, resultKeyboard(game.ID))
+	// The result is a NEW message (an edit would not notify anyone); the card
+	// is retired to a one-liner pointing at it.
+	if _, err := b.tb.Send(to, autoResultHeader()+result, resultKeyboard(game.ID)); err != nil {
+		log.Printf("autoRecord.send: %v", err)
+	}
+	b.closeCard(game.ID)
 	if seasonEnd != "" {
 		_, _ = b.tb.Send(to, seasonEnd)
 	}

@@ -1,7 +1,11 @@
 package bot
 
 import (
+	"errors"
+	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 
 	tele "gopkg.in/telebot.v3"
@@ -9,80 +13,249 @@ import (
 	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
-// livePost is the chat message a watcher live-edits as players finish. base is
-// the message's original text; live finish lines are appended below it. Anchors
-// live only in memory: after a restart live edits stop, but the final result
-// still posts as its own message (autoRecord), so nothing is lost.
+const (
+	// cardKindInvite marks the /invite card: it keeps the RSVP button.
+	cardKindInvite = "invite"
+	// cardClosedText replaces the card once the result is recorded; the result
+	// itself goes out as a new message, because edits do not notify anyone.
+	cardClosedText = "🏁 Записано, результат ниже ↓"
+	// creatingText is the instant feedback while the usdoku room is being made.
+	creatingText = "⏳ Создаю комнату…"
+)
+
+// livePost is the game's card: the one chat message edited through the whole
+// game. base is the card's own text; the live section (who joined, who finished)
+// is appended below it. The message id and base text are mirrored in the games
+// table (post_msg_id, post_text, post_kind), so a restart rebuilds the anchor
+// instead of losing it.
 type livePost struct {
-	msg      tele.Editable
-	base     string
-	keyboard *tele.ReplyMarkup
+	mu        sync.Mutex // serialises edits of this card
+	msgID     int64
+	chatID    int64
+	base      string // "" = unknown or retired: no live edits
+	kind      string
+	section   string // live lines under base
+	finishers bool   // somebody finished: offer «Записать сейчас»
+	lastSent  string // signature of the last edit, to skip no-op edits
+	persisted bool
 }
 
 var liveMu sync.Mutex
-var livePosts = map[int64]*livePost{} // gameID -> anchor
+var livePosts = map[int64]*livePost{} // gameID -> anchor (cache over the DB)
 
-// registerLive remembers which message to live-edit for a game.
-func registerLive(gameID int64, msg tele.Editable, base string, kb *tele.ReplyMarkup) {
-	if msg == nil {
+// registerLive remembers which message to live-edit for a game. Kept for flows
+// that edit a pressed button's message into the card (the duel accept post);
+// the anchor is mirrored into the DB on first use.
+func registerLive(gameID int64, msg tele.Editable, base string, _ *tele.ReplyMarkup) {
+	if m, ok := msg.(*tele.Message); msg == nil || (ok && m == nil) {
+		return
+	}
+	idStr, chatID := msg.MessageSig()
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
 		return
 	}
 	liveMu.Lock()
-	livePosts[gameID] = &livePost{msg: msg, base: base, keyboard: kb}
+	livePosts[gameID] = &livePost{msgID: id, chatID: chatID, base: base}
 	liveMu.Unlock()
 }
 
-// dropLive forgets a game's anchor (watcher finished or gave up).
+// dropLive forgets a game's cached anchor (watcher finished or gave up).
 func dropLive(gameID int64) {
 	liveMu.Lock()
 	delete(livePosts, gameID)
 	liveMu.Unlock()
 }
 
-// liveUpdate appends the current finish order to the game's anchored post. It
-// backs off when a manual recording is in progress: the picker has transformed
-// the same message, and an edit here would clobber it.
-func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo) {
+// saveCard stores the game's card (message id, base text, kind) in the DB and
+// the anchor cache.
+func (b *Bot) saveCard(gameID, chatID, msgID int64, base, kind string) {
+	if err := b.st.SetPostCard(gameID, msgID, base, kind); err != nil {
+		log.Printf("saveCard %d: %v", gameID, err)
+	}
+	liveMu.Lock()
+	livePosts[gameID] = &livePost{msgID: msgID, chatID: chatID, base: base, kind: kind, persisted: true}
+	liveMu.Unlock()
+}
+
+// anchor returns the game's card anchor: the cached one, else rebuilt from the
+// DB (after a restart). nil when the game has no card.
+func (b *Bot) anchor(gameID int64) *livePost {
 	liveMu.Lock()
 	lp := livePosts[gameID]
 	liveMu.Unlock()
+	if lp != nil {
+		lp.mu.Lock()
+		if !lp.persisted {
+			if err := b.st.SetPostCard(gameID, lp.msgID, lp.base, lp.kind); err != nil {
+				log.Printf("anchor.persist %d: %v", gameID, err)
+			}
+			lp.persisted = true
+		}
+		lp.mu.Unlock()
+		return lp
+	}
+	g, err := b.st.GameByID(gameID)
+	if err != nil || g == nil || !g.PostMsgID.Valid {
+		return nil
+	}
+	lp = &livePost{
+		msgID: g.PostMsgID.Int64, chatID: g.ChatID,
+		base: g.PostText.String, kind: g.PostKind.String, persisted: true,
+	}
+	liveMu.Lock()
+	if cur := livePosts[gameID]; cur != nil {
+		lp = cur
+	} else {
+		livePosts[gameID] = lp
+	}
+	liveMu.Unlock()
+	return lp
+}
+
+// editPost edits a stored chat message. A no-op edit ("message is not
+// modified") is not an error.
+func (b *Bot) editPost(chatID, msgID int64, text string, kb *tele.ReplyMarkup) error {
+	m := tele.StoredMessage{MessageID: strconv.FormatInt(msgID, 10), ChatID: chatID}
+	var err error
+	if kb != nil {
+		_, err = b.tb.Edit(m, text, kb)
+	} else {
+		_, err = b.tb.Edit(m, text) // no markup: the keyboard goes away
+	}
+	if err != nil && (errors.Is(err, tele.ErrMessageNotModified) ||
+		errors.Is(err, tele.ErrSameMessageContent) || strings.Contains(err.Error(), "not modified")) {
+		return nil
+	}
+	return err
+}
+
+// cardKeyboard is the card's keyboard for its current live state.
+func (lp *livePost) keyboard(gameID int64, rsvp int) *tele.ReplyMarkup {
+	return liveKeyboard(gameID, lp.kind, lp.finishers, rsvp)
+}
+
+// renderCard edits the card to base + live section. The caller holds lp.mu.
+func (b *Bot) renderCard(gameID int64, lp *livePost) {
+	if lp.base == "" {
+		return
+	}
+	text := lp.base
+	if lp.section != "" {
+		text += "\n\n" + lp.section
+	}
+	rsvp := 0
+	if lp.kind == cardKindInvite {
+		if roster, err := b.st.RsvpPlayers(gameID); err == nil {
+			rsvp = len(roster)
+		}
+	}
+	sig := fmt.Sprintf("%s|%t|%d", text, lp.finishers, rsvp)
+	if sig == lp.lastSent {
+		return
+	}
+	if err := b.editPost(lp.chatID, lp.msgID, text, lp.keyboard(gameID, rsvp)); err != nil {
+		log.Printf("renderCard %d: %v", gameID, err)
+		return
+	}
+	lp.lastSent = sig
+}
+
+// setCardBase swaps the card's base text (e.g. a refreshed RSVP roster), keeping
+// the live section, and re-renders. False when the game has no live card.
+func (b *Bot) setCardBase(gameID int64, text string) bool {
+	lp := b.anchor(gameID)
 	if lp == nil {
+		return false
+	}
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	lp.base = text
+	if err := b.st.SetPostText(gameID, text); err != nil {
+		log.Printf("setCardBase %d: %v", gameID, err)
+	}
+	b.renderCard(gameID, lp)
+	return true
+}
+
+// liveUpdate refreshes the card's live section from a usdoku poll. It backs off
+// when a manual recording is in progress: the picker has transformed the same
+// message, and an edit here would clobber it.
+func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo) {
+	lp := b.anchor(gameID)
+	if lp == nil || lp.base == "" {
 		return
 	}
 	if picked, err := b.st.PickedPlayerIDs(gameID); err != nil || len(picked) > 0 {
 		return
 	}
-	lines := b.liveFinishText(gameID, info)
-	if lines == "" {
+	game, err := b.st.GameByID(gameID)
+	if err != nil || game == nil {
 		return
 	}
-	if _, err := b.tb.Edit(lp.msg, lp.base+"\n\n"+lines, lp.keyboard); err != nil {
-		log.Printf("liveUpdate %d: %v", gameID, err)
+	snap := buildLiveSnapshot(info, func(nick string) string {
+		if pl, _ := b.st.PlayerByNick(game.ChatID, nick); pl != nil {
+			return pl.Name
+		}
+		return nick
+	})
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	lp.section = liveSectionText(snap)
+	lp.finishers = len(snap.Finishers) > 0
+	b.renderCard(gameID, lp)
+}
+
+// retireCardText clears the stored base text so a restart does not bring the
+// live edits back for a card that has been turned into a note or closed.
+func (b *Bot) retireCardText(gameID int64) {
+	if err := b.st.SetPostText(gameID, ""); err != nil {
+		log.Printf("retireCardText %d: %v", gameID, err)
 	}
 }
 
-// liveFinishText renders the in-progress finish order: one medal line per
-// finisher with the solve time. usdoku nicks are resolved to player names when
-// known. Returns "" when nobody has finished yet.
-func (b *Bot) liveFinishText(gameID int64, info *usdoku.GameInfo) string {
-	game, err := b.st.GameByID(gameID)
-	if err != nil || game == nil {
-		return ""
+// closeCard retires the card after the result was recorded: short text, no
+// keyboard. The result is posted separately, so the group gets a notification.
+func (b *Bot) closeCard(gameID int64) {
+	lp := b.anchor(gameID)
+	if lp == nil {
+		return
 	}
-	var out string
-	for i, p := range info.FinishOrder() {
-		name := p.Name
-		if pl, _ := b.st.PlayerByNick(game.ChatID, p.Name); pl != nil {
-			name = pl.Name
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	lp.base = ""
+	b.retireCardText(gameID)
+	if err := b.editPost(lp.chatID, lp.msgID, cardClosedText, nil); err != nil {
+		log.Printf("closeCard %d: %v", gameID, err)
+	}
+}
+
+// cardNote turns the game's card into text + keyboard (a fallback or a nudge).
+// With no card, or when the edit fails, it is sent as a new message instead.
+func (b *Bot) cardNote(gameID, chatID int64, text string, kb *tele.ReplyMarkup) {
+	if lp := b.anchor(gameID); lp != nil {
+		lp.mu.Lock()
+		lp.base = "" // the card is not live any more
+		b.retireCardText(gameID)
+		err := b.editPost(lp.chatID, lp.msgID, text, kb)
+		lp.mu.Unlock()
+		if err == nil {
+			return
 		}
-		out += medal(i+1) + " " + esc(name)
-		if secs := p.SolveSeconds(info.Info.StartedAt); secs > 0 {
-			out += " · ⏱ " + fmtDuration(int(secs))
-		}
-		out += "\n"
+		log.Printf("cardNote %d: %v", gameID, err)
 	}
-	if out == "" {
-		return ""
+	if _, err := b.tb.Send(tele.ChatID(chatID), text, kb); err != nil {
+		log.Printf("cardNote.send %d: %v", gameID, err)
 	}
-	return "🏁 <b>Финишировали:</b>\n" + out + "<i>…жду остальных</i>"
+}
+
+// closeOtherCard retires the game's card when the result was recorded in a
+// different message (the picker the user pressed), so no dead keyboard stays.
+func (b *Bot) closeOtherCard(c tele.Context, game int64) {
+	msg := c.Message()
+	lp := b.anchor(game)
+	if lp == nil || (msg != nil && int64(msg.ID) == lp.msgID) {
+		return
+	}
+	b.closeCard(game)
 }

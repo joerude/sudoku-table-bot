@@ -48,7 +48,10 @@ CREATE TABLE IF NOT EXISTS games (
     deleted      INTEGER NOT NULL DEFAULT 0,           -- bool: soft-deleted (restorable)
     created_by   INTEGER,
     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-    completed_at TEXT
+    completed_at TEXT,
+    post_msg_id  INTEGER,                              -- the game's chat card message
+    post_text    TEXT,                                 -- card base text (live lines append to it)
+    post_kind    TEXT                                  -- '' | invite
 );
 
 CREATE TABLE IF NOT EXISTS game_results (
