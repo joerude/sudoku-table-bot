@@ -1,10 +1,13 @@
 package bot
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	tele "gopkg.in/telebot.v3"
+
+	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
 func (b *Bot) onHelp(c tele.Context) error {
@@ -61,16 +64,7 @@ func (b *Bot) onJoin(c tele.Context) error {
 	if sender == nil {
 		return b.ephemeral(c, anonMsg)
 	}
-	name := strings.TrimSpace(c.Message().Payload)
-	if name == "" {
-		name = sender.FirstName
-	}
-	if name == "" {
-		name = sender.Username
-	}
-	if name == "" {
-		name = "Игрок"
-	}
+	name := joinName(sender, c.Message().Payload)
 
 	p, created, err := b.st.RegisterPlayer(c.Chat().ID, sender.ID, name)
 	if err != nil {
@@ -91,22 +85,34 @@ func (b *Bot) onSetNick(c tele.Context) error {
 	if sender == nil {
 		return b.ephemeral(c, anonMsg)
 	}
-	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
+	nick, err := storage.NormalizeNick(c.Message().Payload)
+	switch {
+	case errors.Is(err, storage.ErrNickEmpty):
+		return b.ephemeral(c, setNickUsage)
+	case errors.Is(err, storage.ErrNickSpaces):
+		return b.ephemeral(c, setNickSpaces)
+	}
+	chatID := c.Chat().ID
+	player, err := b.st.PlayerByTg(chatID, sender.ID)
 	if err != nil {
 		return b.fail(c, "onSetNick.player", err)
 	}
-	if player == nil {
-		return b.ephemeral(c, "Сначала зарегистрируйся: /join")
-	}
-	nick := strings.TrimSpace(c.Message().Payload)
-	if nick == "" {
-		return b.ephemeral(c, "Укажи свой ник из usdoku: /setnick МойНик")
+	created := false
+	if player == nil { // one step onboarding: /setnick registers the player too
+		player, created, err = b.st.RegisterPlayer(chatID, sender.ID, joinName(sender, ""))
+		if err != nil {
+			return b.fail(c, "onSetNick.register", err)
+		}
+		_ = b.st.SetUsername(player.ID, sender.Username) // best-effort
 	}
 	if err := b.st.SetNick(player.ID, nick); err != nil {
+		var taken *storage.NickTakenError
+		if errors.As(err, &taken) {
+			return b.ephemeral(c, nickTakenText(taken.Nick, taken.Holder))
+		}
 		return b.fail(c, "onSetNick.set", err)
 	}
-	return c.Send(fmt.Sprintf(
-		"✅ usdoku-ник: <b>%s</b> сохранён — проверю в ближайшей игре.", esc(nick)))
+	return c.Send(setNickDoneText(nick, created))
 }
 
 func (b *Bot) onRemovePlayer(c tele.Context) error {

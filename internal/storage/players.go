@@ -1,6 +1,12 @@
 package storage
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"unicode"
+)
 
 // Player is a league participant within a chat.
 type Player struct {
@@ -75,9 +81,62 @@ func (s *Store) RemovePlayer(chatID int64, name string) (int64, error) {
 	return res.RowsAffected()
 }
 
-// SetNick stores a player's usdoku nickname (used for auto-record matching).
+// ErrNickEmpty and ErrNickSpaces are NormalizeNick's refusals.
+var (
+	ErrNickEmpty  = errors.New("empty nick")
+	ErrNickSpaces = errors.New("nick contains whitespace")
+)
+
+// NickTakenError reports that another active player of the chat already uses
+// the nick (compared case-insensitively).
+type NickTakenError struct {
+	Nick   string
+	Holder string // name of the player who has it
+}
+
+func (e *NickTakenError) Error() string {
+	return fmt.Sprintf("nick %q is taken by %s", e.Nick, e.Holder)
+}
+
+// trimNick drops surrounding whitespace and a leading "@".
+func trimNick(raw string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "@"))
+}
+
+// NormalizeNick cleans a nick typed by a user: surrounding spaces and a leading
+// "@" are dropped, whitespace inside is refused.
+func NormalizeNick(raw string) (string, error) {
+	nick := trimNick(raw)
+	if nick == "" {
+		return "", ErrNickEmpty
+	}
+	if strings.IndexFunc(nick, unicode.IsSpace) >= 0 {
+		return "", ErrNickSpaces
+	}
+	return nick, nil
+}
+
+// SetNick stores a player's usdoku nickname (used for auto-record matching). The
+// nick is trimmed (surrounding spaces, leading "@") and must be unique among the
+// chat's active players, case-insensitively: otherwise a *NickTakenError.
 func (s *Store) SetNick(playerID int64, nick string) error {
-	_, err := s.db.Exec(`UPDATE players SET usdoku_nick=? WHERE id=?`, nick, playerID)
+	nick = trimNick(nick)
+	if nick == "" {
+		return ErrNickEmpty
+	}
+	var holder string
+	err := s.db.QueryRow(
+		`SELECT o.name FROM players o JOIN players me ON me.chat_id = o.chat_id
+		 WHERE me.id=? AND o.id<>me.id AND o.active=1
+		   AND o.usdoku_nick IS NOT NULL AND lower(o.usdoku_nick)=lower(?)
+		 LIMIT 1`, playerID, nick).Scan(&holder)
+	switch {
+	case err == nil:
+		return &NickTakenError{Nick: nick, Holder: holder}
+	case err != sql.ErrNoRows:
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE players SET usdoku_nick=? WHERE id=?`, nick, playerID)
 	return err
 }
 
