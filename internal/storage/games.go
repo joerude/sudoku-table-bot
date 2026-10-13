@@ -146,6 +146,14 @@ func (s *Store) PickedPlayerIDs(gameID int64) ([]int64, error) {
 	return ids, rows.Err()
 }
 
+// HasResults reports whether the game has any recorded result row, finisher or
+// DNF: a manual recording is under way (or auto-record already wrote its rows).
+func (s *Store) HasResults(gameID int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM game_results WHERE game_id=?`, gameID).Scan(&n)
+	return n > 0, err
+}
+
 // AddPick appends a player to a game's finish order at the next rank.
 func (s *Store) AddPick(gameID, playerID int64) error {
 	return s.addPick(gameID, playerID, 0)

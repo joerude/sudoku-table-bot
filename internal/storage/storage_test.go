@@ -479,3 +479,23 @@ func TestActivePendingGameMetadata(t *testing.T) {
 		t.Errorf("GameByID metadata mismatch: %+v vs %+v", byID, g)
 	}
 }
+
+func TestHasResults(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7101)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	gid, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	if has, err := st.HasResults(gid); err != nil || has {
+		t.Fatalf("fresh game: has=%v err=%v", has, err)
+	}
+	st.AddPick(gid, a.ID)
+	if has, err := st.HasResults(gid); err != nil || !has {
+		t.Fatalf("after a pick: has=%v err=%v", has, err)
+	}
+	st.ClearResults(gid)
+	if has, _ := st.HasResults(gid); has {
+		t.Error("cleared picker must report no results")
+	}
+}
