@@ -2,26 +2,23 @@ package domain
 
 import "time"
 
-// minSeasonDays is the shortest a fresh season may be. A season opened in the
-// tail of a month would otherwise be decided in a couple of days, so its
-// deadline skips to the end of the following month instead.
-const minSeasonDays = 7
+// SeasonMonths is how long a season runs by the calendar before its deadline
+// can end it. The deadline is a backstop, not the finish line: it only closes a
+// season that has actually been played (see DefaultMinGames).
+const SeasonMonths = 2
 
-// nextMonthStart returns midnight starting the calendar month after t, in loc.
-func nextMonthStart(t time.Time, loc *time.Location) time.Time {
+// addMonths returns local midnight n calendar months after t. Day overflow
+// normalises forward (Dec 31 + 2mo → Mar 3), which only ever lengthens a season.
+func addMonths(t time.Time, n int, loc *time.Location) time.Time {
 	t = t.In(loc)
-	return time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
+	return time.Date(t.Year(), t.Month()+time.Month(n), t.Day(), 0, 0, 0, 0, loc)
 }
 
-// SeasonDeadline returns (in UTC) when a season created at now must end: the
-// midnight that starts the next calendar month in loc, pushed one month further
-// when that is less than minSeasonDays away.
-func SeasonDeadline(now time.Time, loc *time.Location) time.Time {
-	d := nextMonthStart(now, loc)
-	if d.Sub(now) < minSeasonDays*24*time.Hour {
-		d = nextMonthStart(d, loc)
-	}
-	return d.UTC()
+// SeasonDeadline returns (in UTC) when a season started at start must end:
+// local midnight opening the day SeasonMonths months later. The instant is
+// exclusive: the last playable day is the one before it.
+func SeasonDeadline(start time.Time, loc *time.Location) time.Time {
+	return addMonths(start, SeasonMonths, loc).UTC()
 }
 
 // SeasonDaysLeft counts calendar days in loc from now to the season's last
@@ -35,13 +32,14 @@ func SeasonDaysLeft(deadline, now time.Time, loc *time.Location) int {
 	return int(lastDay.Sub(todayDay) / (24 * time.Hour))
 }
 
-// ExtendSeasonDeadline moves an expired deadline forward by whole months until
-// it is in the future. Used when a season's month ended with nothing played,
-// and to recover after an outage that swallowed several deadlines.
+// ExtendSeasonDeadline moves an expired deadline forward one whole month at a
+// time until it is in the future. Used when the season hasn't been played
+// enough to crown anyone yet, and to recover after an outage that swallowed
+// several deadlines.
 func ExtendSeasonDeadline(deadline, now time.Time, loc *time.Location) time.Time {
 	d := deadline
 	for !d.After(now) {
-		d = nextMonthStart(d, loc)
+		d = addMonths(d, 1, loc)
 	}
 	return d.UTC()
 }

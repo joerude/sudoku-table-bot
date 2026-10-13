@@ -188,11 +188,10 @@ func TestCloseExpiredSeason_ExtendsWhenExpiredAndNothingScored(t *testing.T) {
 	}
 }
 
-// TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold covers the
-// nonzero-but-quiet case the old `Points == 0` check missed: a couple of
-// games did happen, the leader has some points, but still under
-// minSeasonPointsToClose — still too quiet to crown anyone.
-func TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold(t *testing.T) {
+// TestCloseExpiredSeason_ExtendsWhenUnderPlayed covers the case that closed
+// season 5 prematurely: games did happen and the leader has real points, but
+// the season is nowhere near MinGames, so the deadline must not crown anyone.
+func TestCloseExpiredSeason_ExtendsWhenUnderPlayed(t *testing.T) {
 	st := openTempStore(t)
 	const chat = int64(-9004)
 	if err := st.EnsureChat(chat, 1); err != nil {
@@ -210,7 +209,7 @@ func TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterPlayer Bob: %v", err)
 	}
-	// Two games, Alice wins both: 3 + 3 = 6 points — nonzero, still < 10.
+	// Two games, Alice wins both: real points on the board, far under MinGames.
 	for i := 0; i < 2; i++ {
 		gid, err := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
 		if err != nil {
@@ -230,9 +229,15 @@ func TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Standings: %v", err)
 	}
-	if len(standings) == 0 || standings[0].Points == 0 || standings[0].Points >= minSeasonPointsToClose {
-		t.Fatalf("test setup: leader has %v points, want a nonzero value below %d",
-			standings, minSeasonPointsToClose)
+	if len(standings) == 0 || standings[0].Points == 0 {
+		t.Fatalf("test setup: leader has %v points, want a nonzero value", standings)
+	}
+	games, err := st.SeasonGameCount(chat, se.ID)
+	if err != nil {
+		t.Fatalf("SeasonGameCount: %v", err)
+	}
+	if games >= se.MinGames {
+		t.Fatalf("test setup: %d games played, want fewer than the floor %d", games, se.MinGames)
 	}
 
 	staleDeadline := "2020-01-01 00:00:00"
@@ -251,7 +256,7 @@ func TestCloseExpiredSeason_ExtendsWhenLeaderBelowPointThreshold(t *testing.T) {
 		t.Fatalf("ActiveSeason after: %v", err)
 	}
 	if got.ID != se.ID {
-		t.Fatalf("below-threshold leader must not close the season: got id %d, want %d", got.ID, se.ID)
+		t.Fatalf("under-played season must not close: got id %d, want %d", got.ID, se.ID)
 	}
 	if got.Deadline.String == staleDeadline {
 		t.Errorf("deadline was not extended, still %q", got.Deadline.String)

@@ -391,7 +391,7 @@ func TestResultTextWithDNF(t *testing.T) {
 		{Rank: 1, Name: "A", Points: 3, Duration: 252},
 		{Rank: 0, Name: "B"},
 	}
-	out := resultText(rows, "medium", "hardcore", nil, 0)
+	out := resultText(rows, "medium", "hardcore", nil, 0, 0, 0)
 
 	// Finisher A: medal, name, points, time.
 	for _, want := range []string{"🥇", "A", "4:12"} {

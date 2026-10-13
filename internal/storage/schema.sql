@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS seasons (
     chat_id      INTEGER NOT NULL,
     number       INTEGER NOT NULL,
     target       INTEGER NOT NULL DEFAULT 100,
+    min_games    INTEGER NOT NULL DEFAULT 66,         -- games needed before the deadline may close it
     points_table TEXT    NOT NULL DEFAULT '[3,1,0]',  -- JSON array of ints
     status       TEXT    NOT NULL DEFAULT 'active',    -- active | archived
     winner_id    INTEGER,
