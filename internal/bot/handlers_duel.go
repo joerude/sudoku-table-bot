@@ -275,15 +275,16 @@ func (b *Bot) onRevoke(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Вызов отозван"})
-	return c.Edit(duelRevokedText)
+	return c.Edit(duelRevokedText, closedDuelKeyboard(gameID, duelRevokedText))
 }
 
 // expireStaleDuels burns challenges nobody answered within duelChallengeTTLMinutes,
 // freeing the league's single pending slot. Called from the reminder ticker. A
 // challenge whose room is being watched and already has somebody besides the
 // challenger in it is alive (the target may simply have joined by the link), so
-// it stays. The challenge post itself turns into the note and loses its buttons;
-// a separate message goes out only when that edit fails.
+// it stays. The challenge post itself turns into the note and its buttons into
+// one inactive «сгорел» button; a separate message goes out only when that edit
+// fails.
 func (b *Bot) expireStaleDuels() {
 	expired, err := b.st.ExpireStaleDuels(duelChallengeTTLMinutes, func(d storage.ExpiredDuel) bool {
 		return isWatching(d.GameID) && roomBusy(d.GameID)
@@ -304,7 +305,8 @@ func (b *Bot) expireStaleDuels() {
 		text := duelExpiredText(challenger, target)
 		edited := false
 		if d.PostMsgID.Valid {
-			if eerr := b.editPost(d.ChatID, d.PostMsgID.Int64, text, nil); eerr != nil {
+			kb := closedDuelKeyboard(d.GameID, duelExpiredLabel)
+			if eerr := b.editPost(d.ChatID, d.PostMsgID.Int64, text, kb); eerr != nil {
 				log.Printf("expireStaleDuels edit: %v", eerr)
 			} else {
 				edited = true
