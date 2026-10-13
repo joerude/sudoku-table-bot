@@ -75,6 +75,8 @@ func migrate(db *sql.DB) {
 		// chat timezone, which this layer doesn't know — the reminder tick fills
 		// it in on the next minute.
 		`ALTER TABLE seasons ADD COLUMN deadline TEXT`,
+		// Once-per-deadline marker for the "last week" / "final day" posts.
+		`ALTER TABLE seasons ADD COLUMN last_nudge TEXT`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;

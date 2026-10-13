@@ -777,6 +777,47 @@ func seasonDeadlineEndText(number int, winner string, points int, awards []strin
 	return b.String()
 }
 
+// seasonExtendedText tells the chat a quiet season was rolled over instead of
+// closed. until is the new deadline instant (UTC); the text names the last
+// playable day, i.e. the day before it.
+func seasonExtendedText(number int, leader string, points int, until time.Time, loc *time.Location) string {
+	return fmt.Sprintf("📅 <b>Сезон %d продлён</b> до %s: за месяц мало очков (лидер %s, %d очк.)",
+		number, fmtRuDate(until.Add(-time.Second), loc), esc(leader), points)
+}
+
+// seasonLastWeekText is the one-off post a week before the season deadline:
+// the leader, the runner-up and the gap between them. rows is the standings,
+// best first (at least one row).
+func seasonLastWeekText(number int, rows []storage.Standing) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🏁 <b>Последняя неделя сезона %d</b>: <b>%s</b> %d",
+		number, esc(rows[0].Name), rows[0].Points)
+	if len(rows) > 1 {
+		fmt.Fprintf(&b, ", <b>%s</b> %d", esc(rows[1].Name), rows[1].Points)
+		if gap := rows[0].Points - rows[1].Points; gap > 0 {
+			fmt.Fprintf(&b, " (-%d)", gap)
+		} else {
+			b.WriteString(" (вровень)")
+		}
+	}
+	return b.String()
+}
+
+// seasonFinalDayText is the morning post on the deadline day with the current
+// top of the table (at most three rows).
+func seasonFinalDayText(number int, rows []storage.Standing) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⏳ <b>Сегодня финал сезона %d</b>\n\n", number)
+	for i, r := range rows {
+		if i == 3 {
+			break
+		}
+		fmt.Fprintf(&b, "%s <b>%s</b> — <b>%d</b>\n", medal(i+1), esc(r.Name), r.Points)
+	}
+	b.WriteString("\nИграть можно до полуночи: /play")
+	return b.String()
+}
+
 // namesMissingNick returns the names of players with no usdoku nick set, in
 // input order — used to warn before a game that auto-record will skip them.
 func namesMissingNick(players []storage.Player) []string {

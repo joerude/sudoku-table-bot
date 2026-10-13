@@ -194,15 +194,93 @@ func (b *Bot) closeExpiredSeasons() {
 	}
 }
 
+// seasonNudgeTime is the local time of day the "last week" and "final day"
+// posts go out (not before it, so nobody is pinged at midnight).
+const seasonNudgeTime = "10:30"
+
+// seasonNudgeKind decides which one-off season post is due: "week" during the
+// last seven calendar days, "final" on the last playable day, "" otherwise.
+// deadline and last form the once-per-deadline marker (see nudgeMarker): a
+// post that already went out for this deadline is never repeated, and an
+// extended season (new deadline) gets a fresh pair of posts.
+func seasonNudgeKind(daysLeft int, hhmm, deadline, last string) string {
+	if hhmm < seasonNudgeTime {
+		return ""
+	}
+	kind := ""
+	switch {
+	case daysLeft == 0:
+		kind = "final"
+	case daysLeft >= 1 && daysLeft <= 6:
+		kind = "week"
+	default:
+		return ""
+	}
+	if last == nudgeMarker(kind, deadline) || last == nudgeMarker("final", deadline) {
+		return ""
+	}
+	return kind
+}
+
+// nudgeMarker is the value stored in seasons.last_nudge for a sent post.
+func nudgeMarker(kind, deadline string) string { return kind + "@" + deadline }
+
+// postChat sends a plain-text post to a chat, logging (not returning) failures.
+// A nil bot client (unit tests) is a no-op.
+func (b *Bot) postChat(chatID int64, text string) {
+	if b.tb == nil {
+		return
+	}
+	if _, err := b.tb.Send(tele.ChatID(chatID), text); err != nil {
+		log.Printf("postChat %d: %v", chatID, err)
+	}
+}
+
+// nudgeSeason sends the one-off "last week" / "final day" posts for an active
+// season whose deadline is still ahead. Chats without active players or
+// without any points in the season stay silent.
+func (b *Bot) nudgeSeason(season *storage.Season, deadline, now time.Time, loc *time.Location) error {
+	last, err := b.st.SeasonNudge(season.ID)
+	if err != nil {
+		return err
+	}
+	kind := seasonNudgeKind(domain.SeasonDaysLeft(deadline, now, loc),
+		now.In(loc).Format("15:04"), season.Deadline.String, last)
+	if kind == "" {
+		return nil
+	}
+	// Mark first so the post goes out at most once, even if sending fails.
+	if err := b.st.SetSeasonNudge(season.ID, nudgeMarker(kind, season.Deadline.String)); err != nil {
+		return err
+	}
+	standings, err := b.st.Standings(season.ChatID, season.ID)
+	if err != nil {
+		return err
+	}
+	if len(standings) == 0 || standings[0].Points == 0 {
+		return nil
+	}
+	if kind == "final" {
+		b.postChat(season.ChatID, seasonFinalDayText(season.Number, standings))
+	} else {
+		b.postChat(season.ChatID, seasonLastWeekText(season.Number, standings))
+	}
+	return nil
+}
+
 // closeExpiredSeason handles one chat; separated so a failure in one chat
 // doesn't skip the others.
 func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
+	return b.closeExpiredSeasonAt(ch, time.Now())
+}
+
+// closeExpiredSeasonAt is closeExpiredSeason with an explicit clock.
+func (b *Bot) closeExpiredSeasonAt(ch storage.ChatSettings, now time.Time) error {
 	season, err := b.st.ActiveSeason(ch.ChatID)
 	if err != nil {
 		return err
 	}
 	loc := loadLoc(ch.TZ)
-	now := time.Now()
 
 	if !season.Deadline.Valid || season.Deadline.String == "" {
 		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(domain.SeasonDeadline(now, loc)))
@@ -212,7 +290,7 @@ func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
 		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(domain.SeasonDeadline(now, loc)))
 	}
 	if now.UTC().Before(deadline) {
-		return nil
+		return b.nudgeSeason(season, deadline, now, loc)
 	}
 
 	standings, err := b.st.Standings(ch.ChatID, season.ID)
@@ -225,13 +303,25 @@ func (b *Bot) closeExpiredSeason(ch storage.ChatSettings) error {
 		// their own in 15-30 days, so a leader still under the threshold at
 		// deadline means the month was effectively dead, not just slow.
 		ext := domain.ExtendSeasonDeadline(deadline, now.UTC(), loc)
-		leaderPts := 0 // no players at all (e.g. a chat that only got /start)
-		if len(standings) > 0 {
-			leaderPts = standings[0].Points
+		if err := b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext)); err != nil {
+			return err
+		}
+		if len(standings) == 0 {
+			return nil // no active players: nobody to tell
 		}
 		log.Printf("📅 chat %d: quiet season %d (leader %d pts) extended to %s",
-			ch.ChatID, season.Number, leaderPts, ext)
-		return b.st.SetSeasonDeadline(season.ID, fmtDBTime(ext))
+			ch.ChatID, season.Number, standings[0].Points, ext)
+		// Players saw "final: today" all month, so tell them why it didn't
+		// happen. A month with no games at all stays silent.
+		games, _, _, _, err := b.st.SeasonMeta(ch.ChatID, season.ID)
+		if err != nil {
+			return err
+		}
+		if games > 0 {
+			b.postChat(ch.ChatID, seasonExtendedText(season.Number, standings[0].Name,
+				standings[0].Points, ext, loc))
+		}
+		return nil
 	}
 
 	awards := b.seasonAwards(ch.ChatID, season.ID, standings)
