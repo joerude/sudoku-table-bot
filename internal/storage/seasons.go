@@ -167,6 +167,21 @@ func (s *Store) SetSeasonDeadline(seasonID int64, deadline string) error {
 	return err
 }
 
+// HasOpenSeasonGame reports whether the season has a live pending game (not a
+// duel) that was started before createdBefore (UTC datetime) and is younger
+// than maxAgeMinutes. Such a game was begun inside the season and may still be
+// recorded into it, so closing the season has to wait for it.
+func (s *Store) HasOpenSeasonGame(seasonID int64, createdBefore string, maxAgeMinutes int) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM games g
+		WHERE g.season_id=? AND g.status='pending' AND g.deleted=0
+		  AND g.duel_target_id IS NULL
+		  AND g.created_at < ? AND g.created_at > datetime('now', ?)`,
+		seasonID, createdBefore, negMinutes(maxAgeMinutes)).Scan(&n)
+	return n > 0, err
+}
+
 // SeasonNudge returns the marker of the last mid-season post sent for the
 // season ("" = none yet). The bot keys it by kind and deadline so a nudge fires
 // once per deadline and survives a restart.
