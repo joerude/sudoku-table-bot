@@ -44,7 +44,11 @@ func (b *Bot) onDuel(c tele.Context) error {
 	if len(others) == 0 {
 		return b.ephemeral(c, "Нет соперников. Пусть кто-то ещё сделает /join.")
 	}
-	return c.Send("⚔️ Кого вызываешь на дуэль?", duelPickKeyboard(difficulty, others, me.ID))
+	kb := duelPickKeyboard(difficulty, others, me.ID)
+	if c.Callback() != nil { // from the /play hub: turn the hub into the picker
+		return c.Edit("⚔️ Кого вызываешь на дуэль?", kb)
+	}
+	return c.Send("⚔️ Кого вызываешь на дуэль?", kb)
 }
 
 // opponents lists the chat's active players except the caller.
@@ -312,18 +316,6 @@ func (b *Bot) onDuelCancel(c tele.Context) error {
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: "Отменено"})
 	return c.Edit("✖️ Вызов отменён.")
-}
-
-// onDuels shows the all-time duel leaderboard.
-func (b *Bot) onDuels(c tele.Context) error {
-	if _, err := b.ensure(c); err != nil {
-		return b.fail(c, "onDuels.ensure", err)
-	}
-	text, err := b.duelsPanel(c.Chat().ID)
-	if err != nil {
-		return b.fail(c, "onDuels.panel", err)
-	}
-	return c.Send(text)
 }
 
 func (b *Bot) onDecline(c tele.Context) error {
