@@ -63,6 +63,9 @@ func TestUnknownCommandText(t *testing.T) {
 	if got := unknownCommandText("xyz", ""); got != "Не знаю /xyz. Все команды: /help" {
 		t.Errorf("without suggestion: %q", got)
 	}
+	if got := unknownCommandText("restore", "settings"); got != restoreHintText {
+		t.Errorf("/restore as text: %q", got)
+	}
 }
 
 // knownCommands must list every command registered in routes(), otherwise a
