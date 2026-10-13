@@ -208,3 +208,43 @@ func ComputeRatings(games []RatingGame) Ratings {
 
 	return Ratings{Players: players, Ladder: ladder, Crown: crown, PerGame: perGame}
 }
+
+// DuelStakes returns both players' current ratings and what each would gain by
+// winning the next duel against the other. It replays the history plus a
+// hypothetical A-wins duel, then a hypothetical B-wins duel, so the numbers
+// match exactly what the result post will show after the real game.
+func DuelStakes(games []RatingGame, a, b int64) (ratingA, ratingB, gainA, gainB int) {
+	base := ComputeRatings(games)
+	ratingA, ratingB = StartRating, StartRating
+	if p, ok := base.Players[a]; ok {
+		ratingA = p.Rating
+	}
+	if p, ok := base.Players[b]; ok {
+		ratingB = p.Rating
+	}
+	gain := func(winner, loser int64) int {
+		hyp := RatingGame{ID: -1, Participants: []RatingResult{
+			{PlayerID: winner, Rank: 1}, {PlayerID: loser, Rank: 2},
+		}}
+		sim := ComputeRatings(append(games[:len(games):len(games)], hyp))
+		return sim.PerGame[len(sim.PerGame)-1].Delta[winner]
+	}
+	return ratingA, ratingB, gain(a, b), gain(b, a)
+}
+
+// UpsetGain reports whether the winner entered the game rated below the loser
+// and, if so, how many points the win paid. Ratings come from the game's own
+// before/after snapshot, so it is stable across re-renders.
+func UpsetGain(gr GameRating, winnerID, loserID int64) (gain int, ok bool) {
+	wNew, wok := gr.NewRating[winnerID]
+	lNew, lok := gr.NewRating[loserID]
+	if !wok || !lok {
+		return 0, false
+	}
+	wBefore := wNew - gr.Delta[winnerID]
+	lBefore := lNew - gr.Delta[loserID]
+	if wBefore >= lBefore {
+		return 0, false
+	}
+	return gr.Delta[winnerID], true
+}
