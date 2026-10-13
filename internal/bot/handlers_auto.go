@@ -159,7 +159,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) {
 		if mappedJoined < 2 || len(picks) == 0 {
 			log.Printf("🤖 duel %d → manual: mappedJoined=%d picks=%d finishers=%v",
 				game.ID, mappedJoined, len(picks), finisherNicks)
-			b.cardNote(game.ID, game.ChatID, "⚔️ Не смог авто-записать дуэль — запишите результат вручную:",
+			b.cardNote(game.ID, game.ChatID, "⚔️ Не смог авто-записать дуэль, запишите результат вручную:",
 				recordKeyboard(game.ID))
 			return
 		}
