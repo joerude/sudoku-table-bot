@@ -1,6 +1,10 @@
 package bot
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/joerude/sudoku-bot-telegram/internal/storage"
+)
 
 func TestOriginArgs(t *testing.T) {
 	cases := []struct {
@@ -20,6 +24,28 @@ func TestOriginArgs(t *testing.T) {
 		if d != tc.difficulty || m != tc.mode {
 			t.Errorf("%s: originArgs(%v) = (%q, %q), want (%q, %q)",
 				tc.name, tc.parts, d, m, tc.difficulty, tc.mode)
+		}
+	}
+}
+
+func TestGameToast(t *testing.T) {
+	cases := []struct {
+		name  string
+		g     *storage.Game
+		want  string
+		toast string
+	}{
+		{"nil", nil, "pending", "Игра не найдена"},
+		{"deleted pending", &storage.Game{Status: "pending", Deleted: true}, "pending", "Игра не найдена"},
+		{"deleted completed edit", &storage.Game{Status: "completed", Deleted: true}, "completed", "Игра не найдена"},
+		{"pending picker ok", &storage.Game{Status: "pending"}, "pending", ""},
+		{"completed picker", &storage.Game{Status: "completed"}, "pending", "Игра уже закрыта"},
+		{"completed edit ok", &storage.Game{Status: "completed"}, "completed", ""},
+		{"pending edit", &storage.Game{Status: "pending"}, "completed", toastAlreadyOpen},
+	}
+	for _, tc := range cases {
+		if got := gameToast(tc.g, tc.want); got != tc.toast {
+			t.Errorf("%s: gameToast = %q, want %q", tc.name, got, tc.toast)
 		}
 	}
 }

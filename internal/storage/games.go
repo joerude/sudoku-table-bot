@@ -2,9 +2,14 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 )
+
+// ErrGameNotCompleted is returned by ReopenGame when the game is not a live
+// completed one (already reopened, or soft-deleted), so nothing was changed.
+var ErrGameNotCompleted = errors.New("game is not completed")
 
 // Game is one recorded (or in-progress) sudoku round.
 type Game struct {
@@ -144,17 +149,24 @@ func (s *Store) addPick(gameID, playerID, durationSecs int64) error {
 	return err
 }
 
-// RemoveLastPick deletes the most recently added finisher (highest rank).
+// RemoveLastPick deletes the most recently added finisher (highest rank). It
+// only touches a pending game, so a stale picker cannot edit a closed one.
 func (s *Store) RemoveLastPick(gameID int64) error {
 	_, err := s.db.Exec(
-		`DELETE FROM game_results WHERE game_id=? AND rank=(
-			SELECT MAX(rank) FROM game_results WHERE game_id=?)`, gameID, gameID)
+		`DELETE FROM game_results WHERE game_id=?
+		   AND rank=(SELECT MAX(rank) FROM game_results WHERE game_id=?)
+		   AND game_id IN (SELECT id FROM games WHERE id=? AND status='pending')`,
+		gameID, gameID, gameID)
 	return err
 }
 
-// ClearResults removes all picks for a game (used by reset / edit).
+// ClearResults removes all picks of a pending game (used by reset / cancel).
+// A completed game is left alone: use ReopenGame to edit it.
 func (s *Store) ClearResults(gameID int64) error {
-	_, err := s.db.Exec(`DELETE FROM game_results WHERE game_id=?`, gameID)
+	_, err := s.db.Exec(
+		`DELETE FROM game_results WHERE game_id=?
+		   AND game_id IN (SELECT id FROM games WHERE id=? AND status='pending')`,
+		gameID, gameID)
 	return err
 }
 
@@ -200,17 +212,27 @@ func (s *Store) FinalizeGame(gameID int64, table []int) error {
 }
 
 // ReopenGame moves a completed game back to pending and clears its picks.
+// Returns ErrGameNotCompleted (changing nothing) if the game is not completed
+// or is soft-deleted, so a repeated or stale "edit" cannot wipe a game that is
+// already being re-recorded.
 func (s *Store) ReopenGame(gameID int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM game_results WHERE game_id=?`, gameID); err != nil {
+	res, err := tx.Exec(
+		`UPDATE games SET status='pending', completed_at=NULL
+		 WHERE id=? AND status='completed' AND deleted=0`, gameID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(
-		`UPDATE games SET status='pending', completed_at=NULL WHERE id=?`, gameID); err != nil {
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrGameNotCompleted
+	}
+	if _, err := tx.Exec(`DELETE FROM game_results WHERE game_id=?`, gameID); err != nil {
 		return err
 	}
 	return tx.Commit()
