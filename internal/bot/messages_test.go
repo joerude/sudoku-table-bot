@@ -1273,3 +1273,24 @@ func TestRaceText(t *testing.T) {
 		t.Errorf("no games in window: want empty, got %q", got)
 	}
 }
+
+func TestEvenGames(t *testing.T) {
+	rows := []storage.Standing{
+		{PlayerID: 1, Name: "Ann", Games: 41},
+		{PlayerID: 2, Name: "Joe", Games: 36},
+		{PlayerID: 3, Name: "Max", Games: 0},
+	}
+	got := evenGames(rows, 42)
+	if got[0].Games != 42 || got[1].Games != 42 {
+		t.Errorf("players with games must show the season total, got %+v", got)
+	}
+	if got[2].Games != 0 {
+		t.Errorf("a player with no games stays at 0, got %d", got[2].Games)
+	}
+	if rows[1].Games != 36 {
+		t.Errorf("input must stay untouched, got %d", rows[1].Games)
+	}
+	if low := evenGames(rows, 10); low[0].Games != 41 {
+		t.Errorf("a total below the player's own count must not lower it, got %d", low[0].Games)
+	}
+}

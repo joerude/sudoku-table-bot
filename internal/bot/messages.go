@@ -424,6 +424,21 @@ func fmtDuration(secs int) string {
 	return fmt.Sprintf("%d:%02d", secs/60, secs%60)
 }
 
+// evenGames shows every player who has played this season with the season's
+// game count: the group plays together, so a gap in one player's result rows
+// (a room they missed, an old two-player recording) must not look like fewer
+// games. Players with no games stay at 0, and the input is left untouched.
+func evenGames(rows []storage.Standing, total int) []storage.Standing {
+	out := make([]storage.Standing, len(rows))
+	copy(out, rows)
+	for i := range out {
+		if out[i].Games > 0 && total > out[i].Games {
+			out[i].Games = total
+		}
+	}
+	return out
+}
+
 // standingsText renders the season leaderboard as a medal list.
 func standingsText(se *storage.Season, rows []storage.Standing) string {
 	var b strings.Builder
