@@ -176,7 +176,7 @@ func (b *Bot) seasonSummaryView(chatID int64, number int) (string, bool, error) 
 		return "", false, err
 	}
 	awards := b.seasonAwards(chatID, se.ID, standings)
-	return seasonSummaryText(se, standings, games, first, last, winner, awards), true, nil
+	return seasonSummaryText(se, evenGames(standings, games), games, first, last, winner, awards), true, nil
 }
 
 // onSeasonView switches the message to the tapped season's summary (or the
@@ -508,7 +508,11 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = standingsText(season, standings) + b.raceBlock(chatID, season, standings) +
+		total, e := b.st.SeasonGameCount(chatID, season.ID)
+		if e != nil {
+			return "", nil, e
+		}
+		text = standingsText(season, evenGames(standings, total)) + b.raceBlock(chatID, season, standings) +
 			b.seasonStatus(chatID, season)
 	}
 	if err != nil {
