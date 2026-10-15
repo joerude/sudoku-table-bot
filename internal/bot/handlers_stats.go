@@ -489,7 +489,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = standingsText(season, standings) +
+		text = standingsText(season, standings) + b.raceBlock(chatID, season, standings) +
 			b.seasonStatus(chatID, season)
 	}
 	if err != nil {
@@ -502,6 +502,26 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		}
 	}
 	return clipText(text, tgMaxText), statsKeyboard(tab, archived, season.Number), nil
+}
+
+// raceWindowDays is how far back the table's "race" block looks.
+const raceWindowDays = 7
+
+// raceBlock is the table's "who gained what lately" block, with its leading
+// blank line, or "" when nothing was played in the window or it can't be read
+// (the table stays useful without it).
+func (b *Bot) raceBlock(chatID int64, season *storage.Season, standings []storage.Standing) string {
+	since := time.Now().UTC().AddDate(0, 0, -raceWindowDays).Format("2006-01-02 15:04:05")
+	gains, games, err := b.st.PointsSince(chatID, season.ID, since)
+	if err != nil {
+		log.Printf("raceBlock: %v", err)
+		return ""
+	}
+	text := raceText(standings, gains, games, raceWindowDays)
+	if text == "" {
+		return ""
+	}
+	return "\n\n" + text
 }
 
 // meTab renders the caller's personal stats, or a join hint if unregistered.

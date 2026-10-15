@@ -510,3 +510,32 @@ func (s *Store) FastestSince(chatID int64, sinceUTC string) (*RecordRow, error) 
 	}
 	return &r, nil
 }
+
+// PointsSince sums the season points each player earned in non-duel games
+// completed on/after a UTC timestamp, plus how many such games there were.
+// Players with no points in the window are absent from the map.
+func (s *Store) PointsSince(chatID, seasonID int64, sinceUTC string) (map[int64]int, int, error) {
+	rows, err := s.db.Query(`
+		SELECT gr.player_id, SUM(gr.points), g.id
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		WHERE g.chat_id = ? AND g.season_id = ? AND `+sqlSeasonalGames+`
+		  AND g.completed_at >= ?
+		GROUP BY gr.player_id, g.id`, chatID, seasonID, sinceUTC)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	gains := map[int64]int{}
+	games := map[int64]struct{}{}
+	for rows.Next() {
+		var pid, gid int64
+		var pts int
+		if err := rows.Scan(&pid, &pts, &gid); err != nil {
+			return nil, 0, err
+		}
+		gains[pid] += pts
+		games[gid] = struct{}{}
+	}
+	return gains, len(games), rows.Err()
+}
