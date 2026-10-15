@@ -19,8 +19,11 @@ func flatButtons(m *tele.ReplyMarkup) []tele.InlineButton {
 
 func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 	m := statsKeyboard("table", nil, 1)
-	if len(m.InlineKeyboard) != 2 || len(m.InlineKeyboard[0]) != 4 || len(m.InlineKeyboard[1]) != 3 {
-		t.Fatalf("tab layout: want rows of 4 and 3, got %d rows", len(m.InlineKeyboard))
+	if len(m.InlineKeyboard) != 3 || len(m.InlineKeyboard[0]) != 4 || len(m.InlineKeyboard[1]) != 3 {
+		t.Fatalf("tab layout: want rows of 4 and 3 plus the chart row, got %d rows", len(m.InlineKeyboard))
+	}
+	if chart := m.InlineKeyboard[2]; len(chart) != 1 || chart[0].Unique != cbRaceChart {
+		t.Errorf("table tab: last row must be the race chart button, got %+v", chart)
 	}
 	text := map[string]string{}
 	for _, b := range flatButtons(m) {
@@ -40,8 +43,8 @@ func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 func TestRecentSeasonStripAndArchive(t *testing.T) {
 	// Six seasons: the last four plus «Архив».
 	m := statsKeyboard("table", []int{1, 2, 3, 4, 5}, 6)
-	if len(m.InlineKeyboard) != 4 {
-		t.Fatalf("want 2 tab rows + strip + archive row, got %d rows", len(m.InlineKeyboard))
+	if len(m.InlineKeyboard) != 5 {
+		t.Fatalf("want 2 tab rows + strip + archive row + chart row, got %d rows", len(m.InlineKeyboard))
 	}
 	strip := m.InlineKeyboard[2]
 	var got []string

@@ -200,6 +200,7 @@ func (b *Bot) routes() {
 
 	b.tb.Handle("/stats", b.onStats)
 	b.tb.Handle(&tele.Btn{Unique: cbStatsTab}, b.onStatsTab)
+	b.tb.Handle(&tele.Btn{Unique: cbRaceChart}, b.onRaceChart)
 
 	b.tb.Handle("/duels", b.onDuelsHub)
 	b.tb.Handle("/status", b.onStatus)

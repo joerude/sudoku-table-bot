@@ -44,7 +44,8 @@ const (
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
-	cbStatsTab = "ststab" // payload: "<tab>" (see statsTabs) or "speed_all"
+	cbStatsTab  = "ststab"    // payload: "<tab>" (see statsTabs) or "speed_all"
+	cbRaceChart = "racechart" // no payload: posts the season race chart (beta)
 
 	cbSeasonView = "seasview" // payload: "<number>" (that season's summary) or "archive" (all seasons)
 
@@ -457,6 +458,7 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 		if len(archived) > 0 {
 			rows = append(rows, recentSeasonRows(m, archived, seasonNumber)...)
 		}
+		rows = append(rows, m.Row(m.Data("📈 График гонки (бета)", cbRaceChart)))
 	}
 	m.Inline(rows...)
 	return m
