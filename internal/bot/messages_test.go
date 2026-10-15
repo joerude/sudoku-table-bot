@@ -634,14 +634,14 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 	if !marked {
 		t.Errorf("speed_all: speed tab must carry the active marker")
 	}
-	// Other tabs get no toggle row: 7 tab buttons in 2 rows (4 + 3) only.
-	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 2 {
-		t.Errorf("table tab without archive: want 2 rows, got %d", n)
+	// The table tab: 7 tab buttons in 2 rows (4 + 3) plus the chart row.
+	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 3 {
+		t.Errorf("table tab without archive: want 3 rows, got %d", n)
 	}
-	// Table tab with archived seasons carries the season row.
+	// Table tab with archived seasons carries the season row above the chart row.
 	withSeasons := statsKeyboard("table", []int{1, 2, 3}, 4)
-	if n := len(withSeasons.InlineKeyboard); n != 3 {
-		t.Fatalf("table tab with archive: want 3 rows, got %d", n)
+	if n := len(withSeasons.InlineKeyboard); n != 4 {
+		t.Fatalf("table tab with archive: want 4 rows, got %d", n)
 	}
 	seasonRow := withSeasons.InlineKeyboard[2]
 	if len(seasonRow) != 4 {
@@ -884,22 +884,6 @@ func TestDuelsTextShowsScore(t *testing.T) {
 	}
 	if strings.Contains(out, "рейтинг") {
 		t.Errorf("duelsText must not advertise a separate duel rating\ngot: %s", out)
-	}
-}
-
-func TestStandingsTextShowsGapToLeader(t *testing.T) {
-	se := &storage.Season{Number: 2, Target: 100}
-	rows := []storage.Standing{
-		{PlayerID: 1, Name: "Ann", Points: 20, Wins: 6, Games: 9},
-		{PlayerID: 2, Name: "Joe", Points: 15, Wins: 4, Games: 9},
-	}
-	out := standingsText(se, rows)
-	if !strings.Contains(out, "-5 · 4 поб") {
-		t.Errorf("standingsText: want gap '-5 · 4 поб' for Joe\ngot: %s", out)
-	}
-	// The leader carries no gap marker.
-	if strings.Contains(out, "-0 ·") || strings.Contains(out, "Ann</b> — <b>20</b>   <i>(-") {
-		t.Errorf("standingsText: leader must not show a gap\ngot: %s", out)
 	}
 }
 
@@ -1248,32 +1232,6 @@ func TestActivityTextEmpty(t *testing.T) {
 	}
 }
 
-func TestRaceText(t *testing.T) {
-	rows := []storage.Standing{
-		{PlayerID: 1, Name: "Ann", Points: 20},
-		{PlayerID: 2, Name: "Joe", Points: 18},
-		{PlayerID: 3, Name: "Max", Points: 15},
-	}
-	// Before the window: Joe 17, Max 15, Ann 15 → Ann was last-ish, Joe led.
-	gains := map[int64]int{1: 5, 2: 1}
-	out := raceText(rows, gains, 4, 7)
-	if !strings.Contains(out, "Ann <b>+5</b>  ↗️") {
-		t.Errorf("Ann must show +5 and climb\ngot: %s", out)
-	}
-	if !strings.Contains(out, "Joe <b>+1</b>  ↘️1") {
-		t.Errorf("Joe must show +1 and drop one place\ngot: %s", out)
-	}
-	if !strings.Contains(out, "Max <b>+0</b>") {
-		t.Errorf("Max must show +0\ngot: %s", out)
-	}
-	if !strings.Contains(out, "Гонка за 7 дней") || !strings.Contains(out, "4 игры") {
-		t.Errorf("header wrong\ngot: %s", out)
-	}
-	if got := raceText(rows, nil, 0, 7); got != "" {
-		t.Errorf("no games in window: want empty, got %q", got)
-	}
-}
-
 func TestEvenGames(t *testing.T) {
 	rows := []storage.Standing{
 		{PlayerID: 1, Name: "Ann", Games: 41},
@@ -1292,5 +1250,49 @@ func TestEvenGames(t *testing.T) {
 	}
 	if low := evenGames(rows, 10); low[0].Games != 41 {
 		t.Errorf("a total below the player's own count must not lower it, got %d", low[0].Games)
+	}
+}
+
+func TestStandingsTextRaceTable(t *testing.T) {
+	se := &storage.Season{Number: 6, Target: 100}
+	rows := []storage.Standing{
+		{PlayerID: 1, Name: "mister", Points: 20, Wins: 6},
+		{PlayerID: 2, Name: "Nur", Points: 18, Wins: 5},
+		{PlayerID: 3, Name: "Max", Points: 15, Wins: 4},
+	}
+	// At the window start: Nur 17, mister 15, Max 15. mister climbed, Nur dropped.
+	race := raceWindow{Days: 7, Games: 4, Gains: map[int64]int{1: 5, 2: 1}}
+	out := standingsText(se, rows, race, map[int64][]int{1: {1, 2, 3, 1, 1, 0}})
+	for _, want := range []string{
+		"гонка до 100 очков",
+		"<pre>1 mister 20 ▰▰▱▱▱▱▱▱▱▱ +5 ↗1\n",
+		"2 Nur    18 ▰▰▱▱▱▱▱▱▱▱ +1 ↘1\n",
+		"3 Max    15 ▰▰▱▱▱▱▱▱▱▱ +0</pre>",
+		"за 7 дней · 4 игры",
+		"<b>mister</b> · 6 поб · 🥈🥉🥇🥇➖",
+		"<b>Max</b> · 4 поб",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("standingsText missing %q\ngot: %s", want, out)
+		}
+	}
+}
+
+func TestStandingsTextQuietWeek(t *testing.T) {
+	se := &storage.Season{Number: 6, Target: 100}
+	rows := []storage.Standing{{PlayerID: 1, Name: "A&B", Points: 100}, {PlayerID: 2, Name: "Александр Великий", Points: 99}}
+	out := standingsText(se, rows, raceWindow{Days: 7}, nil)
+	if strings.Contains(out, "+0") || strings.Contains(out, "за 7 дней") {
+		t.Errorf("no games in the window: no window columns or legend\ngot: %s", out)
+	}
+	if strings.Contains(out, "Форма") {
+		t.Errorf("no ranks: no form block\ngot: %s", out)
+	}
+	if !strings.Contains(out, "A&amp;B") || !strings.Contains(out, "Александр…") {
+		t.Errorf("names must be escaped and clipped\ngot: %s", out)
+	}
+	// Only the target fills the bar: 99 stays one cell short.
+	if !strings.Contains(out, "100 ▰▰▰▰▰▰▰▰▰▰") || !strings.Contains(out, " 99 ▰▰▰▰▰▰▰▰▰▱") {
+		t.Errorf("bars: full only at the target\ngot: %s", out)
 	}
 }

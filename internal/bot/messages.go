@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
@@ -439,61 +440,151 @@ func evenGames(rows []storage.Standing, total int) []storage.Standing {
 	return out
 }
 
-// standingsText renders the season leaderboard as a medal list.
-func standingsText(se *storage.Season, rows []storage.Standing) string {
+// raceWindow is what moved in the season table over the last few days.
+type raceWindow struct {
+	Days  int
+	Games int           // seasonal games completed in the window
+	Gains map[int64]int // points each player earned in the window
+}
+
+const (
+	formSize    = 5  // recent games shown in the table's form line
+	raceNameMax = 10 // name width in the aligned race block
+	raceBarSize = 10 // cells in a race bar
+)
+
+// standingsText renders the season table as a race: an aligned block with
+// place, name, points and a bar toward the target, plus each player's points
+// and place change over the race window, then wins and recent form. form holds
+// each player's season ranks in game order, oldest first.
+func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow, form map[int64][]int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🏆 <b>Сезон %d</b> · до %d %s\n\n", se.Number, se.Target, pointsWord(se.Target)))
+	fmt.Fprintf(&b, "🏆 <b>Сезон %d</b> · гонка до %d %s\n\n", se.Number, se.Target, pointsWord(se.Target))
 	if len(rows) == 0 {
 		b.WriteString("Пока нет игроков. /join")
 		return b.String()
 	}
-	for i, r := range rows {
-		gap := ""
-		if i > 0 && rows[0].Points > r.Points {
-			gap = fmt.Sprintf("-%d · ", rows[0].Points-r.Points)
-		}
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> · <b>%d</b>   <i>(%s%d поб · %d %s)</i>\n",
-			medal(i+1), esc(r.Name), r.Points, gap, r.Wins, r.Games, gamesWord(r.Games)))
+	b.WriteString(raceTable(se.Target, rows, race))
+	if race.Games > 0 {
+		fmt.Fprintf(&b, "\n<i>+очки и ↗↘ места за %d %s · %d %s</i>",
+			race.Days, daysWord(race.Days), race.Games, gamesWord(race.Games))
 	}
-	if leader := rows[0]; leader.Points > 0 {
-		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
-			esc(leader.Name), leader.Points, se.Target, progressBar(leader.Points, se.Target)))
+	played := false
+	for _, r := range rows {
+		played = played || len(form[r.PlayerID]) > 0
+	}
+	if !played {
+		return b.String()
+	}
+	b.WriteString("\n\n🔥 <b>Форма</b> <i>(последние игры, новые справа)</i>")
+	for _, r := range rows {
+		fmt.Fprintf(&b, "\n<b>%s</b> · %d поб", esc(r.Name), r.Wins)
+		if f := formLine(form[r.PlayerID]); f != "" {
+			b.WriteString(" · " + f)
+		}
 	}
 	return b.String()
 }
 
-// raceText renders who gained what over the last `days` days: the current
-// standings order with each player's points earned in the window and the place
-// change against the window start. Empty when no game fell into the window.
-func raceText(rows []storage.Standing, gains map[int64]int, games, days int) string {
-	if games == 0 || len(rows) == 0 {
-		return ""
+// raceTable is standingsText's aligned <pre> block, one row per player:
+// "1 mister 70 ▰▰▰▰▰▰▰▱▱▱ +9 ↗1". The window columns are left out when no game
+// fell into the window.
+func raceTable(target int, rows []storage.Standing, race raceWindow) string {
+	names := make([]string, len(rows))
+	gains := make([]string, len(rows))
+	nameW, ptsW, gainW := 0, 0, 0
+	for i, r := range rows {
+		names[i] = clipRunes(r.Name, raceNameMax)
+		gains[i] = fmt.Sprintf("+%d", race.Gains[r.PlayerID])
+		nameW = max(nameW, utf8.RuneCountInString(names[i]))
+		ptsW = max(ptsW, len(strconv.Itoa(r.Points)))
+		gainW = max(gainW, len(gains[i]))
 	}
-	// Places at the window start: points minus the window gain, ties keep the
-	// current order.
+	placeW := len(strconv.Itoa(len(rows)))
+	moves := racePlaceMoves(rows, race.Gains)
+	var b strings.Builder
+	b.WriteString("<pre>")
+	for i, r := range rows {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		pad := strings.Repeat(" ", nameW-utf8.RuneCountInString(names[i]))
+		fmt.Fprintf(&b, "%*d %s%s %*d %s", placeW, i+1, esc(names[i]), pad, ptsW, r.Points, raceBar(r.Points, target))
+		if race.Games == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, " %*s", gainW, gains[i])
+		switch d := moves[r.PlayerID]; {
+		case d > 0:
+			fmt.Fprintf(&b, " ↗%d", d)
+		case d < 0:
+			fmt.Fprintf(&b, " ↘%d", -d)
+		}
+	}
+	b.WriteString("</pre>")
+	return b.String()
+}
+
+// racePlaceMoves is how many places each player climbed (negative: dropped)
+// since the window start, where a player stood at points minus the window gain.
+// Ties at the window start keep the current order.
+func racePlaceMoves(rows []storage.Standing, gains map[int64]int) map[int64]int {
 	prev := make([]storage.Standing, len(rows))
 	copy(prev, rows)
 	sort.SliceStable(prev, func(i, j int) bool {
 		return prev[i].Points-gains[prev[i].PlayerID] > prev[j].Points-gains[prev[j].PlayerID]
 	})
-	before := make(map[int64]int, len(prev))
+	moves := make(map[int64]int, len(rows))
 	for i, r := range prev {
-		before[r.PlayerID] = i
+		moves[r.PlayerID] = i
+	}
+	for i, r := range rows {
+		moves[r.PlayerID] -= i
+	}
+	return moves
+}
+
+// raceBar draws cur toward target in raceBarSize cells, rounded to the nearest
+// cell but never full before the target is reached.
+func raceBar(cur, target int) string {
+	filled := 0
+	if target > 0 {
+		filled = (cur*raceBarSize + target/2) / target
+	}
+	if cur < target {
+		filled = min(filled, raceBarSize-1)
+	}
+	filled = max(0, min(filled, raceBarSize))
+	return strings.Repeat("▰", filled) + strings.Repeat("▱", raceBarSize-filled)
+}
+
+// formLine renders the last formSize season ranks as medals, oldest first:
+// 🥇🥈🥉 for the podium, ➖ for a DNF, ▫️ for a place below third.
+func formLine(ranks []int) string {
+	if len(ranks) > formSize {
+		ranks = ranks[len(ranks)-formSize:]
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🏁 <b>Гонка за %d %s</b> · %d %s\n",
-		days, daysWord(days), games, gamesWord(games)))
-	for i, r := range rows {
-		move := ""
-		switch d := before[r.PlayerID] - i; {
-		case d > 0:
-			move = fmt.Sprintf("  ↗️%d", d)
-		case d < 0:
-			move = fmt.Sprintf("  ↘️%d", -d)
+	for _, r := range ranks {
+		switch {
+		case r == 0:
+			b.WriteString("➖")
+		case r <= 3:
+			b.WriteString(medal(r))
+		default:
+			b.WriteString("▫️")
 		}
-		b.WriteString(fmt.Sprintf("%s %s <b>+%d</b>%s\n", medal(i+1), esc(r.Name), gains[r.PlayerID], move))
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return b.String()
+}
+
+// clipRunes cuts s to at most n runes, marking a cut with "…".
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:n-1]) + "…"
 }
 
 // seasonLastDay returns the season's last playable instant, false when the
