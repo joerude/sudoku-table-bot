@@ -508,11 +508,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		total, e := b.st.SeasonGameCount(chatID, season.ID)
-		if e != nil {
-			return "", nil, e
-		}
-		text = standingsText(season, evenGames(standings, total)) + b.raceBlock(chatID, season, standings) +
+		text = standingsText(season, standings, b.recentRace(chatID, season), b.seasonForm(chatID, season)) +
 			b.seasonStatus(chatID, season)
 	}
 	if err != nil {
@@ -527,24 +523,34 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 	return clipText(text, tgMaxText), statsKeyboard(tab, archived, season.Number), nil
 }
 
-// raceWindowDays is how far back the table's "race" block looks.
+// raceWindowDays is how far back the table's race columns look.
 const raceWindowDays = 7
 
-// raceBlock is the table's "who gained what lately" block, with its leading
-// blank line, or "" when nothing was played in the window or it can't be read
-// (the table stays useful without it).
-func (b *Bot) raceBlock(chatID int64, season *storage.Season, standings []storage.Standing) string {
+// recentRace reads the table's race window. Best-effort: on an error the table
+// is shown without the window columns.
+func (b *Bot) recentRace(chatID int64, season *storage.Season) raceWindow {
 	since := time.Now().UTC().AddDate(0, 0, -raceWindowDays).Format("2006-01-02 15:04:05")
 	gains, games, err := b.st.PointsSince(chatID, season.ID, since)
 	if err != nil {
-		log.Printf("raceBlock: %v", err)
-		return ""
+		log.Printf("recentRace: %v", err)
+		return raceWindow{Days: raceWindowDays}
 	}
-	text := raceText(standings, gains, games, raceWindowDays)
-	if text == "" {
-		return ""
+	return raceWindow{Days: raceWindowDays, Games: games, Gains: gains}
+}
+
+// seasonForm is each player's season ranks in game order, for the table's form
+// line. Best-effort: on an error the table is shown without it.
+func (b *Bot) seasonForm(chatID int64, season *storage.Season) map[int64][]int {
+	rows, err := b.st.SeasonRanks(chatID, season.ID)
+	if err != nil {
+		log.Printf("seasonForm: %v", err)
+		return nil
 	}
-	return "\n\n" + text
+	form := make(map[int64][]int)
+	for _, r := range rows {
+		form[r.PlayerID] = append(form[r.PlayerID], r.Rank)
+	}
+	return form
 }
 
 // meTab renders the caller's personal stats, or a join hint if unregistered.

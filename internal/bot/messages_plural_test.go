@@ -34,11 +34,12 @@ func TestSeasonDeadlineLineTomorrowAndPlural(t *testing.T) {
 func TestStandingsTextPlurals(t *testing.T) {
 	se := &storage.Season{Number: 3, Target: 101}
 	rows := []storage.Standing{
-		{Name: "A", Points: 5, Wins: 1, Games: 1},
-		{Name: "B", Points: 3, Wins: 0, Games: 22},
+		{PlayerID: 1, Name: "A", Points: 5, Wins: 1, Games: 1},
+		{PlayerID: 2, Name: "B", Points: 3, Wins: 0, Games: 22},
 	}
-	got := standingsText(se, rows)
-	for _, want := range []string{"до 101 очко", "1 игра)", "22 игры)"} {
+	race := raceWindow{Days: 1, Games: 1, Gains: map[int64]int{1: 3}}
+	got := standingsText(se, rows, race, nil)
+	for _, want := range []string{"до 101 очко", "за 1 день · 1 игра"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("standingsText missing %q in:\n%s", want, got)
 		}
