@@ -75,3 +75,38 @@ func TestPointsSince(t *testing.T) {
 		t.Errorf("future window: gains=%v games=%d err=%v; want empty", gains, games, err)
 	}
 }
+
+// TestSeasonGameTimes: only the season's counting games, oldest first, and the
+// season's start time is readable.
+func TestSeasonGameTimes(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-4303)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	for i := 0; i < 2; i++ {
+		gid, err := st.CreatePendingGame(chat, se.ID, 1, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = st.AddPickTimed(gid, a.ID, 90)
+		_ = st.AddPickTimed(gid, b.ID, 95)
+		if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A pending game does not count.
+	if _, err := st.CreatePendingGame(chat, se.ID, 1, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	times, err := st.SeasonGameTimes(chat, se.ID)
+	if err != nil || len(times) != 2 || times[0] > times[1] {
+		t.Errorf("SeasonGameTimes = %v, %v; want 2 ascending", times, err)
+	}
+	if at, err := st.SeasonStartedAt(se.ID); err != nil || len(at) != len("2006-01-02 15:04:05") {
+		t.Errorf("SeasonStartedAt = %q, %v", at, err)
+	}
+}

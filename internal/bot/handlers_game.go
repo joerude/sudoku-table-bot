@@ -1030,7 +1030,9 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 	}
 	b.retireOtherCard(c, game.ID, cardClosedText) // the result landed in the picker, not on the card
 	if seasonEnd != "" {
-		return c.Send(seasonEnd)
+		err := c.Send(seasonEnd)
+		b.postSeasonPoster(game.ChatID, game.SeasonID)
+		return err
 	}
 	return nil
 }

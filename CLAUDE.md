@@ -27,8 +27,12 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
   `schema.sql` (embed, применяется на каждом Open), `games.go`, `players.go`,
   `seasons.go`, `standings.go`, `stats.go`, `duels.go`.
 - `internal/domain/scoring.go`: чистая логика очков (`PointsForRank`).
-- `internal/chart/`: PNG-график гонки сезона (бета, кнопка под таблицей /stats).
+- `internal/chart/`: PNG-картинки (бета): гонка сезона и календарь (кнопки под
+  таблицей /stats), график Elo (вкладка «Рейтинг»), постер сезона (сам после поста
+  о закрытии сезона + кнопка в сводке архивного сезона). Хендлеры в
+  `internal/bot/charts.go`. Рендер только в памяти, на диск ничего не пишется.
   Чистый Go на `golang.org/x/image` (gofont, рисует в 2x и сжимает), без CGO.
+  Посмотреть картинки: `CHART_DIR=/tmp/x go test ./internal/chart`.
   Держи `x/image` на версии с `go 1.25` в go.mod (v0.46+ требуют Go 1.26).
 - `data/sudoku.db`: прод БД (volume в docker).
 
