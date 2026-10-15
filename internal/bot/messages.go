@@ -447,6 +447,40 @@ func standingsText(se *storage.Season, rows []storage.Standing) string {
 	return b.String()
 }
 
+// raceText renders who gained what over the last `days` days: the current
+// standings order with each player's points earned in the window and the place
+// change against the window start. Empty when no game fell into the window.
+func raceText(rows []storage.Standing, gains map[int64]int, games, days int) string {
+	if games == 0 || len(rows) == 0 {
+		return ""
+	}
+	// Places at the window start: points minus the window gain, ties keep the
+	// current order.
+	prev := make([]storage.Standing, len(rows))
+	copy(prev, rows)
+	sort.SliceStable(prev, func(i, j int) bool {
+		return prev[i].Points-gains[prev[i].PlayerID] > prev[j].Points-gains[prev[j].PlayerID]
+	})
+	before := make(map[int64]int, len(prev))
+	for i, r := range prev {
+		before[r.PlayerID] = i
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("🏁 <b>Гонка за %d %s</b> · %d %s\n",
+		days, daysWord(days), games, gamesWord(games)))
+	for i, r := range rows {
+		move := ""
+		switch d := before[r.PlayerID] - i; {
+		case d > 0:
+			move = fmt.Sprintf("  ↗️%d", d)
+		case d < 0:
+			move = fmt.Sprintf("  ↘️%d", -d)
+		}
+		b.WriteString(fmt.Sprintf("%s %s <b>+%d</b>%s\n", medal(i+1), esc(r.Name), gains[r.PlayerID], move))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // seasonLastDay returns the season's last playable instant, false when the
 // season has no readable deadline. The stored deadline is the midnight that
 // opens the day after the season, so the last playable moment is a tick before.

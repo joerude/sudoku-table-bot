@@ -1247,3 +1247,29 @@ func TestActivityTextEmpty(t *testing.T) {
 		t.Errorf("empty roster should hint at /join, got:\n%s", got)
 	}
 }
+
+func TestRaceText(t *testing.T) {
+	rows := []storage.Standing{
+		{PlayerID: 1, Name: "Ann", Points: 20},
+		{PlayerID: 2, Name: "Joe", Points: 18},
+		{PlayerID: 3, Name: "Max", Points: 15},
+	}
+	// Before the window: Joe 17, Max 15, Ann 15 → Ann was last-ish, Joe led.
+	gains := map[int64]int{1: 5, 2: 1}
+	out := raceText(rows, gains, 4, 7)
+	if !strings.Contains(out, "Ann <b>+5</b>  ↗️") {
+		t.Errorf("Ann must show +5 and climb\ngot: %s", out)
+	}
+	if !strings.Contains(out, "Joe <b>+1</b>  ↘️1") {
+		t.Errorf("Joe must show +1 and drop one place\ngot: %s", out)
+	}
+	if !strings.Contains(out, "Max <b>+0</b>") {
+		t.Errorf("Max must show +0\ngot: %s", out)
+	}
+	if !strings.Contains(out, "Гонка за 7 дней") || !strings.Contains(out, "4 игры") {
+		t.Errorf("header wrong\ngot: %s", out)
+	}
+	if got := raceText(rows, nil, 0, 7); got != "" {
+		t.Errorf("no games in window: want empty, got %q", got)
+	}
+}
