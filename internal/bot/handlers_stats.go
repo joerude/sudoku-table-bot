@@ -222,7 +222,26 @@ func (b *Bot) onWeekly(c tele.Context) error {
 }
 
 // onMe is an alias of the stats hub's «Я» tab.
-func (b *Bot) onMe(c tele.Context) error { return b.openStatsTab(c, "me") }
+// onMe opens the stats hub on the "me" tab. An ephemeral /me gets just that
+// tab's text, privately and without the hub (its tabs would edit a message
+// nobody else sees).
+func (b *Bot) onMe(c tele.Context) error {
+	if incomingEphemeral(c) == 0 {
+		return b.openStatsTab(c, "me")
+	}
+	season, err := b.ensure(c)
+	if err != nil {
+		return b.fail(c, "onMe.ensure", err)
+	}
+	text, err := b.meTab(c, season)
+	if err != nil {
+		return b.fail(c, "onMe.tab", err)
+	}
+	if b.privately(c, clipText(text, tgMaxText), nil) {
+		return nil
+	}
+	return b.openStatsTab(c, "me")
+}
 
 // historyDefault is the page size for the History tab / bare /history.
 // historyMax caps "/history all" so the message stays under Telegram's 4096 limit.

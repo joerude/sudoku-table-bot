@@ -1027,6 +1027,9 @@ func duelAcceptText(target storage.Player, code string) string {
 // duelRevokedText replaces a challenge its author withdrew.
 const duelRevokedText = "🗑 Вызов отозван"
 
+// duelExpiredLabel is the inactive button left on an expired challenge.
+const duelExpiredLabel = "⌛ Вызов сгорел"
+
 // duelExpiredText announces a challenge that nobody answered in time.
 func duelExpiredText(challenger, target string) string {
 	return fmt.Sprintf("⌛ Вызов %s → %s сгорел, лига свободна", esc(challenger), esc(target))
