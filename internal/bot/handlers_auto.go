@@ -239,6 +239,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 	b.closeCard(game.ID)
 	if seasonEnd != "" {
 		_, _ = b.tb.Send(to, seasonEnd)
+		b.postSeasonPoster(game.ChatID, game.SeasonID)
 	}
 	return true
 }

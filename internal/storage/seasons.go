@@ -250,3 +250,33 @@ func (s *Store) scanSeason(row *sql.Row) (*Season, error) {
 	}
 	return &se, nil
 }
+
+// SeasonStartedAt returns when a season started (UTC "2006-01-02 15:04:05").
+func (s *Store) SeasonStartedAt(seasonID int64) (string, error) {
+	var at string
+	err := s.db.QueryRow(`SELECT started_at FROM seasons WHERE id=?`, seasonID).Scan(&at)
+	return at, err
+}
+
+// SeasonGameTimes returns completed_at (UTC "2006-01-02 15:04:05") of every
+// game that counts toward a season (completed, not deleted, not a duel),
+// oldest first.
+func (s *Store) SeasonGameTimes(chatID, seasonID int64) ([]string, error) {
+	rows, err := s.db.Query(`
+		SELECT g.completed_at FROM games g
+		WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames+`
+		ORDER BY g.completed_at, g.id`, chatID, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var at string
+		if err := rows.Scan(&at); err != nil {
+			return nil, err
+		}
+		out = append(out, at)
+	}
+	return out, rows.Err()
+}

@@ -44,8 +44,11 @@ const (
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
-	cbStatsTab  = "ststab"    // payload: "<tab>" (see statsTabs) or "speed_all"
-	cbRaceChart = "racechart" // no payload: posts the season race chart (beta)
+	cbStatsTab    = "ststab"    // payload: "<tab>" (see statsTabs) or "speed_all"
+	cbRaceChart   = "racechart" // no payload: posts the season race chart (beta)
+	cbRatingChart = "ratechart" // no payload: posts the Elo history chart (beta)
+	cbCalendar    = "calendar"  // no payload: posts the season calendar (beta)
+	cbPoster      = "poster"    // payload: "<season number>", posts that season's poster (beta)
 
 	cbSeasonView = "seasview" // payload: "<number>" (that season's summary) or "archive" (all seasons)
 
@@ -458,7 +461,12 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 		if len(archived) > 0 {
 			rows = append(rows, recentSeasonRows(m, archived, seasonNumber)...)
 		}
-		rows = append(rows, m.Row(m.Data("📈 График гонки (бета)", cbRaceChart)))
+		rows = append(rows, m.Row(
+			m.Data("📈 Гонка (бета)", cbRaceChart),
+			m.Data("📅 Календарь (бета)", cbCalendar),
+		))
+	case "rating":
+		rows = append(rows, m.Row(m.Data("📈 График рейтинга (бета)", cbRatingChart)))
 	}
 	m.Inline(rows...)
 	return m
@@ -529,6 +537,9 @@ func seasonViewKeyboard(archived []int, active, viewed int) *tele.ReplyMarkup {
 	var rows []tele.Row
 	if len(arrows) > 0 {
 		rows = append(rows, arrows)
+	}
+	if viewed != active { // a finished season has a poster
+		rows = append(rows, m.Row(m.Data("🖼 Постер сезона (бета)", cbPoster, strconv.Itoa(viewed))))
 	}
 	rows = append(rows, m.Row(m.Data("⬅️ К статистике", cbStatsTab, "table")))
 	m.Inline(rows...)

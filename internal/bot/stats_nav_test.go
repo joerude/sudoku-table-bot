@@ -22,8 +22,12 @@ func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 	if len(m.InlineKeyboard) != 3 || len(m.InlineKeyboard[0]) != 4 || len(m.InlineKeyboard[1]) != 3 {
 		t.Fatalf("tab layout: want rows of 4 and 3 plus the chart row, got %d rows", len(m.InlineKeyboard))
 	}
-	if chart := m.InlineKeyboard[2]; len(chart) != 1 || chart[0].Unique != cbRaceChart {
-		t.Errorf("table tab: last row must be the race chart button, got %+v", chart)
+	if pics := m.InlineKeyboard[2]; len(pics) != 2 || pics[0].Unique != cbRaceChart || pics[1].Unique != cbCalendar {
+		t.Errorf("table tab: last row must hold the race and calendar buttons, got %+v", pics)
+	}
+	rating := statsKeyboard("rating", nil, 1)
+	if last := rating.InlineKeyboard[len(rating.InlineKeyboard)-1]; len(last) != 1 || last[0].Unique != cbRatingChart {
+		t.Errorf("rating tab: last row must be the rating chart button, got %+v", last)
 	}
 	text := map[string]string{}
 	for _, b := range flatButtons(m) {
@@ -76,8 +80,11 @@ func TestSeasonViewKeyboardNeighboursAndBack(t *testing.T) {
 	}
 
 	mid := seasonViewKeyboard(archived, active, 2)
-	if len(mid.InlineKeyboard) != 2 {
-		t.Fatalf("middle season: want arrows + back, got %d rows", len(mid.InlineKeyboard))
+	if len(mid.InlineKeyboard) != 3 {
+		t.Fatalf("middle season: want arrows + poster + back, got %d rows", len(mid.InlineKeyboard))
+	}
+	if p := mid.InlineKeyboard[1]; len(p) != 1 || p[0].Unique != cbPoster || p[0].Data != "2" {
+		t.Errorf("archived season: poster button for it expected, got %+v", p)
 	}
 	arrows := mid.InlineKeyboard[0]
 	if len(arrows) != 2 || arrows[0].Data != "1" || arrows[1].Data != "3" ||
