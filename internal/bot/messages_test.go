@@ -1298,10 +1298,10 @@ func TestStandingsTextQuietWeek(t *testing.T) {
 }
 
 func TestBoardCaption(t *testing.T) {
-	if got := boardCaption("QWER", "easy", "original"); got != "🧩 <b>QWER</b> · Easy · Original" {
+	if got := boardCaption("QWER", "easy", "original"); got != "🧩 QWER · Easy · Original" {
 		t.Errorf("caption = %q", got)
 	}
-	if got := boardCaption("QWER", "", ""); got != "🧩 <b>QWER</b>" {
+	if got := boardCaption("QWER", "", ""); got != "🧩 QWER" {
 		t.Errorf("caption without tag = %q", got)
 	}
 }
