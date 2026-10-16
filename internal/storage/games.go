@@ -372,6 +372,22 @@ func (s *Store) SetUsdokuCode(gameID int64, code string) error {
 	return err
 }
 
+// SetPuzzle stores a game's starting grid once; a later call never rewrites it.
+func (s *Store) SetPuzzle(gameID int64, puzzle string) error {
+	_, err := s.db.Exec(`UPDATE games SET puzzle=? WHERE id=? AND (puzzle IS NULL OR puzzle='')`, puzzle, gameID)
+	return err
+}
+
+// Puzzle returns a game's stored starting grid, "" when there is none.
+func (s *Store) Puzzle(gameID int64) (string, error) {
+	var p sql.NullString
+	err := s.db.QueryRow(`SELECT puzzle FROM games WHERE id=?`, gameID).Scan(&p)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return p.String, err
+}
+
 // AttachUsdokuCode binds a usdoku room to a live pending game that has none yet.
 // False means nothing changed: the game already has a room, or is closed or
 // deleted. Conditional so two /code calls cannot start two watchers.

@@ -63,6 +63,7 @@ const (
 	cbLearnTier = "ltier" // payload: "<tier>" — lists that tier's techniques
 	cbLearnTech = "ltech" // payload: "<techniqueKey>" — renders one technique
 	cbLearnRand = "lrand" // no payload — random technique
+	cbBoardTech = "btech" // payload: "<techniqueKey>" — explains it ephemerally from a result post
 )
 
 // Button colors (Bot API style). Clients that do not know them show a plain button.
@@ -143,6 +144,18 @@ func resultKeyboard(gameID int64, extra ...tele.Btn) *tele.ReplyMarkup {
 	}
 	m.Inline(rows...)
 	return m
+}
+
+// techButton links a result post to the hardest technique its board needed;
+// false when singles were enough or the solver got stuck before anything else.
+func techButton(g domain.Grading) (tele.Btn, bool) {
+	k := g.Hardest()
+	t, ok := domain.TechniqueByKey(k)
+	if !ok || singles[k] {
+		return tele.Btn{}, false
+	}
+	m := &tele.ReplyMarkup{}
+	return m.Data("📚 "+t.Name, cbBoardTech, k), true
 }
 
 // againButton is «Ещё одну» on a regular game's result: same difficulty and mode.

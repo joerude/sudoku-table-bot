@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS games (
     completed_at TEXT,
     post_msg_id  INTEGER,                              -- the game's chat card message
     post_text    TEXT,                                 -- card base text (live lines append to it)
-    post_kind    TEXT                                  -- '' | invite
+    post_kind    TEXT,                                 -- '' | invite
+    puzzle       TEXT                                  -- starting grid, 81 digits row by row, 0 = empty
 );
 
 CREATE TABLE IF NOT EXISTS game_results (

@@ -2,7 +2,6 @@ package bot
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"sort"
@@ -262,12 +261,9 @@ func (b *Bot) postBoard(g *storage.Game, code string) {
 	if b.tb == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	grid, err := b.ud.Board(ctx, code)
-	if err != nil {
-		log.Printf("postBoard.fetch %s: %v", code, err)
-		return
+	grid, ok := b.ensurePuzzle(g)
+	if !ok {
+		return // no grid, nothing to draw (ensurePuzzle logs a failed fetch)
 	}
 	tag := gameTag(g.Difficulty.String, g.Mode.String)
 	png, err := chart.RenderBoard(chart.Board{Code: code, Tag: tag, Cells: grid})
