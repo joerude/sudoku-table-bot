@@ -201,3 +201,28 @@ func TestPointsWord(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderBoard(t *testing.T) {
+	rows := []string{
+		"...69...3", "..518...4", "7.....8.9",
+		"3.8......", ".9..4..8.", "......2.1",
+		"5.3.....8", "8...691..", "4...38...",
+	}
+	var cells [9][9]int
+	for r, s := range rows {
+		for c, ch := range s {
+			if ch != '.' {
+				cells[r][c] = int(ch - '0')
+			}
+		}
+	}
+	b, err := RenderBoard(Board{Code: "QWER", Tag: "Easy · Original", Cells: cells})
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := decodeSize(t, b, int(boardW), int(boardHead+boardCell*9+boardPad))
+	if !has(img, boxShade) || !has(img, inkMain) {
+		t.Errorf("box shading or ink not drawn")
+	}
+	save(t, "board", b)
+}

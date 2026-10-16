@@ -1296,3 +1296,12 @@ func TestStandingsTextQuietWeek(t *testing.T) {
 		t.Errorf("bars: full only at the target\ngot: %s", out)
 	}
 }
+
+func TestBoardCaption(t *testing.T) {
+	if got := boardCaption("QWER", "easy", "original"); got != "🧩 <b>QWER</b> · Easy · Original" {
+		t.Errorf("caption = %q", got)
+	}
+	if got := boardCaption("QWER", "", ""); got != "🧩 <b>QWER</b>" {
+		t.Errorf("caption without tag = %q", got)
+	}
+}

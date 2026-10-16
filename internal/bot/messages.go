@@ -409,6 +409,15 @@ func gameTag(difficulty, mode string) string {
 	return strings.Join(parts, " · ")
 }
 
+// boardCaption captions the starting-position picture: room code and tag.
+func boardCaption(code, difficulty, mode string) string {
+	s := "🧩 <b>" + esc(code) + "</b>"
+	if tag := gameTag(difficulty, mode); tag != "" {
+		s += " · " + esc(tag)
+	}
+	return s
+}
+
 // signedPts shows a positive score with a leading "+"; zero stays plain.
 func signedPts(p int) string {
 	if p > 0 {

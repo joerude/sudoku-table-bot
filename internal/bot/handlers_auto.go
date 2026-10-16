@@ -51,6 +51,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	defer setRoomBusy(gameID, false)
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
+	var status string // usdoku status at the previous successful poll
 	for {
 		g, err := b.st.GameByID(gameID)
 		if err != nil {
@@ -69,6 +70,10 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 			log.Printf("watchGame.info %s: %v", code, err)
 		} else {
 			b.duelRoomSeen(g, info)
+			if roundStarted(status, info.Info.Status) {
+				go b.postBoard(g, code)
+			}
+			status = info.Info.Status
 			if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
 				if b.autoRecord(g, info) {
 					return

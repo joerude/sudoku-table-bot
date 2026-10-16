@@ -15,21 +15,25 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
 const (
 	// DefaultBaseURL is the usdoku v2 API root.
 	DefaultBaseURL = "https://api.usdoku.com/v2"
+	// apiVersionPath is the REST suffix; socket.io lives on the bare host.
+	apiVersionPath = "/v2"
 	defaultVersion = "2"
 )
 
 // Client talks to the usdoku HTTP API.
 type Client struct {
-	httpc    *http.Client
-	baseURL  string
-	deviceID string
-	version  string
+	httpc     *http.Client
+	baseURL   string
+	socketURL string // socket.io root (Board)
+	deviceID  string
+	version   string
 }
 
 // New returns a client with a freshly generated device id.
@@ -39,16 +43,19 @@ func New() *Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSHandshakeTimeout = 20 * time.Second
 	return &Client{
-		httpc:    &http.Client{Timeout: 30 * time.Second, Transport: tr},
-		baseURL:  DefaultBaseURL,
-		deviceID: newDeviceID(),
-		version:  defaultVersion,
+		httpc:     &http.Client{Timeout: 30 * time.Second, Transport: tr},
+		baseURL:   DefaultBaseURL,
+		socketURL: strings.TrimSuffix(DefaultBaseURL, apiVersionPath),
+		deviceID:  newDeviceID(),
+		version:   defaultVersion,
 	}
 }
 
-// WithBaseURL overrides the API root (used in tests).
+// WithBaseURL overrides the API root (used in tests). The socket.io root
+// follows it, minus the version path.
 func (c *Client) WithBaseURL(u string) *Client {
 	c.baseURL = u
+	c.socketURL = strings.TrimSuffix(u, apiVersionPath)
 	return c
 }
 

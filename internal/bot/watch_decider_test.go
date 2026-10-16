@@ -91,3 +91,21 @@ func TestDecider_RoundOverNoFinishersStillSettles(t *testing.T) {
 		t.Fatal("over with 0 finishers → record after settle so caller can fall back to manual")
 	}
 }
+
+func TestRoundStarted(t *testing.T) {
+	cases := []struct {
+		prev, cur string
+		want      bool
+	}{
+		{"pending", "running", true},
+		{"", "running", false}, // first poll after a restart: already live
+		{"running", "running", false},
+		{"pending", "pending", false},
+		{"running", "finished", false},
+	}
+	for _, c := range cases {
+		if got := roundStarted(c.prev, c.cur); got != c.want {
+			t.Errorf("roundStarted(%q, %q) = %v, want %v", c.prev, c.cur, got, c.want)
+		}
+	}
+}

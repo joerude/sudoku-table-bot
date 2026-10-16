@@ -15,6 +15,10 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
 - **modernc.org/sqlite**: pure-Go SQLite, **без CGO** → статичный бинарь на alpine.
 - SQLite WAL, `SetMaxOpenConns(1)` (один писатель).
 - ARQ/Redis нет. Внешний API: usdoku (`internal/usdoku`, недокументированный HTTP).
+- Стартовая доска usdoku есть только в socket.io (`usdoku.Board`: Engine.IO v4
+  long-polling, `register` → событие `data` с `board`). Не вступает в игру (players
+  не меняется), работает и для pending. `closed` = данные цифры, у `open` в `value`
+  лежит **решение**: наружу не отдавать, `gridFrom` его отбрасывает.
 
 ## Структура
 - `cmd/bot/main.go`: энтрипоинт.
@@ -29,7 +33,9 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
 - `internal/domain/scoring.go`: чистая логика очков (`PointsForRank`).
 - `internal/chart/`: PNG-картинки (бета): гонка сезона и календарь (кнопки под
   таблицей /stats), график Elo (вкладка «Рейтинг»), постер сезона (сам после поста
-  о закрытии сезона + кнопка в сводке архивного сезона). Хендлеры в
+  о закрытии сезона + кнопка в сводке архивного сезона), стартовая доска игры
+  (`postBoard`: watcher видит `pending → running`, шлёт PNG с кодом комнаты тихим
+  ответом на карточку; после рестарта на уже идущей игре не шлёт). Хендлеры в
   `internal/bot/charts.go`. Рендер только в памяти, на диск ничего не пишется.
   Чистый Go на `golang.org/x/image` (gofont, рисует в 2x и сжимает), без CGO.
   Посмотреть картинки: `CHART_DIR=/tmp/x go test ./internal/chart`.
