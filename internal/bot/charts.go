@@ -254,30 +254,6 @@ func (b *Bot) postSeasonPoster(chatID, seasonID int64) {
 	}
 }
 
-// postBoard posts the puzzle's starting position when a round starts, as a
-// silent photo of its own. Best-effort: a failure only logs, the game
-// goes on without it.
-func (b *Bot) postBoard(g *storage.Game, code string) {
-	if b.tb == nil {
-		return
-	}
-	grid, ok := b.ensurePuzzle(g)
-	if !ok {
-		return // no grid, nothing to draw (ensurePuzzle logs a failed fetch)
-	}
-	tag := gameTag(g.Difficulty.String, g.Mode.String)
-	png, err := chart.RenderBoard(chart.Board{Code: code, Tag: tag, Cells: grid})
-	if err != nil {
-		log.Printf("postBoard.render %s: %v", code, err)
-		return
-	}
-	photo := &tele.Photo{File: tele.FromReader(bytes.NewReader(png)),
-		Caption: boardCaption(code, g.Difficulty.String, g.Mode.String)}
-	if _, err := b.tb.Send(tele.ChatID(g.ChatID), photo, tele.Silent); err != nil {
-		log.Printf("postBoard.send %s: %v", code, err)
-	}
-}
-
 // seasonPoster gathers a season's final table, race and awards and renders
 // its poster.
 func (b *Bot) seasonPoster(chatID int64, se *storage.Season) ([]byte, error) {

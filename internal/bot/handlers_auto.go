@@ -76,7 +76,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		} else {
 			b.duelRoomSeen(g, info)
 			if roundStarted(status, info.Info.Status) {
-				go b.postBoard(g, code)
+				go b.postBoard(g)
 			}
 			status = info.Info.Status
 			if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {

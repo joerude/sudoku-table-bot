@@ -161,7 +161,7 @@ var knownCommands = []string{
 	"start", "help", "join", "setnick", "players", "removeplayer", "export",
 	"play", "newgame", "code", "result", "duel", "invite", "learn",
 	"stats", "duels", "status", "season", "me", "rating", "history", "speed",
-	"weekly", "settings", "backup",
+	"weekly", "settings", "backup", "board",
 }
 
 func (b *Bot) routes() {
@@ -213,6 +213,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/me", b.onMe)
 	b.tb.Handle("/rating", b.onRating)
 	b.tb.Handle("/history", b.onHistory)
+	b.tb.Handle("/board", b.onBoard)
 	b.tb.Handle("/speed", b.onSpeed)
 	b.tb.Handle("/weekly", b.onWeekly)
 	b.tb.Handle("/settings", b.onSettings)
