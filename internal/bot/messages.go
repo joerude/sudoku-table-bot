@@ -411,7 +411,7 @@ func gameTag(difficulty, mode string) string {
 
 // boardCaption captions the starting-position picture: room code and tag.
 func boardCaption(code, difficulty, mode string) string {
-	s := "🧩 <b>" + esc(code) + "</b>"
+	s := "🧩 " + esc(code)
 	if tag := gameTag(difficulty, mode); tag != "" {
 		s += " · " + esc(tag)
 	}

@@ -256,7 +256,7 @@ func (b *Bot) postSeasonPoster(chatID, seasonID int64) {
 }
 
 // postBoard posts the puzzle's starting position when a round starts, as a
-// silent reply to the game card. Best-effort: a failure only logs, the game
+// silent photo of its own. Best-effort: a failure only logs, the game
 // goes on without it.
 func (b *Bot) postBoard(g *storage.Game, code string) {
 	if b.tb == nil {
@@ -277,11 +277,7 @@ func (b *Bot) postBoard(g *storage.Game, code string) {
 	}
 	photo := &tele.Photo{File: tele.FromReader(bytes.NewReader(png)),
 		Caption: boardCaption(code, g.Difficulty.String, g.Mode.String)}
-	opts := &tele.SendOptions{DisableNotification: true, AllowWithoutReply: true}
-	if g.PostMsgID.Valid {
-		opts.ReplyTo = &tele.Message{ID: int(g.PostMsgID.Int64), Chat: &tele.Chat{ID: g.ChatID}}
-	}
-	if _, err := b.tb.Send(tele.ChatID(g.ChatID), photo, opts); err != nil {
+	if _, err := b.tb.Send(tele.ChatID(g.ChatID), photo, tele.Silent); err != nil {
 		log.Printf("postBoard.send %s: %v", code, err)
 	}
 }
