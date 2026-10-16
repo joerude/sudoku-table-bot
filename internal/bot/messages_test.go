@@ -1333,3 +1333,11 @@ func TestTechButtonOnlyBeyondSingles(t *testing.T) {
 		t.Errorf("button = %+v, %v; want the hardest (Y-Wing)", btn, ok)
 	}
 }
+
+func TestHistoryTextShowsRoomCode(t *testing.T) {
+	games := []storage.HistoryGame{{ID: 1, SeasonNumber: 2, CompletedAt: "2026-10-01 10:00:00",
+		Difficulty: "easy", Order: []string{"Аня"}, UsdokuCode: "QWER"}}
+	if out := historyText(games, "UTC"); !strings.Contains(out, "Easy · QWER:") {
+		t.Errorf("room code missing: %q", out)
+	}
+}

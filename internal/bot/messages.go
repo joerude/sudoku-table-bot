@@ -32,6 +32,7 @@ const helpText = `🧩 <b>Sudoku League</b> - учёт ваших игр в су
 /newgame, /duel, /invite - то же, что /play, но командой
 /status, /me, /speed, /duels, /history - то же, что вкладки /stats
 /season [N] - сводка сезона, в том числе архивного
+/board [КОД] - стартовая доска последней игры или комнаты по коду
 /weekly - итоги недели сейчас
 /export - игры сезона в CSV
 
@@ -960,6 +961,9 @@ func historyText(games []storage.HistoryGame, tz string) string {
 		diff := ""
 		if g.Difficulty != "" {
 			diff = " · " + titleCase(g.Difficulty)
+		}
+		if g.UsdokuCode != "" {
+			diff += " · " + esc(g.UsdokuCode) // for /board CODE
 		}
 		when := fmtLocalDateTime(g.CompletedAt, loc)
 		b.WriteString(fmt.Sprintf("%s%s: %s\n", when, diff, strings.Join(order, " ")))

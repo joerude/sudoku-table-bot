@@ -378,6 +378,17 @@ func (s *Store) SetPuzzle(gameID int64, puzzle string) error {
 	return err
 }
 
+// BoardGame finds the chat's latest live game with a stored starting grid; code
+// (case-insensitive) narrows it to that usdoku room, "" takes any. nil = none.
+// Latest first, because usdoku hands the same short codes out again over time.
+func (s *Store) BoardGame(chatID int64, code string) (*Game, error) {
+	return scanGame(s.db.QueryRow(
+		`SELECT `+gameCols+` FROM games
+		 WHERE chat_id=? AND deleted=0 AND puzzle IS NOT NULL AND puzzle<>''
+		   AND (?='' OR UPPER(usdoku_code)=UPPER(?))
+		 ORDER BY id DESC LIMIT 1`, chatID, code, code))
+}
+
 // Puzzle returns a game's stored starting grid, "" when there is none.
 func (s *Store) Puzzle(gameID int64) (string, error) {
 	var p sql.NullString
