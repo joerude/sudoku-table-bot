@@ -48,3 +48,10 @@ func (s *watchState) shouldRecord(now time.Time, completed, total int, over bool
 	}
 	return now.Sub(s.drainStart) >= drainMax
 }
+
+// roundStarted reports whether usdoku's status moved from the lobby to the race
+// between two polls. A watcher that first sees a room already running (bot
+// restart, /code on a live room) has prev == "" and posts nothing.
+func roundStarted(prev, cur string) bool {
+	return prev == "pending" && cur == "running"
+}
