@@ -183,7 +183,7 @@ func (b *Bot) setCardBase(gameID int64, text string) bool {
 // liveUpdate refreshes the card's live section from a usdoku poll. It backs off
 // when a manual recording is in progress: the picker has transformed the same
 // message, and an edit here would clobber it.
-func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo) {
+func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo, prog *usdoku.Progress) {
 	lp := b.anchor(gameID)
 	if lp == nil {
 		return
@@ -200,7 +200,7 @@ func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo) {
 			return pl.Name
 		}
 		return nick
-	})
+	}, prog)
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
 	if lp.base == "" { // retired, suspended by the picker, or restored without text

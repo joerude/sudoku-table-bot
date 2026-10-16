@@ -20,7 +20,7 @@ func TestBuildLiveSnapshotResolvesNamesInFinishOrder(t *testing.T) {
 			{Name: "cat", JoinedAt: 1000},
 		},
 	}
-	snap := buildLiveSnapshot(info, func(n string) string { return strings.ToUpper(n) })
+	snap := buildLiveSnapshot(info, func(n string) string { return strings.ToUpper(n) }, nil)
 	if len(snap.Finishers) != 2 || snap.Finishers[0].Name != "ANN" || snap.Finishers[1].Name != "BOB" {
 		t.Fatalf("finish order wrong: %+v", snap.Finishers)
 	}
@@ -54,7 +54,7 @@ func TestBuildLiveSnapshotJoinedAndSolving(t *testing.T) {
 			{Name: "bob", JoinedAt: 1000},
 		},
 	}
-	snap := buildLiveSnapshot(info, func(n string) string { return n })
+	snap := buildLiveSnapshot(info, func(n string) string { return n }, nil)
 	if got := strings.Join(snap.Joined, ","); got != "ann,bob" {
 		t.Errorf("joined = %q", got)
 	}
@@ -184,5 +184,43 @@ func TestWatchingRegistryCountsOverlappingWatchers(t *testing.T) {
 	unmarkWatching(id)
 	if isWatching(id) {
 		t.Fatal("all watchers are gone")
+	}
+}
+
+func TestBuildLiveSnapshotBarsForSolvingOnly(t *testing.T) {
+	info := &usdoku.GameInfo{Players: []usdoku.Player{
+		{Name: "ann", CompletedAt: i64p(1200)},
+		{Name: "bob"},
+		{Name: "cat"},
+	}}
+	prog := &usdoku.Progress{Open: 50, Solved: map[string]int{"ann": 50, "bob": 12, "cat": 30}}
+	snap := buildLiveSnapshot(info, func(n string) string { return n }, prog)
+	if len(snap.Bars) != 2 || snap.Bars[0] != (liveBar{"cat", 30}) || snap.Bars[1] != (liveBar{"bob", 12}) {
+		t.Errorf("bars = %+v, want cat 30 then bob 12 (finisher ann left out)", snap.Bars)
+	}
+	if snap.Open != 50 {
+		t.Errorf("open = %d", snap.Open)
+	}
+	if none := buildLiveSnapshot(info, func(n string) string { return n }, nil); none.Bars != nil {
+		t.Errorf("no progress must give no bars: %+v", none.Bars)
+	}
+}
+
+func TestLiveSectionTextBarsBeforeAndAfterFirstFinish(t *testing.T) {
+	bars := []liveBar{{"Боб", 27}, {"<i>x</i>", 0}}
+	got := liveSectionText(liveSnapshot{Joined: []string{"Боб", "<i>x</i>"}, Solving: []string{"Боб", "<i>x</i>"}, Bars: bars, Open: 54})
+	for _, want := range []string{"🧩 <b>Решают:</b>", "[▰▰▰▰▰▱▱▱▱▱] 27/54 · Боб", "[▱▱▱▱▱▱▱▱▱▱] 0/54 · &lt;i&gt;x&lt;/i&gt;"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	got = liveSectionText(liveSnapshot{
+		Joined: []string{"Аня", "Боб"}, Finishers: []liveFinisher{{Name: "Аня"}},
+		Solving: []string{"Боб"}, Bars: []liveBar{{"Боб", 41}}, Open: 54,
+	})
+	for _, want := range []string{"🥇 Аня", "⏳ <b>Ещё решают:</b>\n[▰▰▰▰▰▰▰▱▱▱] 41/54 · Боб", "~6 мин"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
 	}
 }
