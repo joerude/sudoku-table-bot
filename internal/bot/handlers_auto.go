@@ -22,6 +22,9 @@ const (
 	// finished) so finish lines land in the chat within seconds.
 	watchHotInterval = 7 * time.Second
 	watchTimeout     = 3 * time.Hour
+	// progressEvery spaces the board fetches behind the card's progress bars:
+	// one fetch is a handful of socket.io requests, so not every hot poll.
+	progressEvery = 20 * time.Second
 )
 
 // resumeWatches restarts pollers for pending games that have a usdoku code,
@@ -52,6 +55,8 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
 	var status string // usdoku status at the previous successful poll
+	var prog *usdoku.Progress
+	var progAt time.Time
 	for {
 		g, err := b.st.GameByID(gameID)
 		if err != nil {
@@ -81,7 +86,15 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 				// A manual recording is open: leave it alone and look again, the
 				// picks may be cleared or the game closed by hand.
 			}
-			b.liveUpdate(gameID, info) // dedupes: edits only when the card text changes
+			if racing(info) && time.Since(progAt) >= progressEvery {
+				progAt = time.Now()
+				if p, err := b.fetchProgress(code); err != nil {
+					log.Printf("watchGame.progress %s: %v", code, err)
+				} else {
+					prog = &p
+				}
+			}
+			b.liveUpdate(gameID, info, prog) // dedupes: edits only when the card text changes
 			if len(info.Players) > 0 && !info.Finished() {
 				interval = watchHotInterval
 			}
@@ -93,6 +106,28 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		}
 		time.Sleep(interval)
 	}
+}
+
+// racing reports whether a round is under way with somebody still solving:
+// the only time the card's progress bars mean anything. It holds through the
+// drain after the first finish, when usdoku already calls the game over.
+func racing(info *usdoku.GameInfo) bool {
+	if info.Info.StartedAt <= 0 {
+		return false // lobby
+	}
+	for _, p := range info.Players {
+		if p.CompletedAt == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchProgress reads the room's board progress.
+func (b *Bot) fetchProgress(code string) (usdoku.Progress, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return b.ud.Progress(ctx, code)
 }
 
 // autoRecord maps usdoku players (by nickname) to registered players and records

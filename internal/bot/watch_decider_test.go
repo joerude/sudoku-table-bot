@@ -3,6 +3,8 @@ package bot
 import (
 	"testing"
 	"time"
+
+	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
 
 // t0 is an arbitrary fixed base time for deterministic decider tests.
@@ -107,5 +109,15 @@ func TestRoundStarted(t *testing.T) {
 		if got := roundStarted(c.prev, c.cur); got != c.want {
 			t.Errorf("roundStarted(%q, %q) = %v, want %v", c.prev, c.cur, got, c.want)
 		}
+	}
+}
+
+func TestRacing(t *testing.T) {
+	done := int64(5)
+	lobby := &usdoku.GameInfo{Players: []usdoku.Player{{Name: "a"}}}
+	live := &usdoku.GameInfo{Info: usdoku.Info{StartedAt: 1}, Players: []usdoku.Player{{Name: "a", CompletedAt: &done}, {Name: "b"}}}
+	over := &usdoku.GameInfo{Info: usdoku.Info{StartedAt: 1}, Players: []usdoku.Player{{Name: "a", CompletedAt: &done}}}
+	if racing(lobby) || !racing(live) || racing(over) {
+		t.Errorf("racing: lobby %v, live %v, over %v; want false, true, false", racing(lobby), racing(live), racing(over))
 	}
 }

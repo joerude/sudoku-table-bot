@@ -111,3 +111,28 @@ func TestGridFromRejectsBadCell(t *testing.T) {
 		t.Fatal("want an error for row 10")
 	}
 }
+
+func TestProgressCountsCorrectCellsPerMode(t *testing.T) {
+	// Shapes as usdoku sends them: original fills scorers; hardcore keeps each
+	// player's current entry in guesses (a cleared cell has value null).
+	raw := `[
+	  {"row":1,"column":1,"type":"closed","value":5,"scorers":[],"guesses":[]},
+	  {"row":1,"column":2,"type":"open","value":2,"scorers":["Alpha","Bravo"],"guesses":[]},
+	  {"row":1,"column":3,"type":"open","value":7,"scorers":[],"guesses":[{"name":"Alpha","value":7},{"name":"Bravo","value":3}]},
+	  {"row":1,"column":4,"type":"open","value":4,"scorers":[],"guesses":[{"name":"Bravo","value":null}]},
+	  {"row":1,"column":5,"type":"open","value":9,"scorers":["Alpha"],"guesses":[{"name":"Alpha","value":9}]}
+	]`
+	var cells []cell
+	if err := json.Unmarshal([]byte(raw), &cells); err != nil {
+		t.Fatal(err)
+	}
+	p := progressFrom(cells)
+	if p.Open != 4 {
+		t.Errorf("open = %d, want 4", p.Open)
+	}
+	// Alpha: scorer, right guess, scorer+guess on one cell (counted once) = 3.
+	// Bravo: scorer only; the wrong guess and the cleared cell don't count.
+	if p.Solved["Alpha"] != 3 || p.Solved["Bravo"] != 1 {
+		t.Errorf("solved = %v, want Alpha 3, Bravo 1", p.Solved)
+	}
+}
