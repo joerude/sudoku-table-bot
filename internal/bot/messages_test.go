@@ -1305,3 +1305,31 @@ func TestBoardCaption(t *testing.T) {
 		t.Errorf("caption without tag = %q", got)
 	}
 }
+
+func TestBoardLine(t *testing.T) {
+	cases := []struct {
+		g    domain.Grading
+		want string
+	}{
+		{domain.Grading{Used: map[string]int{"hidden-single": 30, "obvious-single": 20}, Solved: true}, "🧠 Доска: хватало одиночек"},
+		{domain.Grading{Used: map[string]int{"hidden-single": 3, "x-wing": 1, "pointing-pair": 2}, Solved: true},
+			"🧠 Доска: понадобились Указывающая пара, X-Wing"},
+		{domain.Grading{Used: map[string]int{"hidden-single": 3}}, "🧠 Доска: нужны техники сложнее справочника /learn"},
+		{domain.Grading{Used: map[string]int{"swordfish": 1}}, "🧠 Доска: Swordfish и что-то сложнее справочника /learn"},
+	}
+	for _, c := range cases {
+		if got := boardLine(c.g); got != c.want {
+			t.Errorf("boardLine(%v) = %q, want %q", c.g.Used, got, c.want)
+		}
+	}
+}
+
+func TestTechButtonOnlyBeyondSingles(t *testing.T) {
+	if _, ok := techButton(domain.Grading{Used: map[string]int{"hidden-single": 9}, Solved: true}); ok {
+		t.Error("singles only: no button")
+	}
+	btn, ok := techButton(domain.Grading{Used: map[string]int{"hidden-single": 9, "y-wing": 1, "pointing-pair": 1}, Solved: true})
+	if !ok || btn.Unique != cbBoardTech || btn.Data != "y-wing" || btn.Text != "📚 Y-Wing" {
+		t.Errorf("button = %+v, %v; want the hardest (Y-Wing)", btn, ok)
+	}
+}

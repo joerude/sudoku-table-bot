@@ -213,6 +213,15 @@ func (b *Bot) publishCard(room *gameRoom, chatID int64, kind, text string, kb *t
 // difficulty and mode gets «Ещё одну»; a duel gets its rematch button here (the
 // duel flow adds rematchButton(gameID) in the isDuel branch).
 func (b *Bot) resultKB(gameID int64) *tele.ReplyMarkup {
+	m := b.resultKBBase(gameID)
+	if btn, ok := b.boardTechButton(gameID); ok {
+		m.InlineKeyboard = append(m.InlineKeyboard, []tele.InlineButton{*btn.Inline()})
+	}
+	return m
+}
+
+// resultKBBase is resultKB without the board's technique button.
+func (b *Bot) resultKBBase(gameID int64) *tele.ReplyMarkup {
 	game, err := b.st.GameByID(gameID)
 	if err != nil || game == nil {
 		return resultKeyboard(gameID)
@@ -1025,6 +1034,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 			esc(strings.Join(noNick, ", ")))
 	}
 	result += b.ratingFooter(game)
+	result += b.boardFooter(game)
 	if err := c.Edit(result, b.resultKB(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
 	}

@@ -88,6 +88,9 @@ func migrate(db *sql.DB) {
 		// Games floor for the calendar exit. Backfilled with the default for
 		// archived seasons too (harmless, they are never evaluated again).
 		`ALTER TABLE seasons ADD COLUMN min_games INTEGER NOT NULL DEFAULT 66`,
+		// The usdoku starting grid (81 digits, 0 = empty), saved when the bot
+		// first reads the board; feeds the post-game technique line.
+		`ALTER TABLE games ADD COLUMN puzzle TEXT`,
 		// Duel results belong to the two duelists only. Old auto-record also
 		// wrote rows for room guests, which corrupted every duel stat (the
 		// loser was picked as MAX() over all non-winners). Drop guest rows;

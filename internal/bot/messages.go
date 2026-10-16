@@ -418,6 +418,31 @@ func boardCaption(code, difficulty, mode string) string {
 	return s
 }
 
+// singles are the techniques every board needs; the board line doesn't list them.
+var singles = map[string]bool{"obvious-single": true, "hidden-single": true}
+
+// boardLine says what the board took to solve by hand, in /learn's words.
+func boardLine(g domain.Grading) string {
+	var names []string
+	for _, k := range g.Keys() {
+		if singles[k] {
+			continue
+		}
+		if t, ok := domain.TechniqueByKey(k); ok {
+			names = append(names, esc(t.Name))
+		}
+	}
+	switch {
+	case !g.Solved && len(names) == 0:
+		return "🧠 Доска: нужны техники сложнее справочника /learn"
+	case !g.Solved:
+		return "🧠 Доска: " + strings.Join(names, ", ") + " и что-то сложнее справочника /learn"
+	case len(names) == 0:
+		return "🧠 Доска: хватало одиночек"
+	}
+	return "🧠 Доска: понадобились " + strings.Join(names, ", ")
+}
+
 // signedPts shows a positive score with a leading "+"; zero stays plain.
 func signedPts(p int) string {
 	if p > 0 {
