@@ -90,3 +90,47 @@ func TestRecentEventsNewestFirstWithTimes(t *testing.T) {
 		t.Errorf("an event without At gets the current time: %+v", now)
 	}
 }
+
+func TestEventGamesByPlayerSince(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7107)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "A")
+	b, _, _ := st.RegisterPlayer(chat, 2, "B")
+	game := func(completed string) int64 {
+		t.Helper()
+		gid, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+		st.AddPick(gid, a.ID)
+		st.AddPick(gid, b.ID)
+		st.FinalizeGame(gid, se.PointsTable)
+		st.db.Exec(`UPDATE games SET completed_at=? WHERE id=?`, completed, gid)
+		return gid
+	}
+	g1 := game("2026-10-13 10:00:00")
+	g2 := game("2026-10-14 10:00:00")
+	g3 := game("2026-10-14 11:00:00")
+	gone := game("2026-10-14 12:00:00")
+	st.SoftDeleteGame(gone)
+	for _, e := range []Event{
+		{GameID: g1, PlayerID: b.ID, At: "2026-10-13 10:00:00"},
+		{GameID: g1, PlayerID: b.ID, At: "2026-10-13 10:00:01"}, // the same game logged twice
+		{GameID: g2, PlayerID: b.ID, At: "2026-10-14 10:00:00"},
+		{GameID: g3, PlayerID: a.ID, At: "2026-10-14 09:00:00"}, // an earlier recording, since redone
+		{GameID: gone, PlayerID: a.ID, At: "2026-10-14 12:00:00"},
+		{GameID: g2, PlayerID: a.ID, At: "2026-10-14 10:00:00", Kind: "hook_shown"},
+	} {
+		e.ChatID = chat
+		if e.Kind == "" {
+			e.Kind = "pace_shown"
+		}
+		st.LogEvent(e)
+	}
+	got, err := st.EventGamesByPlayerSince(chat, "pace_shown", "2026-10-12 00:00:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[b.ID] != 2 {
+		t.Errorf("EventGamesByPlayerSince = %v, want {B: 2}: distinct games, current recordings, live games only", got)
+	}
+}

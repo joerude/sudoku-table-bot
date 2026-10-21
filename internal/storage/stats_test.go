@@ -423,3 +423,50 @@ func TestTitlesBoard(t *testing.T) {
 		t.Errorf("row1: want Alice x1, got %+v", tb[1])
 	}
 }
+
+func TestResultsSince(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7108)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "A")
+	b, _, _ := st.RegisterPlayer(chat, 2, "B")
+	play := func(completed string, duel bool, picks func(gid int64)) {
+		t.Helper()
+		gid, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+		picks(gid)
+		st.FinalizeGame(gid, se.PointsTable)
+		if duel {
+			st.SetDuelTarget(gid, b.ID)
+		}
+		st.db.Exec(`UPDATE games SET completed_at=? WHERE id=?`, completed, gid)
+	}
+	play("2026-10-01 10:00:00", false, func(gid int64) { st.AddPickTimed(gid, a.ID, 300) }) // too old
+	play("2026-10-14 10:00:00", true, func(gid int64) {
+		st.AddPickTimed(gid, b.ID, 280)
+		st.AddDNF(gid, a.ID)
+	})
+	play("2026-10-13 10:00:00", false, func(gid int64) {
+		st.AddPickTimed(gid, a.ID, 300)
+		st.AddPick(gid, b.ID)
+	})
+
+	got, err := st.ResultsSince(chat, "2026-10-12 00:00:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("ResultsSince = %+v, want 4 rows", got)
+	}
+	first, last := got[0], got[3]
+	if first.CompletedAt != "2026-10-13 10:00:00" || first.PlayerID != a.ID || first.Rank != 1 || first.SeasonID != se.ID ||
+		first.Secs != 300 || first.Duel || first.Difficulty != "medium" || first.Mode != "hardcore" {
+		t.Errorf("oldest game first, winner first: %+v", first)
+	}
+	if got[1].Secs != 0 {
+		t.Errorf("no time is 0: %+v", got[1])
+	}
+	if !last.Duel || last.PlayerID != a.ID || last.Rank != 0 {
+		t.Errorf("duels count and a DNF comes last: %+v", last)
+	}
+}

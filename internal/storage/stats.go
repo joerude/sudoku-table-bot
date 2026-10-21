@@ -579,3 +579,44 @@ func (s *Store) LagsBefore(chatID, playerID, beforeGameID int64, difficulty, mod
 	}
 	return out, rows.Err()
 }
+
+// ResultRowSince is one result line of a completed game, flattened.
+type ResultRowSince struct {
+	GameID      int64
+	SeasonID    int64
+	CompletedAt string
+	Duel        bool
+	Difficulty  string
+	Mode        string
+	PlayerID    int64
+	Rank        int // 0 = did not finish
+	Secs        int // 0 = no solve time
+}
+
+// ResultsSince returns every result line of the chat's games completed since
+// sinceUTC (duels included), oldest game first, each game in finish order with
+// non-finishers last: the input of the weekly titles.
+func (s *Store) ResultsSince(chatID int64, sinceUTC string) ([]ResultRowSince, error) {
+	rows, err := s.db.Query(`
+		SELECT g.id, g.season_id, g.completed_at, g.duel_target_id IS NOT NULL,
+		       COALESCE(g.difficulty, ''), COALESCE(g.mode, ''),
+		       gr.player_id, gr.rank, COALESCE(gr.duration_secs, 0)
+		FROM games g
+		JOIN game_results gr ON gr.game_id = g.id
+		WHERE g.chat_id = ? AND `+sqlCompletedGames+` AND g.completed_at >= ?
+		ORDER BY g.completed_at, g.id, (gr.rank = 0), gr.rank`, chatID, sinceUTC)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ResultRowSince
+	for rows.Next() {
+		var r ResultRowSince
+		if err := rows.Scan(&r.GameID, &r.SeasonID, &r.CompletedAt, &r.Duel, &r.Difficulty, &r.Mode,
+			&r.PlayerID, &r.Rank, &r.Secs); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

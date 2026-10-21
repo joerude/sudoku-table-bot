@@ -153,8 +153,11 @@ func dailyDue(nowHHMM, dailyTime string) bool {
 
 // buildWeeklyDigest assembles the trailing-7-day digest for a chat. hasGames is
 // false when no games were played in the window (caller decides what to show).
-func (b *Bot) buildWeeklyDigest(chatID int64) (text string, hasGames bool, err error) {
-	sinceUTC := time.Now().UTC().Add(-7 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+// withTitles adds the week's titles: Monday's post only, since /weekly on any
+// other day covers a different week and would name other holders.
+func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, hasGames bool, err error) {
+	since := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	sinceUTC := fmtDBTime(since)
 	weekGames, err := b.st.GamesSince(chatID, sinceUTC)
 	if err != nil {
 		return "", false, err
@@ -182,7 +185,11 @@ func (b *Bot) buildWeeklyDigest(chatID int64) (text string, hasGames bool, err e
 		log.Printf("buildWeeklyDigest fastest: %v", err)
 	}
 	streakName, streakLen := b.longestWinStreak(chatID)
-	text = digestText(season, top, fastest, streakName, streakLen, weekGames) +
+	titles := ""
+	if withTitles {
+		titles = b.weekTitlesBlock(chatID, since, season, standings)
+	}
+	text = digestText(season, top, fastest, streakName, streakLen, weekGames) + titles +
 		digestFinalLine(season, standings, time.Now(), loadLoc(b.chatTZ(chatID)))
 	return text, true, nil
 }
@@ -214,7 +221,7 @@ func (b *Bot) remindWeekly() {
 		if err := b.st.SetLastWeekly(ch.ChatID, date); err != nil {
 			log.Printf("remindWeekly mark: %v", err)
 		}
-		text, hasGames, err := b.buildWeeklyDigest(ch.ChatID)
+		text, hasGames, err := b.buildWeeklyDigest(ch.ChatID, true)
 		if err != nil {
 			log.Printf("remindWeekly build: %v", err)
 			continue

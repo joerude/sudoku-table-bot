@@ -84,3 +84,30 @@ func (s *Store) CountEvents(chatID int64, kind string) (int, error) {
 func nullID(v int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: v, Valid: v != 0}
 }
+
+// EventGamesByPlayerSince counts, per player, the distinct games with an event
+// of one kind since sinceUTC. Only events of a game's current recording count
+// (logged at or after its completion: an edit re-records and re-logs), and
+// only for games that still stand (not deleted, not reopened).
+func (s *Store) EventGamesByPlayerSince(chatID int64, kind, sinceUTC string) (map[int64]int, error) {
+	rows, err := s.db.Query(`
+		SELECT e.player_id, COUNT(DISTINCT e.game_id) FROM bot_events e
+		JOIN games g ON g.id = e.game_id
+		WHERE e.chat_id=? AND e.kind=? AND e.at >= ? AND e.player_id IS NOT NULL
+		  AND `+sqlCompletedGames+` AND e.at >= g.completed_at
+		GROUP BY e.player_id`, chatID, kind, sinceUTC)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int{}
+	for rows.Next() {
+		var p int64
+		var n int
+		if err := rows.Scan(&p, &n); err != nil {
+			return nil, err
+		}
+		out[p] = n
+	}
+	return out, rows.Err()
+}
