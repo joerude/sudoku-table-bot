@@ -74,3 +74,26 @@ CREATE TABLE IF NOT EXISTS game_rsvp (
     player_id INTEGER NOT NULL,
     PRIMARY KEY (game_id, player_id)
 );
+
+-- Optional engagement mechanics a chat can switch off in /settings. A missing
+-- row means "on": features start enabled and only an explicit off is stored.
+CREATE TABLE IF NOT EXISTS chat_features (
+    chat_id INTEGER NOT NULL,
+    feature TEXT    NOT NULL,
+    enabled INTEGER NOT NULL,
+    PRIMARY KEY (chat_id, feature)
+);
+
+-- What the habit mechanics showed and what players did with it, so their
+-- effect can be measured from the database later (append-only).
+CREATE TABLE IF NOT EXISTS bot_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id   INTEGER NOT NULL,
+    game_id   INTEGER,
+    player_id INTEGER,
+    kind      TEXT    NOT NULL,
+    detail    TEXT,
+    at        TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_chat_kind ON bot_events(chat_id, kind);

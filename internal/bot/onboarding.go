@@ -64,7 +64,7 @@ const settingsReadOnlyNote = "Менять может админ группы."
 // note for everyone else (who cannot use those commands anyway).
 func settingsFooter(admin bool) string {
 	if admin {
-		return settingsUsage
+		return settingsUsage + featureUsage()
 	}
 	return settingsReadOnlyNote
 }

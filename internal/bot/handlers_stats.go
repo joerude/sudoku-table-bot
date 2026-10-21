@@ -304,7 +304,11 @@ func (b *Bot) onSettings(c tele.Context) error {
 		return nil
 	}
 
-	switch strings.ToLower(args[0]) {
+	key := strings.ToLower(args[0])
+	if f, ok := featureByKey(key); ok {
+		return b.onFeatureSwitch(c, f, argAt(args, 1))
+	}
+	switch key {
 	case "target":
 		n, err := strconv.Atoi(argAt(args, 1))
 		if err != nil || n <= 0 {
@@ -364,10 +368,8 @@ func (b *Bot) onSettings(c tele.Context) error {
 		return b.quiet(c, "🔔 Ежедневное напоминание в "+val)
 
 	case "weekly":
-		val := strings.ToLower(argAt(args, 1))
-		on := val == "on" || val == "вкл" || val == "1"
-		off := val == "off" || val == "выкл" || val == "0"
-		if !on && !off {
+		on, ok := parseOnOff(argAt(args, 1))
+		if !ok {
 			return b.ephemeral(c, "Включить/выключить недельный дайджест: /settings weekly on|off")
 		}
 		if err := b.st.SetWeeklyDigest(c.Chat().ID, on); err != nil {
@@ -379,7 +381,7 @@ func (b *Bot) onSettings(c tele.Context) error {
 		return b.quiet(c, "🔕 Недельный дайджест выключен.")
 
 	default:
-		return b.quiet(c, settingsUsage)
+		return b.quiet(c, settingsUsage+featureUsage())
 	}
 }
 
@@ -405,9 +407,9 @@ func (b *Bot) settingsSummary(chatID int64, season *storage.Season, admin bool) 
 			"Таблица очков: <b>%s</b>\n"+
 			"Мин. участников в игре: <b>%d</b>\n"+
 			"Ежедневное напоминание: <b>%s</b>\n"+
-			"Недельный дайджест: <b>%s</b>\n\n%s",
+			"Недельный дайджест: <b>%s</b>\n%s\n%s",
 		season.Target, season.MinGames, formatTable(season.PointsTable), minPlayers,
-		daily, weekly, settingsFooter(admin))
+		daily, weekly, featureSummary(b.featureStates(chatID)), settingsFooter(admin))
 }
 
 // seasonStatus renders the deadline and games-floor block for a season panel.
