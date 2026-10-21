@@ -18,7 +18,9 @@ type feature struct {
 }
 
 // features lists the switchable mechanics in /settings order.
-var features = []feature{}
+var features = []feature{
+	{Key: featHook, Label: "Крючок после игры"},
+}
 
 // featureByKey finds a registered mechanic by its /settings key.
 func featureByKey(key string) (feature, bool) {
