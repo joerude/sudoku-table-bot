@@ -281,6 +281,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 		_, _ = b.tb.Send(to, seasonEnd)
 		b.postSeasonPoster(game.ChatID, game.SeasonID)
 	}
+	go b.watchSuccessor(game.ChatID, game.ID, info.Info.SupersededBy)
 	return true
 }
 

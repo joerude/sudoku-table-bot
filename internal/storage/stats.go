@@ -584,6 +584,7 @@ func (s *Store) LagsBefore(chatID, playerID, beforeGameID int64, difficulty, mod
 type ResultRowSince struct {
 	GameID      int64
 	SeasonID    int64
+	CreatedAt   string
 	CompletedAt string
 	Duel        bool
 	Difficulty  string
@@ -597,14 +598,19 @@ type ResultRowSince struct {
 // sinceUTC (duels included), oldest game first, each game in finish order with
 // non-finishers last: the input of the weekly titles.
 func (s *Store) ResultsSince(chatID int64, sinceUTC string) ([]ResultRowSince, error) {
+	return s.ResultsBetween(chatID, sinceUTC, "9999-12-31 23:59:59")
+}
+
+// ResultsBetween is ResultsSince for games completed in [fromUTC, toUTC).
+func (s *Store) ResultsBetween(chatID int64, fromUTC, toUTC string) ([]ResultRowSince, error) {
 	rows, err := s.db.Query(`
-		SELECT g.id, g.season_id, g.completed_at, g.duel_target_id IS NOT NULL,
+		SELECT g.id, g.season_id, g.created_at, g.completed_at, g.duel_target_id IS NOT NULL,
 		       COALESCE(g.difficulty, ''), COALESCE(g.mode, ''),
 		       gr.player_id, gr.rank, COALESCE(gr.duration_secs, 0)
 		FROM games g
 		JOIN game_results gr ON gr.game_id = g.id
-		WHERE g.chat_id = ? AND `+sqlCompletedGames+` AND g.completed_at >= ?
-		ORDER BY g.completed_at, g.id, (gr.rank = 0), gr.rank`, chatID, sinceUTC)
+		WHERE g.chat_id = ? AND `+sqlCompletedGames+` AND g.completed_at >= ? AND g.completed_at < ?
+		ORDER BY g.completed_at, g.id, (gr.rank = 0), gr.rank`, chatID, fromUTC, toUTC)
 	if err != nil {
 		return nil, err
 	}
@@ -612,7 +618,7 @@ func (s *Store) ResultsSince(chatID int64, sinceUTC string) ([]ResultRowSince, e
 	var out []ResultRowSince
 	for rows.Next() {
 		var r ResultRowSince
-		if err := rows.Scan(&r.GameID, &r.SeasonID, &r.CompletedAt, &r.Duel, &r.Difficulty, &r.Mode,
+		if err := rows.Scan(&r.GameID, &r.SeasonID, &r.CreatedAt, &r.CompletedAt, &r.Duel, &r.Difficulty, &r.Mode,
 			&r.PlayerID, &r.Rank, &r.Secs); err != nil {
 			return nil, err
 		}

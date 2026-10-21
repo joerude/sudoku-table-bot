@@ -161,7 +161,7 @@ var knownCommands = []string{
 	"start", "help", "join", "setnick", "players", "removeplayer", "export",
 	"play", "newgame", "code", "result", "duel", "invite", "learn",
 	"stats", "duels", "status", "season", "me", "rating", "history", "speed",
-	"weekly", "settings", "backup", "board",
+	"weekly", "settings", "backup", "board", "metrics",
 }
 
 func (b *Bot) routes() {
@@ -218,6 +218,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/weekly", b.onWeekly)
 	b.tb.Handle("/settings", b.onSettings)
 	b.tb.Handle("/backup", b.onBackup)
+	b.tb.Handle("/metrics", b.onMetrics)
 
 	b.tb.Handle(&tele.Btn{Unique: cbPick}, b.onPick)
 	b.tb.Handle(&tele.Btn{Unique: cbUndo}, b.onUndoPick)
