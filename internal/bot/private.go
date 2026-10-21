@@ -15,9 +15,9 @@ const (
 )
 
 // privateCommandSet lists the only commands that make sense without a group: the
-// intro, the technique dictionary and the owner's /backup. /restore arrives as a
-// document caption and checks its own rights.
-var privateCommandSet = []string{"start", "help", "learn", "backup"}
+// intro, the technique dictionary and the owner's /backup and /metrics. /restore
+// arrives as a document caption and checks its own rights.
+var privateCommandSet = []string{"start", "help", "learn", "backup", "metrics"}
 
 // privateTextAllowed reports whether a text message sent in a private chat may
 // reach its handler. Only registered commands outside privateCommandSet are

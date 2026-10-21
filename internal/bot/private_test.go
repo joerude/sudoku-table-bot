@@ -15,6 +15,7 @@ func TestPrivateTextAllowed(t *testing.T) {
 		{"/learn", true},
 		{"/backup", true},
 		{"/BACKUP", true},
+		{"/metrics 28", true},
 		{"/start@my_bot", true},
 		{"/join", false},
 		{"/setnick Ace", false},

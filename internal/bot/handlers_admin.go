@@ -25,6 +25,12 @@ func dbAccessAllowed(ownerID, senderID int64, private, groupAdmin bool) bool {
 
 // requireDBAccess gates /backup and /restore, replying with an ephemeral refusal.
 func (b *Bot) requireDBAccess(c tele.Context) bool {
+	return b.requireOwnerOrAdmin(c, "⛔ Бэкап и восстановление доступны только владельцу бота или админу группы.")
+}
+
+// requireOwnerOrAdmin lets the bot owner through anywhere and a group admin in
+// the group; everyone else gets denied as an ephemeral reply.
+func (b *Bot) requireOwnerOrAdmin(c tele.Context, denied string) bool {
 	u := realSender(c)
 	chat := c.Chat()
 	if u != nil && chat != nil {
@@ -38,7 +44,7 @@ func (b *Bot) requireDBAccess(c tele.Context) bool {
 			return true
 		}
 	}
-	_ = b.ephemeral(c, "⛔ Бэкап и восстановление доступны только владельцу бота или админу группы.")
+	_ = b.ephemeral(c, denied)
 	return false
 }
 
