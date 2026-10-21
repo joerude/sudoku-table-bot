@@ -21,6 +21,7 @@ type feature struct {
 var features = []feature{
 	{Key: featHook, Label: "Крючок после игры"},
 	{Key: featPace, Label: "Личный темп"},
+	{Key: featMeet, Label: "«Буду через…» в пустой комнате"},
 }
 
 // featureByKey finds a registered mechanic by its /settings key.

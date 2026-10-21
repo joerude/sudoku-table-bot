@@ -28,6 +28,7 @@ const (
 	cbRecNow  = "recnow"  // payload: "<gameID>", auto-record from fresh usdoku state now
 	cbAgain   = "again"   // payload: "<gameID>", new game with the same difficulty and mode
 	cbDoneDNF = "donednf" // payload: "<gameID>" — finalize, rest = DNF (0)
+	cbMeet    = "meet"    // payload: "<gameID>:<minutes>", a later time for a room nobody joined
 
 	// Quick-action menu (no payload).
 	cbQGame   = "qgame"
