@@ -139,6 +139,29 @@ func (s *Store) CompletedBetween(chatID int64, fromUTC, toUTC string) (int, erro
 	return n, err
 }
 
+// GameStartsSince returns when the chat's played games (duels included) were
+// started, since sinceUTC, oldest first: the history the smart nudge reads
+// the chat's usual playing time from.
+func (s *Store) GameStartsSince(chatID int64, sinceUTC string) ([]string, error) {
+	rows, err := s.db.Query(`
+		SELECT g.created_at FROM games g
+		WHERE g.chat_id=? AND `+sqlCompletedGames+` AND g.created_at >= ?
+		ORDER BY g.created_at`, chatID, sinceUTC)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // SetLastDaily records that the daily nudge fired for a chat on a date.
 func (s *Store) SetLastDaily(chatID int64, date string) error {
 	_, err := s.db.Exec(`UPDATE chats SET last_daily=? WHERE chat_id=?`, date, chatID)

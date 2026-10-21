@@ -126,39 +126,8 @@ func (b *Bot) nudgeStale(sp storage.StalePending) bool {
 	return true
 }
 
-// remindDaily sends the catch-all evening nudge if nothing was played today.
-func (b *Bot) remindDaily() {
-	chats, err := b.st.AllChats()
-	if err != nil {
-		log.Printf("remindDaily: %v", err)
-		return
-	}
-	for _, ch := range chats {
-		if !ch.DailyReminder {
-			continue
-		}
-		loc := loadLoc(ch.TZ)
-		now := time.Now().In(loc)
-		date := now.Format("2006-01-02")
-		if ch.LastDaily == date || now.Format("15:04") < ch.DailyTime {
-			continue
-		}
-
-		// Mark handled for today regardless, so we nudge at most once.
-		if err := b.st.SetLastDaily(ch.ChatID, date); err != nil {
-			log.Printf("remindDaily mark: %v", err)
-		}
-		text, err := b.dailyNudge(ch.ChatID, now, loc)
-		if err != nil {
-			log.Printf("remindDaily: %v", err)
-			continue
-		}
-		if text == "" {
-			continue
-		}
-		b.postChat(ch.ChatID, text)
-	}
-}
+// remindDaily sends the daily nudge if nothing was played today.
+func (b *Bot) remindDaily() { b.remindDailyAt(time.Now()) }
 
 // normalizeHHMM parses a clock time such as "9:00" or "21:00" and returns it
 // zero-padded as HH:MM, the form the daily time is stored and compared in.
@@ -325,15 +294,18 @@ func seasonNudgeKind(daysLeft int, hhmm, deadline, last string) string {
 // nudgeMarker is the value stored in seasons.last_nudge for a sent post.
 func nudgeMarker(kind, deadline string) string { return kind + "@" + deadline }
 
-// postChat sends a plain-text post to a chat, logging (not returning) failures.
-// A nil bot client (unit tests) is a no-op.
-func (b *Bot) postChat(chatID int64, text string) {
+// postChat sends a plain-text post to a chat, logging failures; false when
+// the send failed. A nil bot client (unit tests) sends nothing and reports
+// success, so callers' bookkeeping still runs under test.
+func (b *Bot) postChat(chatID int64, text string) bool {
 	if b.tb == nil {
-		return
+		return true
 	}
 	if _, err := b.tb.Send(tele.ChatID(chatID), text); err != nil {
 		log.Printf("postChat %d: %v", chatID, err)
+		return false
 	}
+	return true
 }
 
 // nudgeSeason sends the one-off "last week" / "final day" posts for an active

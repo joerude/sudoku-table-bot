@@ -117,3 +117,41 @@ func TestAllChatsSkipsPrivate(t *testing.T) {
 		t.Fatalf("AllChats = %+v, want only the group", got)
 	}
 }
+
+func TestGameStartsSince(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7106)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "A")
+	b, _, _ := st.RegisterPlayer(chat, 2, "B")
+	game := func(created string, finish, deleted bool) {
+		t.Helper()
+		gid, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+		if finish {
+			st.AddPick(gid, a.ID)
+			st.AddPick(gid, b.ID)
+			st.FinalizeGame(gid, se.PointsTable)
+		}
+		if deleted {
+			st.SoftDeleteGame(gid)
+		}
+		if _, err := st.db.Exec(`UPDATE games SET created_at=? WHERE id=?`, created, gid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	game("2026-09-01 08:00:00", true, false)  // before the window
+	game("2026-10-20 09:30:00", true, false)  // counts
+	game("2026-10-19 07:15:00", true, false)  // counts, comes first
+	game("2026-10-20 10:00:00", false, false) // never played
+	game("2026-10-20 11:00:00", true, true)   // deleted
+
+	got, err := st.GameStartsSince(chat, "2026-10-01 00:00:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"2026-10-19 07:15:00", "2026-10-20 09:30:00"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("GameStartsSince = %v, want %v", got, want)
+	}
+}

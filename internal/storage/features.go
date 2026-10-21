@@ -33,20 +33,43 @@ func (s *Store) SetFeature(chatID int64, feature string, on bool) error {
 
 // Event is one row of the engagement log: something a habit mechanic showed
 // or a player did with it. Zero ids and an empty detail are stored as NULL.
+// At is the UTC time ("2006-01-02 15:04:05"); empty means now.
 type Event struct {
 	ChatID   int64
 	GameID   int64
 	PlayerID int64
 	Kind     string
 	Detail   string
+	At       string
 }
 
 // LogEvent appends an event to the engagement log.
 func (s *Store) LogEvent(e Event) error {
-	_, err := s.db.Exec(`INSERT INTO bot_events(chat_id, game_id, player_id, kind, detail)
-		VALUES(?, ?, ?, ?, ?)`,
-		e.ChatID, nullID(e.GameID), nullID(e.PlayerID), e.Kind, nullStr(e.Detail))
+	_, err := s.db.Exec(`INSERT INTO bot_events(chat_id, game_id, player_id, kind, detail, at)
+		VALUES(?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
+		e.ChatID, nullID(e.GameID), nullID(e.PlayerID), e.Kind, nullStr(e.Detail), nullStr(e.At))
 	return err
+}
+
+// RecentEvents returns a chat's newest events of one kind, newest first.
+func (s *Store) RecentEvents(chatID int64, kind string, limit int) ([]Event, error) {
+	rows, err := s.db.Query(`
+		SELECT chat_id, COALESCE(game_id, 0), COALESCE(player_id, 0), kind, COALESCE(detail, ''), at
+		FROM bot_events WHERE chat_id=? AND kind=?
+		ORDER BY at DESC, id DESC LIMIT ?`, chatID, kind, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		if err := rows.Scan(&e.ChatID, &e.GameID, &e.PlayerID, &e.Kind, &e.Detail, &e.At); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // CountEvents counts a chat's logged events of one kind.
