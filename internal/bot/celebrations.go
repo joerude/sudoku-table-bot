@@ -80,6 +80,8 @@ func (b *Bot) celebrations(game *storage.Game, rows []storage.ResultRow) []strin
 	} else if leagueMilestones[total] {
 		lines = append(lines, milestoneLeagueLine(total))
 	}
+	pace := b.featureOn(game.ChatID, featPace)
+	best := winnerSolve(rows)
 	for _, r := range rows {
 		if r.Rank < 1 {
 			// DNF still counts as a played game, so the career-games
@@ -89,12 +91,19 @@ func (b *Bot) celebrations(game *storage.Game, rows []storage.ResultRow) []strin
 			}
 			continue
 		}
+		record := false
 		if r.Duration > 0 && game.Difficulty.Valid && game.Difficulty.String != "" {
 			prev, err := b.st.BestSecsBefore(game.ChatID, r.PlayerID, game.Difficulty.String, game.ID)
 			if err != nil {
 				log.Printf("celebrations.pb: %v", err)
 			} else if prev > 0 && r.Duration < prev {
 				lines = append(lines, personalBestLine(r.Name, game.Difficulty.String, r.Duration, prev))
+				record = true
+			}
+		}
+		if pace && !record { // a record says it louder: no pace line on top
+			if line, ok := b.paceLine(game, r, best); ok {
+				lines = append(lines, line)
 			}
 		}
 		after, ranks, dates, today, err := b.badgeState(game.ChatID, r.PlayerID, tz)

@@ -542,3 +542,40 @@ func (s *Store) PointsSince(chatID, seasonID int64, sinceUTC string) (map[int64]
 	}
 	return gains, len(games), rows.Err()
 }
+
+// LagSample is one finish a player lost: their solve time and the winner's,
+// both in seconds.
+type LagSample struct {
+	Secs int
+	Best int
+}
+
+// LagsBefore returns a player's timed, non-winning finishes in games before
+// beforeGameID with the same difficulty and mode whose winner has a time too,
+// newest first: the history the personal pace is judged against. Duels count,
+// the season doesn't matter.
+func (s *Store) LagsBefore(chatID, playerID, beforeGameID int64, difficulty, mode string) ([]LagSample, error) {
+	rows, err := s.db.Query(`
+		SELECT gr.duration_secs, w.duration_secs
+		FROM game_results gr
+		JOIN games g ON g.id = gr.game_id
+		JOIN game_results w ON w.game_id = g.id AND w.rank = 1 AND w.duration_secs IS NOT NULL
+		WHERE g.chat_id = ? AND gr.player_id = ? AND g.id < ?
+		  AND `+sqlCompletedGames+`
+		  AND gr.rank > 1 AND gr.duration_secs IS NOT NULL
+		  AND COALESCE(g.difficulty, '') = ? AND COALESCE(g.mode, '') = ?
+		ORDER BY g.id DESC`, chatID, playerID, beforeGameID, difficulty, mode)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LagSample
+	for rows.Next() {
+		var ls LagSample
+		if err := rows.Scan(&ls.Secs, &ls.Best); err != nil {
+			return nil, err
+		}
+		out = append(out, ls)
+	}
+	return out, rows.Err()
+}
