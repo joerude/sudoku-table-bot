@@ -44,9 +44,14 @@ type metricsView struct {
 	Meets       int     // games with a «Буду через…» promise (current window)
 	MeetsPlayed int
 	Pace        int // pace lines shown (current window)
-	HookNear    int
-	HookStake   int
-	Off         []string // switched-off mechanics, by key
+	// usdoku successor rooms watched after a game, how many somebody entered,
+	// and how many got a round started (current window).
+	Successors       int
+	SuccessorJoined  int
+	SuccessorStarted int
+	HookNear         int
+	HookStake        int
+	Off              []string // switched-off mechanics, by key
 }
 
 // pct renders hits/base as a whole percent, "н/д" without a base.
@@ -89,6 +94,12 @@ func metricsText(v metricsView) string {
 	fmt.Fprintf(&b, "⏰ Напоминаний: %d, игра в течение 2 ч: %d\n", c.Nudges, c.NudgesPlayed)
 	fmt.Fprintf(&b, "🏃 Строк темпа: %d · крючков: %d (😤 %d, ⏭ %d)\n",
 		v.Pace, v.HookNear+v.HookStake, v.HookNear, v.HookStake)
+	if v.Successors == 0 {
+		b.WriteString("🔗 Комната-продолжение usdoku: н/д\n")
+	} else {
+		fmt.Fprintf(&b, "🔗 Комната-продолжение usdoku: заходили после %d из %d %s, сыграли %d\n",
+			v.SuccessorJoined, v.Successors, plural(v.Successors, "игры", "игр", "игр"), v.SuccessorStarted)
+	}
 	off := "ничего"
 	if len(v.Off) > 0 {
 		labels := make([]string, len(v.Off))
@@ -235,6 +246,23 @@ func (b *Bot) chatMetrics(chatID int64, now time.Time, days int) (metricsView, e
 		lines[line{e.GameID, e.PlayerID}] = true
 	}
 	v.Pace = len(lines)
+	succ, err := b.st.EventsBetween(chatID, evSuccessorRoom, f, t)
+	if err != nil {
+		return v, err
+	}
+	for _, e := range succ {
+		players, started, ok := parseSuccessorDetail(e.Detail)
+		if !ok {
+			continue
+		}
+		v.Successors++
+		if players > 0 {
+			v.SuccessorJoined++
+		}
+		if started {
+			v.SuccessorStarted++
+		}
+	}
 	v.Off, err = b.st.DisabledFeatures(chatID)
 	return v, err
 }
