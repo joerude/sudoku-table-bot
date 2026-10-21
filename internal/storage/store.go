@@ -103,6 +103,11 @@ func migrate(db *sql.DB) {
 		       AND gr.player_id <> g.duel_target_id
 		       AND gr.player_id <> cp.id
 		 )`,
+		// «Буду через…» on a room nobody joined: when and who, and whether the
+		// reminder ping went out.
+		`ALTER TABLE games ADD COLUMN meet_at TEXT`,
+		`ALTER TABLE games ADD COLUMN meet_by INTEGER`,
+		`ALTER TABLE games ADD COLUMN meet_done INTEGER NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.Exec(stmt)
 	}

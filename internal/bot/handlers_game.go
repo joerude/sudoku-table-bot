@@ -238,7 +238,11 @@ func (b *Bot) resultKBBase(gameID int64) *tele.ReplyMarkup {
 	if game.Difficulty.String == "" || game.Mode.String == "" {
 		return resultKeyboard(gameID) // recorded by hand: nothing to repeat
 	}
-	return resultKeyboard(gameID, againButton(gameID))
+	again := againButton(gameID)
+	if b.hasNearMiss(game) {
+		again.Text = "🔁 Реванш"
+	}
+	return resultKeyboard(gameID, again)
 }
 
 // onAgain starts a new game with the same difficulty and mode as a recorded one.
@@ -986,6 +990,12 @@ func (b *Bot) backfillUsdokuTimes(game *storage.Game) []string {
 	return noNick
 }
 
+// resultFooters is everything under a fresh result: rating moves, the board's
+// grading, and the hook line last, right above the «Ещё одну» button.
+func (b *Bot) resultFooters(game *storage.Game) string {
+	return b.ratingFooter(game) + b.boardFooter(game) + b.hookFooter(game)
+}
+
 // ratingFooter computes the rating impact of the just-recorded game and renders
 // the result-post footer (delta lines + optional crown change). Best-effort:
 // returns "" on any error or when the game had no rating impact (solo/all-DNF),
@@ -1033,8 +1043,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b> — задайте /setnick",
 			esc(strings.Join(noNick, ", ")))
 	}
-	result += b.ratingFooter(game)
-	result += b.boardFooter(game)
+	result += b.resultFooters(game)
 	if err := c.Edit(result, b.resultKB(game.ID)); err != nil {
 		log.Printf("finalize.edit: %v", err)
 	}

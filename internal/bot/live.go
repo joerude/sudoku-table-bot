@@ -38,6 +38,9 @@ type livePost struct {
 	kind      string
 	section   string // live lines under base
 	finishers bool   // somebody finished: offer «Записать сейчас»
+	meetOffer bool   // empty lobby: offer «Буду через…» (featMeet)
+	meetLine  string // the offer or the agreed time, under the live section
+	meetSet   bool   // a promise was shown: a stale offer must not replace it
 	lastSent  string // signature of the last edit, to skip no-op edits
 	persisted bool
 }
@@ -134,7 +137,11 @@ func (b *Bot) editPost(chatID, msgID int64, text string, kb *tele.ReplyMarkup) e
 
 // cardKeyboard is the card's keyboard for its current live state.
 func (lp *livePost) keyboard(gameID int64, rsvp int) *tele.ReplyMarkup {
-	return liveKeyboard(gameID, lp.kind, lp.finishers, rsvp)
+	kb := liveKeyboard(gameID, lp.kind, lp.finishers, rsvp)
+	if lp.meetOffer {
+		kb.InlineKeyboard = append([][]tele.InlineButton{meetButtons(gameID)}, kb.InlineKeyboard...)
+	}
+	return kb
 }
 
 // renderCard edits the card to base + live section. The caller holds lp.mu.
@@ -146,13 +153,16 @@ func (b *Bot) renderCard(gameID int64, lp *livePost) {
 	if lp.section != "" {
 		text += "\n\n" + lp.section
 	}
+	if lp.meetLine != "" {
+		text += "\n\n" + lp.meetLine
+	}
 	rsvp := 0
 	if lp.kind == cardKindInvite {
 		if roster, err := b.st.RsvpPlayers(gameID); err == nil {
 			rsvp = len(roster)
 		}
 	}
-	sig := fmt.Sprintf("%s|%t|%d", text, lp.finishers, rsvp)
+	sig := fmt.Sprintf("%s|%t|%d|%t", text, lp.finishers, rsvp, lp.meetOffer)
 	if sig == lp.lastSent {
 		return
 	}
@@ -201,6 +211,7 @@ func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo, prog *usdoku.Progr
 		}
 		return nick
 	}, prog)
+	offer, meetLine := b.meetView(game, info.Info.Status, len(info.Players))
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
 	if lp.base == "" { // retired, suspended by the picker, or restored without text
@@ -208,6 +219,7 @@ func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo, prog *usdoku.Progr
 	}
 	lp.section = liveSectionText(snap)
 	lp.finishers = len(snap.Finishers) > 0
+	lp.setMeet(offer, meetLine)
 	b.renderCard(gameID, lp)
 }
 
@@ -318,6 +330,7 @@ func (b *Bot) retireOtherCard(c tele.Context, gameID int64, text string) {
 func (b *Bot) registerGameCardRoutes() {
 	b.tb.Handle(&tele.Btn{Unique: cbRecNow}, b.onRecordNow)
 	b.tb.Handle(&tele.Btn{Unique: cbAgain}, b.onAgain)
+	b.tb.Handle(&tele.Btn{Unique: cbMeet}, b.onMeet)
 }
 
 // watching counts the live usdoku watchers per game, so the stale-game nudge can

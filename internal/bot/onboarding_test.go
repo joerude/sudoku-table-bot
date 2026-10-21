@@ -84,7 +84,7 @@ func TestStartText(t *testing.T) {
 }
 
 func TestSettingsFooter(t *testing.T) {
-	if got := settingsFooter(true); got != settingsUsage {
+	if got := settingsFooter(true); got != settingsUsage+featureUsage() {
 		t.Errorf("admin must see the command list")
 	}
 	got := settingsFooter(false)

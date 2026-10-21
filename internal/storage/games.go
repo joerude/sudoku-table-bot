@@ -32,17 +32,22 @@ type Game struct {
 	PostMsgID sql.NullInt64
 	PostText  sql.NullString
 	PostKind  sql.NullString
+	// A later time a player promised to come to a room nobody joined (UTC),
+	// and who promised it (player id).
+	MeetAt sql.NullString
+	MeetBy sql.NullInt64
 }
 
 // gameCols is the column list every Game scan shares (see scanGame).
 const gameCols = `id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by,
-	created_at, deleted, post_msg_id, post_text, post_kind`
+	created_at, deleted, post_msg_id, post_text, post_kind, meet_at, meet_by`
 
 func scanGame(row interface{ Scan(...any) error }) (*Game, error) {
 	var g Game
 	var deleted int
 	err := row.Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode,
-		&g.UsdokuCode, &g.CreatedBy, &g.CreatedAt, &deleted, &g.PostMsgID, &g.PostText, &g.PostKind)
+		&g.UsdokuCode, &g.CreatedBy, &g.CreatedAt, &deleted, &g.PostMsgID, &g.PostText, &g.PostKind,
+		&g.MeetAt, &g.MeetBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
