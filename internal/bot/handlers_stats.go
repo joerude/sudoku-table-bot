@@ -211,7 +211,7 @@ func (b *Bot) onWeekly(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onWeekly.ensure", err)
 	}
-	text, hasGames, err := b.buildWeeklyDigest(c.Chat().ID)
+	text, hasGames, err := b.buildWeeklyDigest(c.Chat().ID, false)
 	if err != nil {
 		return b.fail(c, "onWeekly.build", err)
 	}
@@ -365,6 +365,10 @@ func (b *Bot) onSettings(c tele.Context) error {
 		if err := b.st.SetDailyReminder(chatID, true, val); err != nil {
 			return b.fail(c, "onSettings.daily", err)
 		}
+		if b.featureOn(chatID, featNudge) {
+			return b.quiet(c, "🔔 Запасное время напоминания: "+val+
+				". Обычно бот берёт время из истории игр (/settings nudge off: всегда в "+val+")")
+		}
 		return b.quiet(c, "🔔 Ежедневное напоминание в "+val)
 
 	case "weekly":
@@ -392,6 +396,9 @@ func (b *Bot) settingsSummary(chatID int64, season *storage.Season, admin bool) 
 	if ch, err := b.st.GetChat(chatID); err == nil {
 		if ch.DailyReminder {
 			daily = "вкл, " + ch.DailyTime
+			if b.featureOn(chatID, featNudge) {
+				daily = "вкл, по истории игр (иначе " + ch.DailyTime + ")"
+			}
 		}
 		if !ch.WeeklyDigest {
 			weekly = "выкл"
