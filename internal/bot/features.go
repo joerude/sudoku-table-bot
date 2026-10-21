@@ -20,6 +20,7 @@ type feature struct {
 // features lists the switchable mechanics in /settings order.
 var features = []feature{
 	{Key: featHook, Label: "Крючок после игры"},
+	{Key: featPace, Label: "Личный темп"},
 }
 
 // featureByKey finds a registered mechanic by its /settings key.
