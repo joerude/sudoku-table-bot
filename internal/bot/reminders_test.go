@@ -15,7 +15,7 @@ import (
 // close-and-advance a season that was actually played. The first four touch
 // only b.st, so they're exercised below against a real temp *storage.Store
 // with a bare &Bot{st: st} — no telebot double needed, matching this repo's
-// "test the DB logic, skip the Telegram I/O glue" convention (see CLAUDE.md).
+// "test the DB logic, skip the Telegram I/O glue" convention.
 //
 // The close-and-advance (winner) branch always ends with b.tb.Send(...), which
 // needs a working *tele.Bot. Checked before skipping it: telebot.v3's
