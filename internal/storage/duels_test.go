@@ -843,3 +843,67 @@ func TestExpireStaleDuelsKeep(t *testing.T) {
 		t.Errorf("without keep it expires, got %v", got)
 	}
 }
+
+// TestSeasonDuelRecords: duel wins/losses stay inside the asked season, a DNF
+// is a loss, season games, deleted duels and removed players do not count.
+func TestSeasonDuelRecords(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-5101)
+	st.EnsureChat(chat, 1)
+	old, _ := st.ActiveSeason(chat)
+
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	c, _, _ := st.RegisterPlayer(chat, 3, "Carol")
+	d, _, _ := st.RegisterPlayer(chat, 4, "Dan") // removed below
+
+	// Old season: Alice beats Bob once.
+	makeDuelGame(t, st, chat, old.ID, a.ID, a.ID, b.ID, b.ID)
+	cur, err := st.CloseSeason(old, a.ID)
+	if err != nil {
+		t.Fatalf("CloseSeason: %v", err)
+	}
+
+	// Current season: Alice beats Bob twice, Bob beats Alice once, Alice beats
+	// Carol who DNFs, Dan beats Bob (Dan is removed afterwards).
+	makeDuelGame(t, st, chat, cur.ID, a.ID, a.ID, b.ID, b.ID)
+	makeDuelGame(t, st, chat, cur.ID, a.ID, a.ID, b.ID, b.ID)
+	makeDuelGame(t, st, chat, cur.ID, b.ID, b.ID, a.ID, a.ID)
+	makeDNFDuelGame(t, st, chat, cur.ID, a.ID, a.ID, c.ID, c.ID)
+	makeDuelGame(t, st, chat, cur.ID, d.ID, d.ID, b.ID, b.ID)
+	// A season game and a deleted duel must not count.
+	makeNormalGame(t, st, chat, cur.ID, c.ID, a.ID)
+	gone := makeDuelGame(t, st, chat, cur.ID, c.ID, c.ID, a.ID, a.ID)
+	if err := st.SoftDeleteGame(gone); err != nil {
+		t.Fatalf("SoftDeleteGame: %v", err)
+	}
+	if _, err := st.RemovePlayer(chat, "Dan"); err != nil {
+		t.Fatalf("RemovePlayer: %v", err)
+	}
+
+	got, err := st.SeasonDuelRecords(chat, cur.ID)
+	if err != nil {
+		t.Fatalf("SeasonDuelRecords: %v", err)
+	}
+	type wl struct{ w, l int }
+	want := map[string]wl{"Alice": {3, 1}, "Bob": {1, 3}, "Carol": {0, 1}}
+	if len(got) != len(want) {
+		t.Fatalf("want %d players, got %+v", len(want), got)
+	}
+	for _, r := range got {
+		if w, ok := want[r.Name]; !ok || r.Wins != w.w || r.Losses != w.l {
+			t.Errorf("%s: want %+v, got %d:%d", r.Name, want[r.Name], r.Wins, r.Losses)
+		}
+	}
+	if got[0].Name != "Alice" {
+		t.Errorf("most wins first: got %q", got[0].Name)
+	}
+
+	prev, err := st.SeasonDuelRecords(chat, old.ID)
+	if err != nil {
+		t.Fatalf("SeasonDuelRecords old: %v", err)
+	}
+	if len(prev) != 2 || prev[0].Name != "Alice" || prev[0].Wins != 1 || prev[1].Name != "Bob" || prev[1].Losses != 1 {
+		t.Errorf("old season: %+v", prev)
+	}
+}

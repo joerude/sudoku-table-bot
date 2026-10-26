@@ -277,6 +277,9 @@ func (b *Bot) seasonPoster(chatID int64, se *storage.Season) ([]byte, error) {
 	if in.runName, in.run, err = b.longestSeasonRun(chatID, se.ID); err != nil {
 		log.Printf("seasonPoster.streak: %v", err)
 	}
+	if in.duelName, _, in.duelWins, in.duelLosses, _, err = b.seasonDuelist(chatID, se.ID); err != nil {
+		log.Printf("seasonPoster.duelist: %v", err)
+	}
 	return chart.RenderPoster(posterData(in))
 }
 
@@ -290,11 +293,14 @@ type posterInput struct {
 	fastest     *storage.RecordRow
 	runName     string
 	run         int
+	duelName    string // the season's duelist; empty when nobody earned the title
+	duelWins    int
+	duelLosses  int
 	loc         *time.Location
 }
 
 // posterData builds the poster: standings[0] is the champion, awards are the
-// same three the season-end post names.
+// same four the season-end post names.
 func posterData(in posterInput) chart.Poster {
 	p := chart.Poster{Season: in.season.Number, Race: raceChartData(in.season, in.standings, in.ranks)}
 	for _, s := range in.standings {
@@ -316,6 +322,10 @@ func posterData(in posterInput) chart.Poster {
 	if in.run >= 2 {
 		p.Awards = append(p.Awards, chart.Award{Title: "Самая длинная серия побед",
 			Value: fmt.Sprintf("%s · %d подряд", in.runName, in.run)})
+	}
+	if in.duelName != "" {
+		p.Awards = append(p.Awards, chart.Award{Title: "Дуэлянт",
+			Value: fmt.Sprintf("%s · %d:%d", in.duelName, in.duelWins, in.duelLosses)})
 	}
 	p.Footer = fmt.Sprintf("%d %s", in.games, gamesWord(in.games))
 	from, err1 := time.Parse("2006-01-02", in.first)

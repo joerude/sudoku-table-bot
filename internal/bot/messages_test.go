@@ -855,6 +855,69 @@ func TestRatingLadderEmpty(t *testing.T) {
 	if !strings.Contains(got, "нет") {
 		t.Errorf("empty ladder should say there are no games: %q", got)
 	}
+	if !strings.Contains(got, "Рейтинг за всё время") {
+		t.Errorf("ladder header should say it is all-time: %q", got)
+	}
+}
+
+func TestSeasonRatingBlock(t *testing.T) {
+	names := map[int64]string{1: "Ann", 2: "A&B"}
+	rows := []domain.SeasonRatingRow{
+		{SeasonRatingInput: domain.SeasonRatingInput{PlayerID: 1, SeasonGames: 12, SeasonWins: 5,
+			Played: 14, Finished: 13, Duels: 4, DuelWins: 3}, Score: 58},
+		{SeasonRatingInput: domain.SeasonRatingInput{PlayerID: 2, SeasonGames: 10, SeasonWins: 2,
+			Played: 10, Finished: 8}, Score: 41},
+	}
+	got := seasonRatingBlock(7, rows, names)
+	for _, want := range []string{
+		"🏅 <b>Рейтинг сезона 7</b>\n",
+		"1. <b>Ann</b> · 58 · победы 5/12 · доигрывает 93% · дуэли 3:1\n",
+		"2. <b>A&amp;B</b> · 41 · победы 2/10 · доигрывает 80%\n",
+		"<i>победы 50%, доигрывание 25%, дуэли 25%, считается заново каждый сезон</i>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("seasonRatingBlock missing %q\ngot: %s", want, got)
+		}
+	}
+	if strings.Contains(strings.Split(got, "\n")[2], "дуэли") {
+		t.Errorf("no duels: the duel part must be left out\ngot: %s", got)
+	}
+}
+
+func TestSeasonRatingBlockEmpty(t *testing.T) {
+	got := seasonRatingBlock(3, nil, nil)
+	if !strings.Contains(got, "Рейтинг сезона 3") || !strings.Contains(got, "Пока нет игр в сезоне.") {
+		t.Errorf("empty season: %q", got)
+	}
+	if strings.Contains(got, "считается заново") {
+		t.Errorf("empty season has no legend: %q", got)
+	}
+}
+
+func TestAwardDuelistLine(t *testing.T) {
+	got := awardDuelistLine("A&B", 4, 1)
+	if got != "⚔️ Дуэлянт: <b>A&amp;B</b> · дуэли 4:1" {
+		t.Errorf("awardDuelistLine = %q", got)
+	}
+}
+
+func TestStandingsTextDuelistMark(t *testing.T) {
+	se := &storage.Season{Number: 6, Target: 100}
+	rows := []storage.Standing{
+		{PlayerID: 1, Name: "mister", Points: 20, Wins: 6},
+		{PlayerID: 2, Name: "Nur", Points: 18, Wins: 5},
+	}
+	form := map[int64][]int{1: {1, 2}, 2: {2, 1}}
+	out := standingsText(se, rows, raceWindow{Days: 7}, form, 2)
+	if !strings.Contains(out, "<b>Nur</b> ⚔️ · 5 поб") {
+		t.Errorf("duelist must carry the mark after the name\ngot: %s", out)
+	}
+	if strings.Contains(out, "<b>mister</b> ⚔️") || strings.Count(out, "⚔️") != 1 {
+		t.Errorf("only the duelist is marked\ngot: %s", out)
+	}
+	if none := standingsText(se, rows, raceWindow{Days: 7}, form, 0); strings.Contains(none, "⚔️") {
+		t.Errorf("no duelist: no mark\ngot: %s", none)
+	}
 }
 
 func TestDigestText(t *testing.T) {
@@ -1262,7 +1325,7 @@ func TestStandingsTextRaceTable(t *testing.T) {
 	}
 	// At the window start: Nur 17, mister 15, Max 15. mister climbed, Nur dropped.
 	race := raceWindow{Days: 7, Games: 4, Gains: map[int64]int{1: 5, 2: 1}}
-	out := standingsText(se, rows, race, map[int64][]int{1: {1, 2, 3, 1, 1, 0}})
+	out := standingsText(se, rows, race, map[int64][]int{1: {1, 2, 3, 1, 1, 0}}, 0)
 	for _, want := range []string{
 		"гонка до 100 очков",
 		"<pre>1 mister 20 ▰▰▱▱▱▱▱▱▱▱ +5 ↗1\n",
@@ -1281,7 +1344,7 @@ func TestStandingsTextRaceTable(t *testing.T) {
 func TestStandingsTextQuietWeek(t *testing.T) {
 	se := &storage.Season{Number: 6, Target: 100}
 	rows := []storage.Standing{{PlayerID: 1, Name: "A&B", Points: 100}, {PlayerID: 2, Name: "Александр Великий", Points: 99}}
-	out := standingsText(se, rows, raceWindow{Days: 7}, nil)
+	out := standingsText(se, rows, raceWindow{Days: 7}, nil, 0)
 	if strings.Contains(out, "+0") || strings.Contains(out, "за 7 дней") {
 		t.Errorf("no games in the window: no window columns or legend\ngot: %s", out)
 	}
