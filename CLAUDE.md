@@ -102,6 +102,14 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
   - Дуэль: **DNF = поражение** → losses = `rank<>1` (DuelRecord/Leaderboard/RecentDuels).
   - Авто-запись (`autoRecord`) пишет финишеров (`AddPickTimed`), затем joined-но-DNF
     (`AddDNF`, rank 0). Ручной `/result` рангов-0 не создаёт.
+  - Пикер доверяет usdoku (`picker_lock.go`): `syncPicks` ставит первыми тех, кто уже
+    финишировал (до первого ника без владельца), их нельзя перебить, «Назад» и «Сброс»
+    их не снимают. Только для игр младше `watchTimeout` (коды переиспользуются),
+    usdoku кэшируется на 10с. Хендлеры пикера держат `recordingGames`, как `autoRecord`.
+    `autoRecord` пропускает игру с picks, только если они не начало порядка usdoku,
+    иначе дописывает остальных.
+  - Дуэль в пикере: одно нажатие на победителя записывает дуэль (второй дуэлянт
+    rank 2, `addLosers`); победитель из usdoku → только «✅ Записать».
 - `game_results.duration_secs`: время решения, **только auto-record** (usdoku
   joinedAt/completedAt); ручные = NULL. Speed-статы фильтруют `IS NOT NULL`.
 - `seasons`: **один active на чат**, partial unique index `idx_one_active_season ON

@@ -81,21 +81,30 @@ func TestDuelRoomSeenTargetAccepts(t *testing.T) {
 	b.duelRoomSeen(g, roomOf("alice", "bob")) // idempotent, must not panic or re-accept
 }
 
-// A manual picker with picks is never overwritten by auto-record: it does
-// nothing (no usdoku order appended, no fallback note) and reports it.
+// A manual picker whose order differs from usdoku's is never overwritten by
+// auto-record: it does nothing (no usdoku order appended, no fallback note)
+// and reports it. Picks that are the head of usdoku's order are extended.
 func TestAutoRecordSkipsManualRecording(t *testing.T) {
 	b, g, bobID := duelRoomFixture(t)
-	if err := b.st.AddPick(g.ID, bobID); err != nil {
+	pair, err := b.st.DuelPlayerIDs(g.ID)
+	if err != nil || len(pair) != 2 {
+		t.Fatalf("pair: %v %v", pair, err)
+	}
+	aliceID := pair[0]
+	if aliceID == bobID {
+		aliceID = pair[1]
+	}
+	if err := b.st.AddPick(g.ID, aliceID); err != nil {
 		t.Fatal(err)
 	}
 	done := int64(100)
 	info := roomOf("alice", "bob")
-	info.Players[1].CompletedAt = &done
+	info.Players[1].CompletedAt = &done // usdoku: bob won
 	if handled := b.autoRecord(g, info); handled {
 		t.Fatal("autoRecord must report it did nothing")
 	}
 	ids, _ := b.st.PickedPlayerIDs(g.ID)
-	if len(ids) != 1 || ids[0] != bobID {
+	if len(ids) != 1 || ids[0] != aliceID {
 		t.Errorf("manual picks changed: %v", ids)
 	}
 	if cur, _ := b.st.GameByID(g.ID); cur.Status != "pending" {

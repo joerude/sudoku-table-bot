@@ -197,6 +197,46 @@ func (s *Store) RemoveLastPick(gameID int64) error {
 	return err
 }
 
+// Pick is one finisher for ReplacePicks; DurationSecs 0 stores NULL.
+type Pick struct {
+	PlayerID     int64
+	DurationSecs int64
+}
+
+// ReplacePicks rewrites a pending game's finish order to picks (ranks 1..n) in
+// one transaction, so a concurrent tap never sees half of it. A completed or
+// deleted game is left alone.
+func (s *Store) ReplacePicks(gameID int64, picks []Pick) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM games WHERE id=? AND status='pending' AND deleted=0`,
+		gameID).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM game_results WHERE game_id=?`, gameID); err != nil {
+		return err
+	}
+	for i, p := range picks {
+		var dur any
+		if p.DurationSecs > 0 {
+			dur = p.DurationSecs
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO game_results(game_id, player_id, rank, duration_secs) VALUES(?, ?, ?, ?)`,
+			gameID, p.PlayerID, i+1, dur); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // ClearResults removes all picks of a pending game (used by reset / cancel).
 // A completed game is left alone: use ReopenGame to edit it.
 func (s *Store) ClearResults(gameID int64) error {
