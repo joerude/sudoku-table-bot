@@ -114,7 +114,7 @@ func TestPosterData(t *testing.T) {
 	p := posterData(posterInput{
 		season: se, standings: standings, games: 66, first: "2026-09-21", last: "2026-11-20",
 		fastest: &storage.RecordRow{Name: "Nur", Secs: 221, Difficulty: "medium"},
-		runName: "mister", run: 6, loc: time.UTC,
+		runName: "mister", run: 6, duelName: "Nur", duelWins: 4, duelLosses: 1, loc: time.UTC,
 	})
 	if p.Champion != "mister" || p.Points != 100 || len(p.Standings) != 2 {
 		t.Errorf("champion/table: %+v", p)
@@ -123,6 +123,7 @@ func TestPosterData(t *testing.T) {
 		{Title: "Больше всех побед", Value: "mister · 30"},
 		{Title: "Быстрейшее решение", Value: "Nur · 3:41 (medium)"},
 		{Title: "Самая длинная серия побед", Value: "mister · 6 подряд"},
+		{Title: "Дуэлянт", Value: "Nur · 4:1"},
 	}
 	if len(p.Awards) != len(want) {
 		t.Fatalf("awards: %+v", p.Awards)
