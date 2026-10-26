@@ -222,17 +222,39 @@ func autoMappingText(orderNicks, unknown []string) string {
 }
 
 // pickerText shows the current finish order while recording.
-func pickerText(picked []storage.ResultRow) string {
+// pickerText is the manual picker; the first locked places came from usdoku
+// and are marked as fixed.
+func pickerText(picked []storage.ResultRow, locked int) string {
 	if len(picked) == 0 {
 		return "🏁 <b>Кто как финишировал?</b>\nЖми игроков <b>по порядку финиша</b> (1-й, 2-й, 3-й…).\nКто не играл — просто не выбирай."
 	}
 	var b strings.Builder
 	b.WriteString("🏁 <b>Кто как финишировал?</b>\nТекущий порядок:\n")
 	for _, r := range picked {
-		b.WriteString(fmt.Sprintf("%s %s\n", medal(r.Rank), esc(r.Name)))
+		mark := ""
+		if r.Rank >= 1 && r.Rank <= locked {
+			mark = " ✓"
+		}
+		b.WriteString(fmt.Sprintf("%s %s%s\n", medal(r.Rank), esc(r.Name), mark))
+	}
+	if locked > 0 {
+		b.WriteString("<i>✓ финиш из usdoku, его не поменять</i>\n")
 	}
 	b.WriteString("\nПродолжай тапать или жми «✅ Готово».")
 	return b.String()
+}
+
+// duelPickerText is the duel picker: one tap on the winner records the duel.
+// A winner is already there only when usdoku saw the finish.
+func duelPickerText(picked []storage.ResultRow, locked int) string {
+	if len(picked) == 0 || picked[0].Rank != 1 {
+		return "⚔️ <b>Кто победил в дуэли?</b>\nОдно нажатие, и дуэль записана."
+	}
+	src := ""
+	if locked > 0 {
+		src = " (по данным usdoku)"
+	}
+	return fmt.Sprintf("⚔️ Победа: <b>%s</b>%s\nЖми «✅ Записать».", esc(picked[0].Name), src)
 }
 
 // resultText is the finalised game summary: winner spotlight, per-finisher

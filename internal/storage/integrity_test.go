@@ -144,6 +144,32 @@ func TestClearAndRemoveLastPickWorkOnPending(t *testing.T) {
 	}
 }
 
+func TestReplacePicksRewritesPendingOrder(t *testing.T) {
+	st, se, a, b, gid := integrityFixture(t)
+	st.AddPick(gid, a.ID)
+	if err := st.ReplacePicks(gid, []Pick{{PlayerID: b.ID, DurationSecs: 300}, {PlayerID: a.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.GameResults(gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].PlayerID != b.ID || rows[0].Rank != 1 || rows[0].Duration != 300 ||
+		rows[1].PlayerID != a.ID || rows[1].Rank != 2 || rows[1].Duration != 0 {
+		t.Fatalf("order not replaced: %+v", rows)
+	}
+
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ReplacePicks(gid, []Pick{{PlayerID: a.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if ids, _ := st.PickedPlayerIDs(gid); len(ids) != 2 || ids[0] != b.ID {
+		t.Fatalf("completed game changed: %v", ids)
+	}
+}
+
 func TestReopenGameThenRefinalize(t *testing.T) {
 	st, se, a, b, gid := integrityFixture(t)
 	st.AddPick(gid, a.ID)

@@ -148,10 +148,15 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 	if cur, err := b.st.GameByID(game.ID); err != nil || cur == nil || cur.Status != "pending" || cur.Deleted {
 		return true
 	}
-	if manual, err := b.st.HasResults(game.ID); err != nil {
+	// Picks already made (by hand, or usdoku's finishers the picker locked in)
+	// stop the auto-record unless they are the head of usdoku's order: then it
+	// only appends the rest.
+	picked, err := b.st.PickedPlayerIDs(game.ID)
+	if err != nil {
 		log.Printf("autoRecord.results: %v", err)
 		return true
-	} else if manual {
+	}
+	manualSkip := func() bool {
 		log.Printf("🤖 game %d: manual recording in progress, auto-record skipped", game.ID)
 		return false
 	}
@@ -213,37 +218,61 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 		picks = append(picks, pick{id: pl.ID, durSecs: secs})
 	}
 
+	// fallback is set when a human has to decide; with picks already made it
+	// is not shown either (it would overwrite their picker).
+	var fallback func()
 	if isDuel {
 		// Both duelists must be in the room (matched by nick) and at least
 		// one must finish; otherwise a human decides.
 		if mappedJoined < 2 || len(picks) == 0 {
-			log.Printf("🤖 duel %d → manual: mappedJoined=%d picks=%d finishers=%v",
-				game.ID, mappedJoined, len(picks), finisherNicks)
-			b.fallbackNote(game, "⚔️ Не смог авто-записать дуэль, запишите результат вручную:",
-				recordKeyboard(game.ID))
-			return true
+			fallback = func() {
+				log.Printf("🤖 duel %d → manual: mappedJoined=%d picks=%d finishers=%v",
+					game.ID, mappedJoined, len(picks), finisherNicks)
+				b.fallbackNote(game, "⚔️ Не смог авто-записать дуэль, запишите результат вручную:",
+					recordKeyboard(game.ID))
+			}
 		}
 	} else {
 		min := b.minPlayers(game.ChatID)
 
-		// Too few known players actually joined — don't count it (anti-farming).
-		if len(unknown) == 0 && mappedJoined < min {
-			log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
-			b.fallbackNote(game, notCountedText(min), notCountedKeyboard(game.ID))
-			return true
+		switch {
+		case len(unknown) == 0 && mappedJoined < min:
+			// Too few known players actually joined: don't count it (anti-farming).
+			fallback = func() {
+				log.Printf("🤖 game %d not counted: mappedJoined=%d < min=%d", game.ID, mappedJoined, min)
+				b.fallbackNote(game, notCountedText(min), notCountedKeyboard(game.ID))
+			}
+		case len(unknown) > 0 || len(picks) == 0:
+			fallback = func() {
+				log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
+					game.ID, finisherNicks, unknown, mappedJoined)
+				b.fallbackNote(game, autoMappingText(finisherNicks, unknown),
+					recordAndClaimKeyboard(game.ID, unknown))
+			}
 		}
-
-		if len(unknown) > 0 || len(picks) == 0 {
-			log.Printf("🤖 game %d finished, finishers=%v unknown=%v mappedJoined=%d → manual",
-				game.ID, finisherNicks, unknown, mappedJoined)
-			b.fallbackNote(game, autoMappingText(finisherNicks, unknown),
-				recordAndClaimKeyboard(game.ID, unknown))
-			return true
-		}
+	}
+	pickIDs := make([]int64, len(picks))
+	for i, pk := range picks {
+		pickIDs[i] = pk.id
+	}
+	switch {
+	case len(picked) > 0 && (fallback != nil || !isPrefix(picked, pickIDs)):
+		return manualSkip()
+	case fallback != nil:
+		fallback()
+		return true
 	}
 	log.Printf("🤖 game %d auto-recording, order=%v", game.ID, finisherNicks)
 
-	for _, pk := range picks {
+	for i, pk := range picks {
+		if i < len(picked) { // already placed, in usdoku's order: just add the time
+			if pk.durSecs > 0 {
+				if err := b.st.SetPickDuration(game.ID, pk.id, pk.durSecs); err != nil {
+					log.Printf("autoRecord.duration: %v", err)
+				}
+			}
+			continue
+		}
 		if err := b.st.AddPickTimed(game.ID, pk.id, pk.durSecs); err != nil {
 			log.Printf("autoRecord.pick: %v", err)
 		}
@@ -282,6 +311,19 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 		b.postSeasonPoster(game.ChatID, game.SeasonID)
 	}
 	go b.watchSuccessor(game.ChatID, game.ID, info.Info.SupersededBy)
+	return true
+}
+
+// isPrefix reports whether head is the start of full.
+func isPrefix(head, full []int64) bool {
+	if len(head) > len(full) {
+		return false
+	}
+	for i := range head {
+		if head[i] != full[i] {
+			return false
+		}
+	}
 	return true
 }
 
@@ -405,12 +447,10 @@ func (b *Bot) onRecordNow(c tele.Context) error {
 	if len(info.FinishOrder()) == 0 {
 		return c.Respond(&tele.CallbackResponse{Text: "Пока никто не финишировал"})
 	}
-	if manual, err := b.st.HasResults(game.ID); err != nil {
-		return b.fail(c, "onRecordNow.results", err)
-	} else if manual {
+	// autoRecord decides about picks already made: usdoku's own head of the
+	// order is extended, a different manual order is left alone.
+	if !b.autoRecord(game, info) {
 		return c.Respond(&tele.CallbackResponse{Text: manualRecordingToast})
 	}
-	_ = c.Respond(&tele.CallbackResponse{Text: "Записываю…"})
-	b.autoRecord(game, info)
-	return nil
+	return c.Respond() // the result, or the manual-entry note, is in the chat now
 }
