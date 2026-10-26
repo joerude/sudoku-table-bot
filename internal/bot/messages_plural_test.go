@@ -38,7 +38,7 @@ func TestStandingsTextPlurals(t *testing.T) {
 		{PlayerID: 2, Name: "B", Points: 3, Wins: 0, Games: 22},
 	}
 	race := raceWindow{Days: 1, Games: 1, Gains: map[int64]int{1: 3}}
-	got := standingsText(se, rows, race, nil)
+	got := standingsText(se, rows, race, nil, 0)
 	for _, want := range []string{"до 101 очко", "за 1 день · 1 игра"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("standingsText missing %q in:\n%s", want, got)

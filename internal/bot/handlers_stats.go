@@ -492,7 +492,7 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		}
 		text = speedText(se, "medium", ranked, fewer, speedMinGames) + "\n\n" + recordsText(recs, titles)
 	case "rating":
-		text, err = b.ratingTab(chatID)
+		text, err = b.ratingTab(chatID, season)
 	case "duels":
 		text, err = b.duelsPanel(chatID)
 		if err != nil {
@@ -517,8 +517,8 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 		if e != nil {
 			return "", nil, e
 		}
-		text = standingsText(season, standings, b.recentRace(chatID, season), b.seasonForm(chatID, season)) +
-			b.seasonStatus(chatID, season)
+		text = standingsText(season, standings, b.recentRace(chatID, season), b.seasonForm(chatID, season),
+			b.seasonDuelistID(chatID, season)) + b.seasonStatus(chatID, season)
 	}
 	if err != nil {
 		return "", nil, err
@@ -545,6 +545,20 @@ func (b *Bot) recentRace(chatID int64, season *storage.Season) raceWindow {
 		return raceWindow{Days: raceWindowDays}
 	}
 	return raceWindow{Days: raceWindowDays, Games: games, Gains: gains}
+}
+
+// seasonDuelistID is the player the table marks with ⚔️ (0: nobody holds the
+// title yet). Best-effort: on an error the table is shown without the mark.
+func (b *Bot) seasonDuelistID(chatID int64, season *storage.Season) int64 {
+	_, id, _, _, ok, err := b.seasonDuelist(chatID, season.ID)
+	if err != nil {
+		log.Printf("seasonDuelistID: %v", err)
+		return 0
+	}
+	if !ok {
+		return 0
+	}
+	return id
 }
 
 // seasonForm is each player's season ranks in game order, for the table's form

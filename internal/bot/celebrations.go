@@ -172,7 +172,44 @@ func (b *Bot) seasonAwards(chatID, seasonID int64, standings []storage.Standing)
 	} else if n >= 2 {
 		out = append(out, awardStreakLine(name, n))
 	}
+	if name, _, wins, losses, ok, err := b.seasonDuelist(chatID, seasonID); err != nil {
+		log.Printf("seasonAwards.duelist: %v", err)
+	} else if ok {
+		out = append(out, awardDuelistLine(name, wins, losses))
+	}
 	return out
+}
+
+// duelistMinWins is how many duel wins a season's duelist needs at least: one
+// lucky duel does not make a title.
+const duelistMinWins = 2
+
+// uniqueDuelist returns the season's duelist: the sole player with the most
+// duel wins, at least duelistMinWins. A tie on the top count returns ok=false
+// so the title is skipped instead of going to the runner-up (as uniqueTopWins).
+func uniqueDuelist(records []storage.DuelStanding) (name string, id int64, wins, losses int, ok bool) {
+	for _, r := range records {
+		switch {
+		case r.Wins > wins:
+			name, id, wins, losses, ok = r.Name, r.PlayerID, r.Wins, r.Losses, true
+		case r.Wins == wins:
+			ok = false
+		}
+	}
+	if !ok || wins < duelistMinWins {
+		return "", 0, 0, 0, false
+	}
+	return name, id, wins, losses, true
+}
+
+// seasonDuelist reads the season's duel records and picks its duelist.
+func (b *Bot) seasonDuelist(chatID, seasonID int64) (name string, id int64, wins, losses int, ok bool, err error) {
+	records, err := b.st.SeasonDuelRecords(chatID, seasonID)
+	if err != nil {
+		return "", 0, 0, 0, false, err
+	}
+	name, id, wins, losses, ok = uniqueDuelist(records)
+	return name, id, wins, losses, ok, nil
 }
 
 // uniqueTopWins returns the sole wins leader when exactly one player holds the

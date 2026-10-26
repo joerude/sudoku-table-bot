@@ -20,7 +20,7 @@ const helpText = `🧩 <b>Sudoku League</b> - учёт ваших игр в су
 <b>Главное</b>
 /play - новая игра, дуэль или позвать всех (кнопки)
 /stats - таблица, моё, скорость, дуэли, история, рекорды, актив (вкладки)
-/rating - лестница рейтинга (ELO) и корона 👑
+/rating - рейтинг сезона, лестница за всё время (ELO) и корона 👑
 /learn - справочник техник решения
 /setnick &lt;ник&gt; - ник на usdoku, сразу регистрирует (нужен для авто-учёта)
 /players - кто играет и какие у них ники
@@ -420,6 +420,10 @@ func awardStreakLine(name string, n int) string {
 	return fmt.Sprintf("🔥 Лучшая серия побед: <b>%s</b> ×%d", esc(name), n)
 }
 
+func awardDuelistLine(name string, wins, losses int) string {
+	return fmt.Sprintf("⚔️ Дуэлянт: <b>%s</b> · дуэли %d:%d", esc(name), wins, losses)
+}
+
 // gameTag renders the "Difficulty · Mode" suffix, omitting empty parts.
 func gameTag(difficulty, mode string) string {
 	var parts []string
@@ -513,8 +517,9 @@ const (
 // standingsText renders the season table as a race: an aligned block with
 // place, name, points and a bar toward the target, plus each player's points
 // and place change over the race window, then wins and recent form. form holds
-// each player's season ranks in game order, oldest first.
-func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow, form map[int64][]int) string {
+// each player's season ranks in game order, oldest first. duelist is the
+// player id the season's duelist mark ⚔️ goes to (0: nobody).
+func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow, form map[int64][]int, duelist int64) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "🏆 <b>Сезон %d</b> · гонка до %d %s\n\n", se.Number, se.Target, pointsWord(se.Target))
 	if len(rows) == 0 {
@@ -535,7 +540,11 @@ func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow,
 	}
 	b.WriteString("\n\n🔥 <b>Форма</b> <i>(последние игры, новые справа)</i>")
 	for _, r := range rows {
-		fmt.Fprintf(&b, "\n<b>%s</b> · %d поб", esc(r.Name), r.Wins)
+		mark := ""
+		if duelist != 0 && r.PlayerID == duelist {
+			mark = " ⚔️"
+		}
+		fmt.Fprintf(&b, "\n<b>%s</b>%s · %d поб", esc(r.Name), mark, r.Wins)
 		if f := formLine(form[r.PlayerID]); f != "" {
 			b.WriteString(" · " + f)
 		}
@@ -1463,14 +1472,40 @@ func progressBar(cur, target int) string {
 	return "[" + strings.Repeat("▰", filled) + strings.Repeat("▱", width-filled) + "]"
 }
 
+// seasonRatingBlock renders the season rating: rank, name, score, wins in
+// season games, share of finished games and the duel record (left out when the
+// player had no duels), then a legend with the weights.
+func seasonRatingBlock(number int, rows []domain.SeasonRatingRow, names map[int64]string) string {
+	head := fmt.Sprintf("🏅 <b>Рейтинг сезона %d</b>", number)
+	if len(rows) == 0 {
+		return head + "\nПока нет игр в сезоне."
+	}
+	var sb strings.Builder
+	sb.WriteString(head)
+	for i, r := range rows {
+		fmt.Fprintf(&sb, "\n%d. <b>%s</b> · %d · победы %d/%d · доигрывает %d%%",
+			i+1, esc(names[r.PlayerID]), r.Score, r.SeasonWins, r.SeasonGames,
+			(100*r.Finished+r.Played/2)/r.Played)
+		if r.Duels > 0 {
+			fmt.Fprintf(&sb, " · дуэли %d:%d", r.DuelWins, r.Duels-r.DuelWins)
+		}
+	}
+	fmt.Fprintf(&sb, "\n<i>победы %d%%, доигрывание %d%%, дуэли %d%%, считается заново каждый сезон</i>",
+		weightPct(domain.SeasonWinWeight), weightPct(domain.SeasonFinishWeight), weightPct(domain.SeasonDuelWeight))
+	return sb.String()
+}
+
+// weightPct is a 0..1 weight as a whole percent.
+func weightPct(w float64) int { return int(math.Round(w * 100)) }
+
 // ratingLadder renders the eternal rating ladder: rank, name, rating, peak, with
 // a 👑 on the current crown and a marker on provisional (calibrating) players.
 func ratingLadder(r domain.Ratings, names map[int64]string) string {
 	if len(r.Ladder) == 0 {
-		return "📊 <b>Рейтинг</b>\n\nПока нет сыгранных игр."
+		return "📊 <b>Рейтинг за всё время</b>\n\nПока нет сыгранных игр."
 	}
 	var sb strings.Builder
-	sb.WriteString("📊 <b>Рейтинг</b>")
+	sb.WriteString("📊 <b>Рейтинг за всё время</b>")
 	for i, p := range r.Ladder {
 		crown := ""
 		if p.PlayerID == r.Crown {

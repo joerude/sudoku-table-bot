@@ -55,6 +55,36 @@ func (s *Store) DuelLeaderboard(chatID int64) ([]DuelStanding, error) {
 	return out, rows.Err()
 }
 
+// SeasonDuelRecords returns each active player's duel wins (rank 1) and losses
+// (rank <> 1, a DNF included) over the completed duels played in one season.
+// Players with no duel in it are left out; ordered by wins, then name.
+func (s *Store) SeasonDuelRecords(chatID, seasonID int64) ([]DuelStanding, error) {
+	rows, err := s.db.Query(`
+		SELECT p.id, p.name,
+		       COALESCE(SUM(CASE WHEN gr.rank=1 THEN 1 ELSE 0 END),0) AS wins,
+		       COALESCE(SUM(CASE WHEN gr.rank<>1 THEN 1 ELSE 0 END),0) AS losses
+		FROM players p
+		JOIN game_results gr ON gr.player_id = p.id
+		JOIN games g ON g.id = gr.game_id
+		WHERE p.chat_id=? AND p.active=1 AND g.season_id=? AND `+sqlDuelGames+`
+		GROUP BY p.id, p.name
+		ORDER BY wins DESC, p.name COLLATE NOCASE`,
+		chatID, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DuelStanding
+	for rows.Next() {
+		var d DuelStanding
+		if err := rows.Scan(&d.PlayerID, &d.Name, &d.Wins, &d.Losses); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // sqlOpenChallenge is the state of a challenge nobody has answered yet: a live
 // pending duel, not accepted, declined or withdrawn. Every transition below
 // guards on it, so exactly one of racing callbacks (accept, decline, revoke,
