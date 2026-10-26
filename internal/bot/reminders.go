@@ -155,19 +155,27 @@ func dailyDue(nowHHMM, dailyTime string) bool {
 // false when no games were played in the window (caller decides what to show).
 // withTitles adds the week's titles: Monday's post only, since /weekly on any
 // other day covers a different week and would name other holders.
+// The digest speaks for the active season: in the week a season changes, the
+// window starts at the new season and its games only count, so last season's
+// games never fill a post headed by the new season's table of zeros.
 func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, hasGames bool, err error) {
+	season, err := b.st.ActiveSeason(chatID)
+	if err != nil {
+		return "", false, err
+	}
 	since := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	if at, err := b.st.SeasonStartedAt(season.ID); err == nil {
+		if start, err := parseDBTime(at); err == nil && start.After(since) {
+			since = start
+		}
+	}
 	sinceUTC := fmtDBTime(since)
-	weekGames, err := b.st.GamesSince(chatID, sinceUTC)
+	weekGames, err := b.st.GamesSince(chatID, season.ID, sinceUTC)
 	if err != nil {
 		return "", false, err
 	}
 	if weekGames == 0 {
 		return "", false, nil
-	}
-	season, err := b.st.ActiveSeason(chatID)
-	if err != nil {
-		return "", false, err
 	}
 	standings, err := b.st.Standings(chatID, season.ID)
 	if err != nil {
@@ -180,7 +188,7 @@ func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, has
 	if len(top) > 3 {
 		top = top[:3]
 	}
-	fastest, err := b.st.FastestSince(chatID, sinceUTC)
+	fastest, err := b.st.FastestSince(chatID, season.ID, sinceUTC)
 	if err != nil {
 		log.Printf("buildWeeklyDigest fastest: %v", err)
 	}

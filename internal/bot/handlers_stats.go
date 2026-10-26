@@ -216,7 +216,7 @@ func (b *Bot) onWeekly(c tele.Context) error {
 		return b.fail(c, "onWeekly.build", err)
 	}
 	if !hasGames {
-		return b.ephemeral(c, "📅 За последнюю неделю ещё нет сыгранных игр.")
+		return b.ephemeral(c, "📅 За неделю в этом сезоне ещё нет сыгранных игр.")
 	}
 	return c.Send(text)
 }

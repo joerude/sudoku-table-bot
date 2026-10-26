@@ -28,7 +28,7 @@ func TestFastestSinceNullDifficulty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, err := st.FastestSince(chat, "1970-01-01 00:00:00")
+	rec, err := st.FastestSince(chat, se.ID, "1970-01-01 00:00:00")
 	if err != nil {
 		t.Fatalf("FastestSince with NULL difficulty: %v", err)
 	}
@@ -108,5 +108,35 @@ func TestSeasonGameTimes(t *testing.T) {
 	}
 	if at, err := st.SeasonStartedAt(se.ID); err != nil || len(at) != len("2006-01-02 15:04:05") {
 		t.Errorf("SeasonStartedAt = %q, %v", at, err)
+	}
+}
+
+// TestWeekStatsStayInSeason: the digest's counters see only the asked season.
+func TestWeekStatsStayInSeason(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-4302)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	gid, _ := st.CreatePendingGame(chat, old.ID, 1, "medium", "hardcore")
+	st.AddPickTimed(gid, a.ID, 95)
+	if err := st.FinalizeGame(gid, old.PointsTable); err != nil {
+		t.Fatal(err)
+	}
+	se, err := st.CloseSeason(old, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const since = "1970-01-01 00:00:00"
+	if n, err := st.GamesSince(chat, se.ID, since); err != nil || n != 0 {
+		t.Errorf("GamesSince(new season) = %d %v, want 0", n, err)
+	}
+	if n, _ := st.GamesSince(chat, old.ID, since); n != 1 {
+		t.Errorf("GamesSince(old season) = %d, want 1", n)
+	}
+	if rec, err := st.FastestSince(chat, se.ID, since); err != nil || rec != nil {
+		t.Errorf("FastestSince(new season) = %+v %v, want nil", rec, err)
 	}
 }

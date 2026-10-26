@@ -103,3 +103,37 @@ func TestDigestTitlesOff(t *testing.T) {
 		t.Errorf("switched off, still there:\n%s", text)
 	}
 }
+
+func TestDigestSkipsLastSeason(t *testing.T) {
+	b, st := titlesChat(t, -7603)
+	old, _ := st.ActiveSeason(-7603)
+	// Closed in the same second as its last game, as a season reaching its
+	// target does: the time window alone would still let those games in.
+	se, err := st.CloseSeason(old, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, hasGames, err := b.buildWeeklyDigest(-7603, true); err != nil || hasGames {
+		t.Fatalf("a fresh season has no week yet: %v %v\n%s", hasGames, err, text)
+	}
+
+	players, _ := st.ListPlayers(-7603)
+	gid, _ := st.CreatePendingGame(-7603, se.ID, 1, "medium", "hardcore")
+	st.AddPickTimed(gid, players[1].ID, 400)
+	st.AddPickTimed(gid, players[0].ID, 500)
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatal(err)
+	}
+	text, hasGames, err := b.buildWeeklyDigest(-7603, true)
+	if err != nil || !hasGames {
+		t.Fatalf("digest: %v %v", hasGames, err)
+	}
+	for _, want := range []string{"Сезон 2", "Игр за неделю: <b>1</b>", "Быстрейшее: <b>6:40</b>"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("digest misses %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "Железный финиш") {
+		t.Errorf("last season's games earned a title:\n%s", text)
+	}
+}

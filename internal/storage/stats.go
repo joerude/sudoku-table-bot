@@ -481,29 +481,29 @@ func (s *Store) TotalGames(chatID int64) (int, error) {
 	return n, err
 }
 
-// GamesSince counts completed non-duel games on/after a UTC timestamp.
-func (s *Store) GamesSince(chatID int64, sinceUTC string) (int, error) {
+// GamesSince counts a season's completed non-duel games on/after a UTC timestamp.
+func (s *Store) GamesSince(chatID, seasonID int64, sinceUTC string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`
 		SELECT COUNT(*) FROM games g
-		WHERE g.chat_id=? AND `+sqlSeasonalGames+`
-		  AND g.completed_at >= ?`, chatID, sinceUTC).Scan(&n)
+		WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames+`
+		  AND g.completed_at >= ?`, chatID, seasonID, sinceUTC).Scan(&n)
 	return n, err
 }
 
-// FastestSince returns the single fastest auto-recorded solve on/after a UTC
-// timestamp (nil if none).
-func (s *Store) FastestSince(chatID int64, sinceUTC string) (*RecordRow, error) {
+// FastestSince returns a season's single fastest auto-recorded solve on/after a
+// UTC timestamp (nil if none).
+func (s *Store) FastestSince(chatID, seasonID int64, sinceUTC string) (*RecordRow, error) {
 	var r RecordRow
 	err := s.db.QueryRow(`
 		SELECT COALESCE(g.difficulty,''), gr.duration_secs, p.name
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		JOIN players p ON p.id = gr.player_id
-		WHERE g.chat_id=? AND `+sqlSeasonalGames+`
+		WHERE g.chat_id=? AND g.season_id=? AND `+sqlSeasonalGames+`
 		  AND gr.duration_secs IS NOT NULL
 		  AND g.completed_at >= ?
-		ORDER BY gr.duration_secs ASC LIMIT 1`, chatID, sinceUTC).
+		ORDER BY gr.duration_secs ASC LIMIT 1`, chatID, seasonID, sinceUTC).
 		Scan(&r.Difficulty, &r.Secs, &r.Name)
 	if err == sql.ErrNoRows {
 		return nil, nil
