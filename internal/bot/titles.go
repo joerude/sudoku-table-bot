@@ -93,8 +93,16 @@ func (b *Bot) weekTitlesBlock(chatID int64, since time.Time, season *storage.Sea
 	if len(standings) > 0 && standings[0].Points > 0 {
 		leader = standings[0].PlayerID
 	}
+	// A season closed by its target starts the next one in the same second as
+	// its last game, so the window alone would let that game into the week.
+	var games []domain.TitleGame
+	for _, g := range groupTitleGames(rows) {
+		if g.At.Before(since) || g.SeasonID == season.ID {
+			games = append(games, g)
+		}
+	}
 	awards := domain.WeekTitles(domain.TitleInput{
-		Games: groupTitleGames(rows), Since: since, Loc: loadLoc(b.chatTZ(chatID)),
+		Games: games, Since: since, Loc: loadLoc(b.chatTZ(chatID)),
 		LeaderID: leader, SeasonID: season.ID, PaceWins: pace, Active: active,
 	})
 	var lines []string
