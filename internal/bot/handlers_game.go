@@ -444,8 +444,12 @@ func (b *Bot) onResult(c tele.Context) error {
 		return b.fail(c, "onResult.pending", err)
 	}
 	var gameID int64
+	locked := 0
 	if pending != nil {
 		gameID = pending.ID
+		unlock := recordingGames.Lock(gameID)
+		locked = b.syncPicks(pending)
+		unlock()
 	} else {
 		var createdBy int64
 		if u := realSender(c); u != nil {
@@ -457,7 +461,7 @@ func (b *Bot) onResult(c tele.Context) error {
 		}
 	}
 
-	text, markup, err := b.pickerView(chatID, gameID)
+	text, markup, err := b.pickerView(chatID, gameID, locked)
 	if err != nil {
 		return b.fail(c, "onResult.picker", err)
 	}
@@ -502,14 +506,19 @@ func (b *Bot) guardGame(c tele.Context, op string, gameID int64, wantStatus stri
 	return game, true
 }
 
+// The picker handlers below hold recordingGames for the game: they sync the
+// usdoku-confirmed finishers (syncPicks) and write picks, and autoRecord must
+// not interleave with either.
+
 // onRecord opens the picker for an existing pending game (from its button).
 func (b *Bot) onRecord(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onRecord", gameID, "pending")
 	if !ok {
 		return nil
 	}
-	text, markup, err := b.pickerView(game.ChatID, gameID)
+	text, markup, err := b.pickerView(game.ChatID, gameID, b.syncPicks(game))
 	if err != nil {
 		return b.fail(c, "onRecord.picker", err)
 	}
@@ -518,14 +527,18 @@ func (b *Bot) onRecord(c tele.Context) error {
 	return c.Edit(text, markup)
 }
 
-// onPick records the next finisher; auto-finalises when everyone is placed.
+// onPick records the next finisher; auto-finalises when everyone is placed. A
+// duel has one winner, so its first pick closes it: the other duelist lost.
+// A player usdoku already placed stays where usdoku put them.
 func (b *Bot) onPick(c tele.Context) error {
 	gameID, playerID := parsePair(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onPick", gameID, "pending")
 	if !ok {
 		return nil
 	}
-	if err := b.st.AddPick(gameID, playerID); err != nil {
+	locked := b.syncPicks(game)
+	if err := b.st.AddPick(gameID, playerID); err != nil { // no-op for a placed player
 		return b.fail(c, "onPick.add", err)
 	}
 
@@ -533,10 +546,20 @@ func (b *Bot) onPick(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onPick.remaining", err)
 	}
+	duel, err := b.isDuel(gameID)
+	if err != nil {
+		return b.fail(c, "onPick.duel", err)
+	}
+	if duel {
+		if err := b.addLosers(gameID, remaining); err != nil {
+			return b.fail(c, "onPick.loser", err)
+		}
+		return b.finalize(c, game)
+	}
 	if len(remaining) == 0 {
 		return b.finalize(c, game)
 	}
-	text, markup, err := b.pickerView(game.ChatID, gameID)
+	text, markup, err := b.pickerView(game.ChatID, gameID, locked)
 	if err != nil {
 		return b.fail(c, "onPick.picker", err)
 	}
@@ -544,12 +567,32 @@ func (b *Bot) onPick(c tele.Context) error {
 	return c.Edit(text, markup)
 }
 
+// isDuel reports whether the game is a duel with two known duelists.
+func (b *Bot) isDuel(gameID int64) (bool, error) {
+	pair, err := b.st.DuelPlayerIDs(gameID)
+	return len(pair) == 2, err
+}
+
+// addLosers places a duel's remaining duelist after the winner. A manual
+// record never writes rank 0 (see onDoneDNF), and in a duel second place and
+// a DNF are the same loss.
+func (b *Bot) addLosers(gameID int64, remaining []storage.Player) error {
+	for _, p := range remaining {
+		if err := b.st.AddPick(gameID, p.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (b *Bot) onDone(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onDone", gameID, "pending")
 	if !ok {
 		return nil
 	}
+	b.syncPicks(game)
 	picked, err := b.st.PickedPlayerIDs(gameID)
 	if err != nil {
 		return b.fail(c, "onDone.picked", err)
@@ -557,11 +600,24 @@ func (b *Bot) onDone(c tele.Context) error {
 	if len(picked) == 0 {
 		return c.Respond(&tele.CallbackResponse{Text: "Сначала выбери хотя бы одного игрока"})
 	}
+	if duel, err := b.isDuel(gameID); err != nil {
+		return b.fail(c, "onDone.duel", err)
+	} else if duel {
+		remaining, err := b.remainingPlayers(game.ChatID, gameID)
+		if err != nil {
+			return b.fail(c, "onDone.remaining", err)
+		}
+		if err := b.addLosers(gameID, remaining); err != nil {
+			return b.fail(c, "onDone.loser", err)
+		}
+	}
 	return b.finalize(c, game)
 }
 
+// onReset clears the picks the picker made; usdoku's finishers come right back.
 func (b *Bot) onReset(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onReset", gameID, "pending")
 	if !ok {
 		return nil
@@ -569,7 +625,7 @@ func (b *Bot) onReset(c tele.Context) error {
 	if err := b.st.ClearResults(gameID); err != nil {
 		return b.fail(c, "onReset.clear", err)
 	}
-	text, markup, err := b.pickerView(game.ChatID, gameID)
+	text, markup, err := b.pickerView(game.ChatID, gameID, b.syncPicks(game))
 	if err != nil {
 		return b.fail(c, "onReset.picker", err)
 	}
@@ -577,17 +633,27 @@ func (b *Bot) onReset(c tele.Context) error {
 	return c.Edit(text, markup)
 }
 
-// onUndoPick removes the last finisher tapped, stepping back one.
+// onUndoPick removes the last finisher tapped, stepping back one. A place
+// usdoku confirmed is not undone.
 func (b *Bot) onUndoPick(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onUndoPick", gameID, "pending")
 	if !ok {
 		return nil
 	}
+	locked := b.syncPicks(game)
+	picked, err := b.st.PickedPlayerIDs(gameID)
+	if err != nil {
+		return b.fail(c, "onUndoPick.picked", err)
+	}
+	if len(picked) <= locked {
+		return c.Respond(&tele.CallbackResponse{Text: toastLockedPick})
+	}
 	if err := b.st.RemoveLastPick(gameID); err != nil {
 		return b.fail(c, "onUndoPick.remove", err)
 	}
-	text, markup, err := b.pickerView(game.ChatID, gameID)
+	text, markup, err := b.pickerView(game.ChatID, gameID, locked)
 	if err != nil {
 		return b.fail(c, "onUndoPick.picker", err)
 	}
@@ -595,9 +661,12 @@ func (b *Bot) onUndoPick(c tele.Context) error {
 	return c.Edit(text, markup)
 }
 
+const toastLockedPick = "Эти места уже подтвердил usdoku"
+
 // onCancelRecord aborts recording: clears partial picks, keeps the game pending.
 func (b *Bot) onCancelRecord(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	if _, ok := b.guardGame(c, "onCancelRecord", gameID, "pending"); !ok {
 		return nil
 	}
@@ -615,6 +684,7 @@ func (b *Bot) onCancelRecord(c tele.Context) error {
 // onEdit reopens a finalised game for re-entry.
 func (b *Bot) onEdit(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onEdit", gameID, "completed")
 	if !ok {
 		return nil
@@ -625,7 +695,7 @@ func (b *Bot) onEdit(c tele.Context) error {
 	} else if err != nil {
 		return b.fail(c, "onEdit.reopen", err)
 	}
-	text, markup, err := b.pickerView(game.ChatID, gameID)
+	text, markup, err := b.pickerView(game.ChatID, gameID, b.syncPicks(game))
 	if err != nil {
 		return b.fail(c, "onEdit.picker", err)
 	}
@@ -918,10 +988,12 @@ func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 // non-finisher (rank 0 → 0 points, still counts as a played game).
 func (b *Bot) onDoneDNF(c tele.Context) error {
 	gameID := parseID(c.Data())
+	defer recordingGames.Lock(gameID)()
 	game, ok := b.guardGame(c, "onDoneDNF", gameID, "pending")
 	if !ok {
 		return nil
 	}
+	b.syncPicks(game)
 	picked, err := b.st.PickedPlayerIDs(gameID)
 	if err != nil {
 		return b.fail(c, "onDoneDNF.picked", err)
@@ -1057,7 +1129,8 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 }
 
 // pickerView builds the recording message text and keyboard from DB state.
-func (b *Bot) pickerView(chatID, gameID int64) (string, *tele.ReplyMarkup, error) {
+// locked is how many leading places usdoku confirmed (syncPicks).
+func (b *Bot) pickerView(chatID, gameID int64, locked int) (string, *tele.ReplyMarkup, error) {
 	picked, err := b.st.GameResults(gameID) // rank-ordered; points still 0
 	if err != nil {
 		return "", nil, err
@@ -1066,7 +1139,14 @@ func (b *Bot) pickerView(chatID, gameID int64) (string, *tele.ReplyMarkup, error
 	if err != nil {
 		return "", nil, err
 	}
-	return pickerText(picked), pickerKeyboard(gameID, remaining, len(picked)), nil
+	duel, err := b.isDuel(gameID)
+	if err != nil {
+		return "", nil, err
+	}
+	if duel {
+		return duelPickerText(picked, locked), duelPickerKeyboard(gameID, remaining, len(picked)), nil
+	}
+	return pickerText(picked, locked), pickerKeyboard(gameID, remaining, len(picked), locked), nil
 }
 
 // remainingPlayers returns active players not yet picked for the game. For a

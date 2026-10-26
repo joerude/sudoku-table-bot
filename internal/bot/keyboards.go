@@ -101,7 +101,7 @@ func quickMenuKeyboard() *tele.ReplyMarkup {
 func gid(id int64) string { return fmt.Sprintf("%d", id) }
 
 // pickerKeyboard shows remaining players to tap (in finish order) plus controls.
-func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount int) *tele.ReplyMarkup {
+func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount, locked int) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	var rows []tele.Row
 
@@ -120,14 +120,37 @@ func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount int) *
 	if pickedCount > 0 {
 		rows = append(rows, m.Row(m.Data("✅ Готово", cbDone, gid(gameID))))
 		rows = append(rows, m.Row(m.Data("🏳 Остальные не доиграли (0)", cbDoneDNF, gid(gameID))))
-		rows = append(rows, m.Row(
-			m.Data("↩️ Назад", cbUndo, gid(gameID)),
-			m.Data("♻️ Сброс", cbReset, gid(gameID)),
-			m.Data("✖️ Отмена", cbCancel, gid(gameID)),
-		))
+		if pickedCount > locked { // usdoku's places cannot be undone or reset
+			rows = append(rows, m.Row(
+				m.Data("↩️ Назад", cbUndo, gid(gameID)),
+				m.Data("♻️ Сброс", cbReset, gid(gameID)),
+				m.Data("✖️ Отмена", cbCancel, gid(gameID)),
+			))
+		} else {
+			rows = append(rows, m.Row(m.Data("✖️ Отмена", cbCancel, gid(gameID))))
+		}
 	} else {
 		rows = append(rows, m.Row(m.Data("✖️ Отмена", cbCancel, gid(gameID))))
 	}
+	m.Inline(rows...)
+	return m
+}
+
+// duelPickerKeyboard asks for the duel's winner; the tap records the duel
+// (onPick). With the winner already known from usdoku it only confirms.
+func duelPickerKeyboard(gameID int64, remaining []storage.Player, pickedCount int) *tele.ReplyMarkup {
+	m := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	if pickedCount == 0 {
+		var btns []tele.Btn
+		for _, p := range remaining {
+			btns = append(btns, m.Data("🏆 "+p.Name, cbPick, fmt.Sprintf("%d:%d", gameID, p.ID)))
+		}
+		rows = append(rows, m.Row(btns...))
+	} else {
+		rows = append(rows, m.Row(styled(m.Data("✅ Записать", cbDone, gid(gameID)), styleSuccess)))
+	}
+	rows = append(rows, m.Row(m.Data("✖️ Отмена", cbCancel, gid(gameID))))
 	m.Inline(rows...)
 	return m
 }
