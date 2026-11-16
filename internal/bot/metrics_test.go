@@ -44,6 +44,7 @@ func TestMetricsText(t *testing.T) {
 		Names: map[int64]string{1: "<b>Алекс</b>", 2: "Боря", 3: "Вика"},
 		Order: []int64{1, 2, 3},
 		Meets: 3, MeetsPlayed: 2, Pace: 5, HookNear: 4, HookStake: 14,
+		Taps: map[string]int{tapAgain: 7, tapTech: 2}, Replays: 9, LateFinishes: 1, DNFKnown: 6, DNFNear: 4,
 		Off: []string{"pace"},
 	}
 	got := metricsText(v)
@@ -59,6 +60,9 @@ func TestMetricsText(t *testing.T) {
 		"🤝 «Буду через…»: 3, сыграно 2",
 		"⏰ Напоминаний: 6, игра в течение 2 ч: 2",
 		"🏃 Строк темпа: 5 · крючков: 18 (😤 4, ⏭ 14)",
+		"👆 Нажатий: ещё одну 7 · реванш в дуэли 0 · техника доски 2 · картинки 0",
+		"🧩 Картинок «Ход игры»: 9 · 🧱 досок, решённых после записи: 1",
+		"▫️ Без финиша с известным прогрессом: 6, из них от половины доски: 4",
 		"🔕 Выключено: Личный темп",
 	} {
 		if !strings.Contains(got, want) {
@@ -99,6 +103,11 @@ func TestChatMetricsCountsRecentGames(t *testing.T) {
 	}
 	if view, _ := b.chatMetrics(-7801, time.Now().Add(48*time.Hour), 14); view.Pace != 1 {
 		t.Errorf("pace lines = %d, want 1 (distinct game and player)", view.Pace)
+	}
+	st.LogEvent(storage.Event{ChatID: -7801, GameID: 1, Kind: evTap, Detail: tapAgain})
+	st.LogEvent(storage.Event{ChatID: -7801, GameID: 1, PlayerID: 2, Kind: evLateFinish, Detail: "860"})
+	if view, _ := b.chatMetrics(-7801, time.Now().Add(48*time.Hour), 14); view.Taps[tapAgain] != 1 || view.LateFinishes != 1 {
+		t.Errorf("taps = %v, late finishes = %d, want one of each", view.Taps, view.LateFinishes)
 	}
 	st.SetFeature(-7801, featHook, false)
 	if view, _ := b.chatMetrics(-7801, time.Now().Add(48*time.Hour), 14); len(view.Off) != 1 || view.Off[0] != featHook {

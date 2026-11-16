@@ -84,6 +84,7 @@ func (b *Bot) onBoardTech(c tele.Context) error {
 	if !ok {
 		return c.Respond()
 	}
+	b.logTap(c, tapTech, 0)
 	return b.ephemeral(c, learnTechMsg(tech))
 }
 

@@ -261,6 +261,7 @@ func (b *Bot) onAgain(c tele.Context) error {
 	if game == nil {
 		return c.Respond(&tele.CallbackResponse{Text: guardGameGone})
 	}
+	b.logTap(c, tapAgain, game.ID)
 	difficulty, mode := repeatParams(game.Difficulty.String, game.Mode.String)
 	err = b.startNewGameAt(c, difficulty, mode, placeNew)
 	_ = c.Respond() // after, so a guard's toast can still show
@@ -892,8 +893,8 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 			}
 		}
 		leader, _ := b.st.Leader(game.ChatID, game.SeasonID)
-		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target, games, minGames),
-			b.resultKB(gameID), nil
+		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target, games, minGames,
+			b.dnfProgress(game)), b.resultKB(gameID), nil
 	}
 	return "🧩 Игра ждёт результата: жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
@@ -944,7 +945,7 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		log.Printf("scoreAndCheck.gamecount: %v", err) // counter hidden, scoring unaffected
 	}
 	result = resultText(rows, game.Difficulty.String, game.Mode.String, leader, season.Target,
-		games, season.MinGames)
+		games, season.MinGames, b.dnfProgress(game))
 	if line := movesLine(standingsMoves(before, standings)); line != "" {
 		result += "\n" + line
 	}

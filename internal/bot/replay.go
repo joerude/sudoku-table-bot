@@ -64,6 +64,17 @@ func takeReplay(gameID int64) []progSample {
 	return s
 }
 
+// lastReplaySample is the newest board fetch of a watched game, left in place.
+func lastReplaySample(gameID int64) (progSample, bool) {
+	replayMu.Lock()
+	defer replayMu.Unlock()
+	s := replaySamples[gameID]
+	if len(s) == 0 {
+		return progSample{}, false
+	}
+	return s[len(s)-1], true
+}
+
 // dropReplay forgets a game's samples (the watcher is done with the game).
 func dropReplay(gameID int64) { takeReplay(gameID) }
 
