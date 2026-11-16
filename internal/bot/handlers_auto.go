@@ -125,7 +125,7 @@ func racing(info *usdoku.GameInfo) bool {
 
 // fetchProgress reads the room's board progress.
 func (b *Bot) fetchProgress(code string) (usdoku.Progress, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	return b.ud.Progress(ctx, code)
 }
