@@ -1,6 +1,9 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        COMMIT: ${COMMIT:-dev}
     container_name: sudoku-bot
     restart: unless-stopped
     env_file: .env

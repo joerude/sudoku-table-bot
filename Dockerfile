@@ -10,7 +10,10 @@ RUN go mod download
 
 COPY . .
 # CGO is disabled: modernc.org/sqlite is pure Go, so the binary is fully static.
-RUN CGO_ENABLED=0 go build -o /out/sudoku-bot ./cmd/bot
+# COMMIT is logged at start ("build <commit>"); deploy/autodeploy.sh passes the
+# commit it deploys and then looks for it in the logs.
+ARG COMMIT=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X main.commit=${COMMIT}" -o /out/sudoku-bot ./cmd/bot
 
 # ---- run stage ----
 FROM alpine:3.20

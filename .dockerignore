@@ -7,3 +7,6 @@ data/
 *.db-shm
 bin/
 README.md
+.github
+deploy/
+.autodeploy.*

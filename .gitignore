@@ -24,3 +24,8 @@ sudoku-bot
 
 .claude/
 excalidraw.log
+
+# deploy/autodeploy.sh state on the server
+.autodeploy.lock
+.autodeploy.skip
+/deploy/autodeploy.log

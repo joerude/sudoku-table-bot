@@ -1,0 +1,63 @@
+name: ci
+
+# Every push of a work branch is built and tested as it would land on main.
+# When that is green the workflow opens the pull request itself and
+# squash-merges it, so a pushed branch reaches main without a click.
+# A branch named wip/... is tested but never merged.
+on:
+  push:
+    branches: [main, 'feat/**', 'fix/**', 'refactor/**', 'chore/**', 'docs/**', 'ci/**', 'wip/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge main in, to test what will land
+        if: github.event_name == 'push' && github.ref_name != 'main'
+        run: |
+          git config user.name ci
+          git config user.email ci@users.noreply.github.com
+          git merge --no-edit origin/main
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l cmd internal)"
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+
+  merge:
+    needs: test
+    if: github.event_name == 'push' && github.ref_name != 'main' && !startsWith(github.ref_name, 'wip/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Open the pull request if there is none
+        run: |
+          if ! gh pr view "$BRANCH" --json state --jq .state | grep -qx OPEN; then
+            gh pr create --base main --head "$BRANCH" --fill
+          fi
+      # --match-head-commit: merge only the commit that was tested. A push that
+      # arrived meanwhile has its own run.
+      - name: Squash-merge the tested commit
+        run: gh pr merge "$BRANCH" --squash --delete-branch --match-head-commit "$GITHUB_SHA"
