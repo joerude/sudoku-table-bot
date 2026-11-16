@@ -513,7 +513,7 @@ type raceWindow struct {
 const (
 	formSize    = 5  // recent games shown in the table's form line
 	raceNameMax = 10 // name width in the aligned race block
-	raceBarSize = 10 // cells in a race bar
+	raceBarSize = 6  // cells in a race bar: short enough for a phone-width <pre>
 )
 
 // standingsText renders the season table as a race: an aligned block with

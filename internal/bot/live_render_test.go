@@ -126,10 +126,10 @@ func TestLiveKeyboardOffersRecordNowOnlyAfterAFinish(t *testing.T) {
 
 func TestNotCountedKeyboardOffersManualRecordAndCancel(t *testing.T) {
 	m := notCountedKeyboard(9)
-	if len(m.InlineKeyboard) != 1 || len(m.InlineKeyboard[0]) != 2 {
-		t.Fatalf("want one row with two buttons: %+v", m.InlineKeyboard)
+	if len(m.InlineKeyboard) != 2 || len(m.InlineKeyboard[0]) != 1 || len(m.InlineKeyboard[1]) != 1 {
+		t.Fatalf("want two rows of one button: %+v", m.InlineKeyboard)
 	}
-	rec, del := m.InlineKeyboard[0][0], m.InlineKeyboard[0][1]
+	rec, del := m.InlineKeyboard[0][0], m.InlineKeyboard[1][0]
 	if rec.Unique != cbRec || rec.Data != "9" || del.Unique != cbDel || del.Data != "9" {
 		t.Errorf("buttons must reuse the record and delete callbacks: %+v %+v", rec, del)
 	}

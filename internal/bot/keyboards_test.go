@@ -20,15 +20,17 @@ func TestDuelPickKeyboardCarriesOwner(t *testing.T) {
 
 func TestPendingConflictKeyboardPayload(t *testing.T) {
 	kb := pendingConflictKeyboard(5, "duel:medium")
-	row := kb.InlineKeyboard[0]
-	if got := row[0].Data; got != "5" {
+	if len(kb.InlineKeyboard) != 2 {
+		t.Fatalf("want one button per row (phone width), got %d rows", len(kb.InlineKeyboard))
+	}
+	if got := kb.InlineKeyboard[0][0].Data; got != "5" {
 		t.Errorf("rec payload = %q, want %q", got, "5")
 	}
-	if got := row[1].Data; got != "5:duel:medium" {
+	if got := kb.InlineKeyboard[1][0].Data; got != "5:duel:medium" {
 		t.Errorf("del payload = %q, want %q", got, "5:duel:medium")
 	}
 	kb = pendingConflictKeyboard(5, "")
-	if got := kb.InlineKeyboard[0][1].Data; got != "5" {
+	if got := kb.InlineKeyboard[1][0].Data; got != "5" {
 		t.Errorf("del payload without origin = %q, want %q", got, "5")
 	}
 }

@@ -3,6 +3,7 @@ package bot
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 )
@@ -41,5 +42,22 @@ func TestLearnTechMsgAndKeyboard(t *testing.T) {
 	plain, _ := domain.TechniqueByKey("swordfish")
 	if got := len(learnTechKeyboard(plain).InlineKeyboard[0]); got != 1 {
 		t.Errorf("swordfish link row: %d buttons, want 1", got)
+	}
+}
+
+// Long technique names get a row of their own so a phone doesn't cut them.
+func TestLearnTierKeyboardPairsOnlyShortNames(t *testing.T) {
+	for _, tier := range domain.Tiers() {
+		rows := learnTierKeyboard(tier).InlineKeyboard
+		for _, row := range rows[:len(rows)-1] { // last row is «Назад»
+			if len(row) < 2 {
+				continue
+			}
+			for _, btn := range row {
+				if utf8.RuneCountInString(btn.Text) > learnPairMaxRunes {
+					t.Errorf("tier %s: %q shares a row but is longer than %d", tier, btn.Text, learnPairMaxRunes)
+				}
+			}
+		}
 	}
 }

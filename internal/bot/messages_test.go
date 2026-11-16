@@ -638,16 +638,16 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 	if !marked {
 		t.Errorf("speed_all: speed tab must carry the active marker")
 	}
-	// The table tab: 7 tab buttons in 2 rows (4 + 3) plus the chart row.
-	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 3 {
-		t.Errorf("table tab without archive: want 3 rows, got %d", n)
+	// The table tab: 7 tab buttons in 3 rows (3 + 3 + 1) plus the chart row.
+	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 4 {
+		t.Errorf("table tab without archive: want 4 rows, got %d", n)
 	}
 	// Table tab with archived seasons carries the season row above the chart row.
 	withSeasons := statsKeyboard("table", []int{1, 2, 3}, 4)
-	if n := len(withSeasons.InlineKeyboard); n != 4 {
-		t.Fatalf("table tab with archive: want 4 rows, got %d", n)
+	if n := len(withSeasons.InlineKeyboard); n != 5 {
+		t.Fatalf("table tab with archive: want 5 rows, got %d", n)
 	}
-	seasonRow := withSeasons.InlineKeyboard[2]
+	seasonRow := withSeasons.InlineKeyboard[3]
 	if len(seasonRow) != 4 {
 		t.Fatalf("season row: want 4 buttons, got %d", len(seasonRow))
 	}
@@ -1332,9 +1332,9 @@ func TestStandingsTextRaceTable(t *testing.T) {
 	out := standingsText(se, rows, race, map[int64][]int{1: {1, 2, 3, 1, 1, 0}}, 0)
 	for _, want := range []string{
 		"гонка до 100 очков",
-		"<pre>1 mister 20 ▰▰▱▱▱▱▱▱▱▱ +5 ↗1\n",
-		"2 Nur    18 ▰▰▱▱▱▱▱▱▱▱ +1 ↘1\n",
-		"3 Max    15 ▰▰▱▱▱▱▱▱▱▱ +0</pre>",
+		"<pre>1 mister 20 ▰▱▱▱▱▱ +5 ↗1\n",
+		"2 Nur    18 ▰▱▱▱▱▱ +1 ↘1\n",
+		"3 Max    15 ▰▱▱▱▱▱ +0</pre>",
 		"за 7 дней · 4 игры",
 		"<b>mister</b> · побед 6 · 🥈🥉🥇🥇➖",
 		"<b>Max</b> · побед 4",
@@ -1359,7 +1359,7 @@ func TestStandingsTextQuietWeek(t *testing.T) {
 		t.Errorf("names must be escaped and clipped\ngot: %s", out)
 	}
 	// Only the target fills the bar: 99 stays one cell short.
-	if !strings.Contains(out, "100 ▰▰▰▰▰▰▰▰▰▰") || !strings.Contains(out, " 99 ▰▰▰▰▰▰▰▰▰▱") {
+	if !strings.Contains(out, "100 ▰▰▰▰▰▰") || !strings.Contains(out, " 99 ▰▰▰▰▰▱") {
 		t.Errorf("bars: full only at the target\ngot: %s", out)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -270,10 +271,10 @@ func recordAndClaimKeyboard(gameID int64, unknown []string) *tele.ReplyMarkup {
 // it (the usual delete-with-confirmation path).
 func notCountedKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(
-		m.Data("📝 Всё равно записать", cbRec, gid(gameID)),
-		styled(m.Data("🗑 Отменить", cbDel, gid(gameID)), styleDanger),
-	))
+	m.Inline(
+		m.Row(m.Data("📝 Всё равно записать", cbRec, gid(gameID))),
+		m.Row(styled(m.Data("🗑 Отменить", cbDel, gid(gameID)), styleDanger)),
+	)
 	return m
 }
 
@@ -367,10 +368,10 @@ func inviteKeyboard(gameID int64, count int) *tele.ReplyMarkup {
 // the stale game flows straight back into it.
 func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(
-		recordButton(m, gameID),
-		styled(m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)), styleDanger),
-	))
+	m.Inline(
+		m.Row(recordButton(m, gameID)),
+		m.Row(styled(m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)), styleDanger)),
+	)
 	return m
 }
 
@@ -385,8 +386,8 @@ var statsTabs = []struct{ id, label string }{
 	{"activity", "📣 Актив"},
 }
 
-// statsTabsPerRow keeps the tab layout even: 7 tabs make rows of 4 and 3.
-const statsTabsPerRow = 4
+// statsTabsPerRow keeps tab labels whole on a phone: 7 tabs make rows of 3, 3, 1.
+const statsTabsPerRow = 3
 
 // recentSeasonButtons is how many season buttons sit under the Table tab; the
 // rest hide behind the «Архив» button.
@@ -433,15 +434,22 @@ func learnRootKeyboard() *tele.ReplyMarkup {
 	return m
 }
 
-// learnTierKeyboard lists a tier's techniques two per row, plus a way back.
+// learnPairMaxRunes is the longest technique name that still fits half a row
+// on a phone; longer names get a row of their own.
+const learnPairMaxRunes = 12
+
+// learnTierKeyboard lists a tier's techniques, two short names per row, plus a
+// way back.
 func learnTierKeyboard(tier domain.Tier) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	list := domain.TechniquesByTier(tier)
-	for i := 0; i < len(list); i += 2 {
+	short := func(name string) bool { return utf8.RuneCountInString(name) <= learnPairMaxRunes }
+	for i := 0; i < len(list); i++ {
 		row := tele.Row{m.Data(list[i].Name, cbLearnTech, list[i].Key)}
-		if i+1 < len(list) {
-			row = append(row, m.Data(list[i+1].Name, cbLearnTech, list[i+1].Key))
+		if i+1 < len(list) && short(list[i].Name) && short(list[i+1].Name) {
+			i++
+			row = append(row, m.Data(list[i].Name, cbLearnTech, list[i].Key))
 		}
 		rows = append(rows, row)
 	}
