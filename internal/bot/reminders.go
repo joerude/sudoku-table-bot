@@ -163,12 +163,7 @@ func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, has
 	if err != nil {
 		return "", false, err
 	}
-	since := time.Now().UTC().Add(-7 * 24 * time.Hour)
-	if at, err := b.st.SeasonStartedAt(season.ID); err == nil {
-		if start, err := parseDBTime(at); err == nil && start.After(since) {
-			since = start
-		}
-	}
+	since := b.weekSince(season, time.Now())
 	sinceUTC := fmtDBTime(since)
 	weekGames, err := b.st.GamesSince(chatID, season.ID, sinceUTC)
 	if err != nil {
@@ -200,6 +195,18 @@ func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, has
 	text = digestText(season, top, fastest, streakName, streakLen, weekGames) + titles +
 		digestFinalLine(season, standings, time.Now(), loadLoc(b.chatTZ(chatID)))
 	return text, true, nil
+}
+
+// weekSince is the start of the weekly digest's window: seven days back, or
+// the active season's start when that is later (see buildWeeklyDigest).
+func (b *Bot) weekSince(season *storage.Season, now time.Time) time.Time {
+	since := now.UTC().Add(-7 * 24 * time.Hour)
+	if at, err := b.st.SeasonStartedAt(season.ID); err == nil {
+		if start, err := parseDBTime(at); err == nil && start.After(since) {
+			since = start
+		}
+	}
+	return since
 }
 
 // weeklyDigestTime is the chat-local time of day the Monday digest goes out. It
@@ -237,7 +244,9 @@ func (b *Bot) remindWeekly() {
 		if !hasGames {
 			continue // quiet week, skip the digest
 		}
-		b.postChat(ch.ChatID, text)
+		if b.postChat(ch.ChatID, text) {
+			b.postWeekRace(ch.ChatID)
+		}
 	}
 }
 

@@ -6,10 +6,16 @@ package chart
 // Race is the season race: cumulative points per player, game by game. Series
 // keep their colour by position, so callers pass them in a stable per-player
 // order (never by current rank).
+//
+// Fit turns it into a window of the race (the week): lines start at each
+// Series.Base, the y axis fits the data, and the goal line shows only when it
+// falls inside that range.
 type Race struct {
 	Title  string
 	Target int
 	Series []Series
+	Fit    bool
+	XTitle string // under the x axis; "" = "игры"
 }
 
 const raceW, raceH = 1080, 720
@@ -20,6 +26,10 @@ func RenderRace(r Race) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	xTitle := r.XTitle
+	if xTitle == "" {
+		xTitle = "игры"
+	}
 	c := newCanvas(raceW, raceH)
 	c.text(fs.bold(32), 40, 52, inkMain, r.Title)
 	drawLegend(c, fs, 40, 102, r.Series)
@@ -28,8 +38,8 @@ func RenderRace(r Race) ([]byte, error) {
 		xMax:     maxLen(r.Series),
 		goal:     r.Target,
 		goalLbl:  "цель " + itoa(r.Target),
-		fromZero: true,
-		xTitle:   "игры",
+		fromZero: !r.Fit,
+		xTitle:   xTitle,
 		labels:   true,
 	})
 	return c.png()

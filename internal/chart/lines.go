@@ -15,6 +15,7 @@ type Series struct {
 	Offset int
 	Base   int
 	Points []int
+	Label  string // end label; "" = "<Name> <last value>"
 }
 
 func (s Series) last() int {
@@ -30,13 +31,15 @@ type box struct{ l, t, r, b float64 }
 // lineSpec says how drawLines frames its series.
 type lineSpec struct {
 	series   []Series
-	xMax     int    // x runs 0..xMax
-	goal     int    // >0: a dashed goal line with goalLbl
-	goalLbl  string // e.g. "цель 100"
-	fromZero bool   // y starts at 0 and reaches the goal; otherwise it fits the data
-	xTitle   string // under the x axis, right-aligned; "" for none
-	labels   bool   // end labels right of the plot
-	small    bool   // inset (poster): smaller text and lines
+	xMax     int              // x runs 0..xMax
+	goal     int              // >0: a dashed goal line with goalLbl
+	goalLbl  string           // e.g. "цель 100"
+	fromZero bool             // y starts at 0 and reaches the goal; otherwise it fits the data
+	xTitle   string           // under the x axis, right-aligned; "" for none
+	xStep    int              // x units between ticks; 0 picks a round step
+	xFmt     func(int) string // tick label for an x value; nil prints the value
+	labels   bool             // end labels right of the plot
+	small    bool             // inset (poster): smaller text and lines
 }
 
 // drawLines draws grid, axes, the goal line and every series into p.
@@ -71,9 +74,16 @@ func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
 		c.hline(p.l, p.r, y, 1.5, gridColor)
 		c.textRight(tick, p.l-12, y+7, inkMuted, fmt.Sprint(v))
 	}
-	xStep := niceStep(sp.xMax, 8)
+	xStep := sp.xStep
+	if xStep <= 0 {
+		xStep = niceStep(sp.xMax, 8)
+	}
+	xFmt := sp.xFmt
+	if xFmt == nil {
+		xFmt = func(x int) string { return fmt.Sprint(x) }
+	}
 	for x := 0; x <= sp.xMax; x += xStep {
-		c.textCenter(tick, xOf(x), p.b+30, inkMuted, fmt.Sprint(x))
+		c.textCenter(tick, xOf(x), p.b+30, inkMuted, xFmt(x))
 	}
 	if sp.xTitle != "" {
 		c.textRight(tick, p.r, p.b+58, inkMuted, sp.xTitle)
@@ -100,7 +110,11 @@ func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
 		}
 		c.disc(px, py, dot+3, surface)
 		c.disc(px, py, dot, col)
-		ends = append(ends, end{y: py, labelY: py, col: col, lbl: fmt.Sprintf("%s %d", clip(s.Name, 12), s.last())})
+		lbl := s.Label
+		if lbl == "" {
+			lbl = fmt.Sprintf("%s %d", clip(s.Name, 12), s.last())
+		}
+		ends = append(ends, end{y: py, labelY: py, col: col, lbl: lbl})
 	}
 	if !sp.labels {
 		return

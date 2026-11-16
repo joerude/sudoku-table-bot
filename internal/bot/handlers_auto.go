@@ -52,6 +52,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 	markWatching(gameID)
 	defer unmarkWatching(gameID)
 	defer setRoomBusy(gameID, false)
+	defer dropReplay(gameID)
 	deadline := time.Now().Add(watchTimeout)
 	var state watchState
 	var status string // usdoku status at the previous successful poll
@@ -92,6 +93,7 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 					log.Printf("watchGame.progress %s: %v", code, err)
 				} else {
 					prog = &p
+					addReplaySample(gameID, p, progAt) // feeds «Ход игры» after the record
 				}
 			}
 			b.liveUpdate(gameID, info, prog) // dedupes: edits only when the card text changes
@@ -302,10 +304,14 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 	result += b.resultFooters(game)
 	// The result is a NEW message (an edit would not notify anyone); the card
 	// is retired to a one-liner pointing at it.
-	if _, err := b.tb.Send(to, autoResultHeader()+result, b.resultKB(game.ID)); err != nil {
+	posted, err := b.tb.Send(to, autoResultHeader()+result, b.resultKB(game.ID))
+	if err != nil {
 		log.Printf("autoRecord.send: %v", err)
+		posted = nil
 	}
 	b.closeCard(game.ID)
+	go b.postReplay(game, info, posted, takeReplay(game.ID))
+	go b.watchLateFinish(game, info, posted)
 	if seasonEnd != "" {
 		_, _ = b.tb.Send(to, seasonEnd)
 		b.postSeasonPoster(game.ChatID, game.SeasonID)

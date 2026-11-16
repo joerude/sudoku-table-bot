@@ -24,6 +24,9 @@ var features = []feature{
 	{Key: featMeet, Label: "«Буду через…» в пустой комнате"},
 	{Key: featNudge, Label: "Умное время напоминания"},
 	{Key: featTitles, Label: "Титулы недели в дайджесте"},
+	{Key: featWeekPic, Label: "Картинка гонки к итогам недели"},
+	{Key: featReplay, Label: "Картинка «Ход игры» после партии"},
+	{Key: featLateFinish, Label: "Строка о доске, решённой после записи"},
 }
 
 // featureByKey finds a registered mechanic by its /settings key.
