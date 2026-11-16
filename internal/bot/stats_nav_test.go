@@ -19,10 +19,10 @@ func flatButtons(m *tele.ReplyMarkup) []tele.InlineButton {
 
 func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 	m := statsKeyboard("table", nil, 1)
-	if len(m.InlineKeyboard) != 3 || len(m.InlineKeyboard[0]) != 4 || len(m.InlineKeyboard[1]) != 3 {
-		t.Fatalf("tab layout: want rows of 4 and 3 plus the chart row, got %d rows", len(m.InlineKeyboard))
+	if len(m.InlineKeyboard) != 4 || len(m.InlineKeyboard[0]) != 3 || len(m.InlineKeyboard[1]) != 3 || len(m.InlineKeyboard[2]) != 1 {
+		t.Fatalf("tab layout: want rows of 3, 3, 1 plus the chart row, got %d rows", len(m.InlineKeyboard))
 	}
-	if pics := m.InlineKeyboard[2]; len(pics) != 2 || pics[0].Unique != cbRaceChart || pics[1].Unique != cbCalendar {
+	if pics := m.InlineKeyboard[3]; len(pics) != 2 || pics[0].Unique != cbRaceChart || pics[1].Unique != cbCalendar {
 		t.Errorf("table tab: last row must hold the race and calendar buttons, got %+v", pics)
 	}
 	rating := statsKeyboard("rating", nil, 1)
@@ -47,10 +47,10 @@ func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 func TestRecentSeasonStripAndArchive(t *testing.T) {
 	// Six seasons: the last four plus «Архив».
 	m := statsKeyboard("table", []int{1, 2, 3, 4, 5}, 6)
-	if len(m.InlineKeyboard) != 5 {
-		t.Fatalf("want 2 tab rows + strip + archive row + chart row, got %d rows", len(m.InlineKeyboard))
+	if len(m.InlineKeyboard) != 6 {
+		t.Fatalf("want 3 tab rows + strip + archive row + chart row, got %d rows", len(m.InlineKeyboard))
 	}
-	strip := m.InlineKeyboard[2]
+	strip := m.InlineKeyboard[3]
 	var got []string
 	for _, b := range strip {
 		got = append(got, b.Text)
@@ -58,7 +58,7 @@ func TestRecentSeasonStripAndArchive(t *testing.T) {
 	if want := "С3 С4 С5 ▶ С6"; strings.Join(got, " ") != want {
 		t.Errorf("season strip = %q, want %q", strings.Join(got, " "), want)
 	}
-	arch := m.InlineKeyboard[3]
+	arch := m.InlineKeyboard[4]
 	if len(arch) != 1 || arch[0].Data != seasonArchive || arch[0].Unique != cbSeasonView || !strings.Contains(arch[0].Text, "Архив") {
 		t.Errorf("archive button: %+v", arch)
 	}

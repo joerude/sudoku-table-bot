@@ -36,14 +36,18 @@ func (b *Bot) onPlayDiff(c tele.Context) error {
 	return err
 }
 
-// onPlayDuel routes to the existing duel opponent picker.
+// onPlayDuel routes to the existing duel opponent picker. The tap is answered
+// after, so a guard's ephemeral reply can still use the callback.
 func (b *Bot) onPlayDuel(c tele.Context) error {
+	err := b.onDuel(c)
 	_ = c.Respond()
-	return b.onDuel(c)
+	return err
 }
 
-// onPlayInvite routes to the existing invite flow.
+// onPlayInvite routes to the existing invite flow. showCreating answers the tap
+// before the room is made; answering here first would swallow the busy toast.
 func (b *Bot) onPlayInvite(c tele.Context) error {
+	err := b.onInvite(c)
 	_ = c.Respond()
-	return b.onInvite(c)
+	return err
 }

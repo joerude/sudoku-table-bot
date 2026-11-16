@@ -113,8 +113,9 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 
 // issueDuel creates the room, tags the target and posts the challenge as a new
 // message pinging the target; that message becomes the game's card. The notice
-// shown while the room is made (the pressed message for placeAuto, a fresh one
-// for placeNew) ends as «Вызов отправлен». A button whose message must survive
+// shown while the room is made ends as «Вызов отправлен» when it is the pressed
+// message (placeAuto); a fresh notice (placeNew) is deleted, since the challenge
+// right below already says it. A button whose message must survive
 // (a result post) passes placeNew. posted=false with a nil error means a guard
 // already replied (e.g. a game is pending).
 func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficulty string, place placement) (posted bool, err error) {
@@ -149,7 +150,11 @@ func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficul
 	// have cached while the notice was still the card.
 	b.saveCard(room.gameID, chatID, int64(sent.ID), "", "")
 	if room.msg != nil {
-		if err := b.editPost(chatID, int64(room.msg.ID), duelSentText, nil); err != nil {
+		if place == placeNew {
+			if err := b.tb.Delete(room.msg); err != nil {
+				log.Printf("issueDuel.notice: %v", err)
+			}
+		} else if err := b.editPost(chatID, int64(room.msg.ID), duelSentText, nil); err != nil {
 			log.Printf("issueDuel.sent: %v", err)
 		}
 	}
@@ -213,7 +218,7 @@ func (b *Bot) duelTargetGuard(c tele.Context, gameID int64) (*storage.Player, bo
 		return nil, false
 	}
 	if presser == nil || presser.ID != targetID {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Этот вызов не тебе ✋"})
+		_ = c.Respond(&tele.CallbackResponse{Text: "Этот вызов не тебе"})
 		return nil, false
 	}
 	return presser, true

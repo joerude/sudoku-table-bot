@@ -20,7 +20,7 @@ func TestMeTextWithTimedGames(t *testing.T) {
 	st := &storage.PlayerStat{Games: 10, Wins: 3, Points: 12, Rank: 2}
 	sp := &storage.SpeedStat{AvgSecs: 270, BestSecs: 192, Games: 7}
 	out := meText("Alice", st, sp, 0, 0, nil, domain.Streak{}, season1())
-	for _, want := range []string{"4:30", "3:12", "по 7", "⚡ Лучшее"} {
+	for _, want := range []string{"4:30", "3:12", "игр: 7", "⏱ Лучшее"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("meText with timed games: want %q in output\ngot: %s", want, out)
 		}
@@ -31,8 +31,8 @@ func TestMeTextNoTimedGames(t *testing.T) {
 	st := &storage.PlayerStat{Games: 5, Wins: 1, Points: 6, Rank: 3}
 	sp := &storage.SpeedStat{} // Games == 0
 	out := meText("Bob", st, sp, 0, 0, nil, domain.Streak{}, season1())
-	if !strings.Contains(out, "Ср. время: —") {
-		t.Errorf("meText no timed games: want 'Ср. время: —' in output\ngot: %s", out)
+	if !strings.Contains(out, "Среднее время: нет авто-игр") {
+		t.Errorf("meText no timed games: want 'Среднее время: нет авто-игр' in output\ngot: %s", out)
 	}
 	if strings.Contains(out, "Лучшее") {
 		t.Errorf("meText no timed games: should NOT contain 'Лучшее'\ngot: %s", out)
@@ -45,8 +45,8 @@ func TestMeTextZeroGames(t *testing.T) {
 	if !strings.Contains(out, "пока нет игр") {
 		t.Errorf("meText zero games: want 'пока нет игр' in output\ngot: %s", out)
 	}
-	if strings.Contains(out, "Ср. время") {
-		t.Errorf("meText zero games: should NOT contain 'Ср. время'\ngot: %s", out)
+	if strings.Contains(out, "Среднее время") {
+		t.Errorf("meText zero games: should NOT contain 'Среднее время'\ngot: %s", out)
 	}
 }
 
@@ -57,8 +57,8 @@ func TestMeTextZeroGamesWithDuels(t *testing.T) {
 	if !strings.Contains(out, "Дуэли:") {
 		t.Errorf("meText zero games with duels: want 'Дуэли:' in output\ngot: %s", out)
 	}
-	if !strings.Contains(out, "3–1") {
-		t.Errorf("meText zero games with duels: want '3–1' in output\ngot: %s", out)
+	if !strings.Contains(out, "3:1") {
+		t.Errorf("meText zero games with duels: want '3:1' in output\ngot: %s", out)
 	}
 	// Games==0 with no duels: must NOT show duel line
 	outNoDuel := meText("Dave", st, nil, 0, 0, nil, domain.Streak{}, season1())
@@ -71,8 +71,8 @@ func TestMeTextDuelLine(t *testing.T) {
 	st := &storage.PlayerStat{Games: 5, Wins: 2, Points: 8, Rank: 1}
 	sp := &storage.SpeedStat{}
 	out := meText("Vasya", st, sp, 4, 2, nil, domain.Streak{}, season1())
-	if !strings.Contains(out, "Дуэли:") || !strings.Contains(out, "4–2") {
-		t.Errorf("meText duel line: want 'Дуэли:' and '4–2' in output\ngot: %s", out)
+	if !strings.Contains(out, "Дуэли:") || !strings.Contains(out, "4:2") {
+		t.Errorf("meText duel line: want 'Дуэли:' and '4:2' in output\ngot: %s", out)
 	}
 	outNoDuel := meText("Vasya", st, sp, 0, 0, nil, domain.Streak{}, season1())
 	if strings.Contains(outNoDuel, "Дуэли") {
@@ -84,7 +84,7 @@ func TestMeTextDuelDetails(t *testing.T) {
 	st := &storage.PlayerStat{Games: 5, Wins: 2, Points: 8, Rank: 1}
 	duelSp := &storage.SpeedStat{AvgSecs: 240, BestSecs: 180, Games: 4}
 	out := meText("Nur", st, nil, 6, 2, duelSp, domain.Streak{Current: 3, Best: 5}, season1())
-	for _, want := range []string{"В дуэлях", "4:00", "3:00", "Серия дуэлей: <b>3</b>", "лучшая <b>5</b>"} {
+	for _, want := range []string{"В дуэлях", "4:00", "3:00", "Серия побед в дуэлях: <b>3</b>", "лучшая <b>5</b>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("meText duel details: want %q in output\ngot: %s", want, out)
 		}
@@ -94,7 +94,7 @@ func TestMeTextDuelDetails(t *testing.T) {
 	if strings.Contains(out2, "В дуэлях") {
 		t.Errorf("meText: should omit duel time when no timed duels\ngot: %s", out2)
 	}
-	if strings.Contains(out2, "Серия дуэлей") {
+	if strings.Contains(out2, "Серия побед в дуэлях") {
 		t.Errorf("meText: should omit streak when best<2\ngot: %s", out2)
 	}
 }
@@ -105,7 +105,7 @@ func TestDuelResultText(t *testing.T) {
 		{Rank: 2, Name: "Petya"},
 	}
 	out := duelResultText(rows, 4, 2, true, 0)
-	for _, want := range []string{"Vasya", "побеждает", "Petya", "4:12", "H2H", "4–2"} {
+	for _, want := range []string{"Победа: <b>Vasya</b>", "Petya", "4:12", "Личный счёт", "<b>Vasya</b> 4:2 <b>Petya</b>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText: want %q in output\ngot: %s", want, out)
 		}
@@ -118,7 +118,7 @@ func TestDuelResultTextShowsLoserTime(t *testing.T) {
 		{Rank: 2, Name: "Petya", Duration: 279}, // 4:39
 	}
 	out := duelResultText(rows, 0, 0, false, 0)
-	for _, want := range []string{"4:24", "vs 4:39", "+0:15"} {
+	for _, want := range []string{"4:24", "против 4:39", "+0:15"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText loser time: want %q in output\ngot: %s", want, out)
 		}
@@ -131,8 +131,8 @@ func TestDuelResultTextHidesLoserTimeWhenUnknown(t *testing.T) {
 		{Rank: 2, Name: "Petya"}, // Duration 0: manual entry, no solve time
 	}
 	out := duelResultText(rows, 0, 0, false, 0)
-	if strings.Contains(out, "vs") {
-		t.Errorf("duelResultText: loser has no duration, must not show 'vs'\ngot: %s", out)
+	if strings.Contains(out, "против") {
+		t.Errorf("duelResultText: loser has no duration, must not show 'против'\ngot: %s", out)
 	}
 }
 
@@ -142,7 +142,7 @@ func TestDuelResultTextUpset(t *testing.T) {
 		{Rank: 2, Name: "Petya"},
 	}
 	out := duelResultText(rows, 1, 0, true, 35)
-	for _, want := range []string{"😮 Апсет: фаворит пал", "<b>Vasya</b> берёт +35"} {
+	for _, want := range []string{"😮 Победа над фаворитом", "<b>Vasya</b> +35"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText upset: want %q in output\ngot: %s", want, out)
 		}
@@ -150,15 +150,15 @@ func TestDuelResultTextUpset(t *testing.T) {
 	if strings.Contains(out, "Рейтинг") || strings.Contains(out, "обыграл фаворита") {
 		t.Errorf("duelResultText: no own rating line / masculine wording\ngot: %s", out)
 	}
-	if plain := duelResultText(rows, 1, 0, true, 0); strings.Contains(plain, "Апсет") {
-		t.Errorf("duelResultText upset=0: should NOT contain 'Апсет'\ngot: %s", plain)
+	if plain := duelResultText(rows, 1, 0, true, 0); strings.Contains(plain, "Победа над фаворитом") {
+		t.Errorf("duelResultText upset=0: should NOT contain 'Победа над фаворитом'\ngot: %s", plain)
 	}
 }
 
 func TestDuelResultTextEmpty(t *testing.T) {
 	out := duelResultText(nil, 0, 0, false, 0)
-	if !strings.Contains(out, "Никто не финишировал") {
-		t.Errorf("duelResultText empty: want 'Никто не финишировал' in output\ngot: %s", out)
+	if !strings.Contains(out, "Никто не дошел до финиша") {
+		t.Errorf("duelResultText empty: want 'Никто не дошел до финиша' in output\ngot: %s", out)
 	}
 }
 
@@ -191,7 +191,7 @@ func TestDuelsTextWithRecent(t *testing.T) {
 		{CompletedAt: "2026-06-22 12:00:00", Winner: "Vasya", Loser: "Petya"},
 	}
 	out := duelsText(rows, nil, nil, nil, recent, nil, "Asia/Bishkek")
-	for _, want := range []string{"Последние дуэли", "2026-06-22 18:00", "Vasya", "обыграл", "Petya"} {
+	for _, want := range []string{"Последние дуэли", "2026-06-22 18:00", "🏆 <b>Vasya</b>", "соперник: Petya"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText with recent: want %q in output\ngot: %s", want, out)
 		}
@@ -208,7 +208,7 @@ func TestDuelsTextNewBlocks(t *testing.T) {
 	speed := []storage.SpeedRow{{Name: "Vasya", AvgSecs: 200, BestSecs: 150, Games: 6}}
 	streaks := map[int64]domain.Streak{1: {Current: 3, Best: 3}, 2: {Current: 0, Best: 1}}
 	out := duelsText(rows, h2h, speed, streaks, nil, nil, "Asia/Bishkek")
-	for _, want := range []string{"🔥3", "Личные встречи", "4–1", "Время в дуэлях", "3:20", "2:30"} {
+	for _, want := range []string{"🔥3", "Личные встречи", "4:1", "Время в дуэлях", "3:20", "2:30"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText new blocks: want %q in output\ngot: %s", want, out)
 		}
@@ -224,7 +224,7 @@ func TestDuelsTextChallenges(t *testing.T) {
 		{PlayerID: 2, Name: "Masha", Issued: 3, Received: 7, Declined: 4},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, ch, "Asia/Bishkek")
-	for _, want := range []string{"Вызовы", "бросил <b>7</b>", "получил <b>3</b>",
+	for _, want := range []string{"Вызовы", "вызовов <b>7</b>", "получено <b>3</b>",
 		"отказов <b>4</b>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText challenges: want %q in output\ngot: %s", want, out)
@@ -232,7 +232,7 @@ func TestDuelsTextChallenges(t *testing.T) {
 	}
 	vasyaLine := ""
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "бросил <b>7</b>") {
+		if strings.Contains(line, "вызовов <b>7</b>") {
 			vasyaLine = line
 		}
 	}
@@ -278,15 +278,15 @@ func TestHistoryTextSeasonSeparators(t *testing.T) {
 		{ID: 1, SeasonNumber: 4, CompletedAt: "2026-07-07 14:05:00", Order: []string{"Nur"}},
 	}
 	out := historyText(games, "UTC")
-	for _, want := range []string{"— Сезон 5 —", "— Сезон 4 —"} {
+	for _, want := range []string{"<b>Сезон 5</b>", "<b>Сезон 4</b>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("historyText: want separator %q\ngot: %s", want, out)
 		}
 	}
-	if n := strings.Count(out, "— Сезон 5 —"); n != 1 {
+	if n := strings.Count(out, "<b>Сезон 5</b>"); n != 1 {
 		t.Errorf("season 5 separator should appear once, got %d\n%s", n, out)
 	}
-	if strings.Index(out, "— Сезон 5 —") > strings.Index(out, "— Сезон 4 —") {
+	if strings.Index(out, "<b>Сезон 5</b>") > strings.Index(out, "<b>Сезон 4</b>") {
 		t.Errorf("season 5 block should come first (newest first)\n%s", out)
 	}
 }
@@ -399,12 +399,16 @@ func TestResultTextWithDNF(t *testing.T) {
 			t.Errorf("resultText DNF: want %q in output\ngot: %s", want, out)
 		}
 	}
-	// DNF player B: shown with "не финишировал", no medal.
+	// DNF player B: shown with "без финиша", no medal.
 	if !strings.Contains(out, "B") {
 		t.Errorf("resultText DNF: want B in output\ngot: %s", out)
 	}
-	if !strings.Contains(out, "не финишировал") {
-		t.Errorf("resultText DNF: want 'не финишировал' in output\ngot: %s", out)
+	if !strings.Contains(out, "без финиша") {
+		t.Errorf("resultText DNF: want 'без финиша' in output\ngot: %s", out)
+	}
+	// The post no longer carries the old duplicated winner line.
+	if strings.Contains(out, "побеждает") {
+		t.Errorf("resultText DNF: must NOT contain 'побеждает'\ngot: %s", out)
 	}
 	// B must NOT have a medal (🥇🥈🥉 or "0.").
 	for _, bad := range []string{"🥇 <b>B", "🥈 <b>B", "🥉 <b>B", "0. <b>B"} {
@@ -420,11 +424,11 @@ func TestDuelResultTextAllDNF(t *testing.T) {
 		{Rank: 0, Name: "Petya"},
 	}
 	out := duelResultText(rows, 0, 0, false, 0)
-	if !strings.Contains(out, "Никто не финишировал") {
-		t.Errorf("duelResultText all-DNF: want 'Никто не финишировал' in output\ngot: %s", out)
+	if !strings.Contains(out, "Никто не дошел до финиша") {
+		t.Errorf("duelResultText all-DNF: want 'Никто не дошел до финиша' in output\ngot: %s", out)
 	}
-	if strings.Contains(out, "побеждает") {
-		t.Errorf("duelResultText all-DNF: must NOT contain 'побеждает'\ngot: %s", out)
+	if strings.Contains(out, "Победа:") {
+		t.Errorf("duelResultText all-DNF: must NOT contain 'Победа:'\ngot: %s", out)
 	}
 }
 
@@ -434,14 +438,14 @@ func TestDuelResultTextWithDNF(t *testing.T) {
 		{Rank: 0, Name: "Petya"},
 	}
 	out := duelResultText(rows, 0, 0, false, 0)
-	if !strings.Contains(out, "Vasya") || !strings.Contains(out, "побеждает") {
+	if !strings.Contains(out, "Победа: <b>Vasya</b>") {
 		t.Errorf("duelResultText DNF: want winner info\ngot: %s", out)
 	}
 	if !strings.Contains(out, "Petya") {
 		t.Errorf("duelResultText DNF: want loser name\ngot: %s", out)
 	}
-	if !strings.Contains(out, "не финишировал") {
-		t.Errorf("duelResultText DNF: want 'не финишировал' for loser\ngot: %s", out)
+	if !strings.Contains(out, "без финиша") {
+		t.Errorf("duelResultText DNF: want 'без финиша' for loser\ngot: %s", out)
 	}
 	if strings.Contains(out, "проигрывает") {
 		t.Errorf("duelResultText DNF: must NOT say 'проигрывает' when loser is DNF\ngot: %s", out)
@@ -520,7 +524,7 @@ func TestDuelChallengeText(t *testing.T) {
 	if strings.Contains(out, "⚠️") {
 		t.Errorf("duelChallengeText nickWarn=false: should NOT contain warning\ngot: %s", out)
 	}
-	if strings.Contains(out, "Победа даст") {
+	if strings.Contains(out, "за победу") {
 		t.Errorf("duelChallengeText elo=0: should NOT contain stakes\ngot: %s", out)
 	}
 
@@ -533,7 +537,7 @@ func TestDuelChallengeText(t *testing.T) {
 func TestDuelChallengeTextStakes(t *testing.T) {
 	target := storage.Player{Name: "Petya"}
 	out := duelChallengeText("Vasya", target, "medium", "", false, 1032, 968, 26, 38)
-	for _, want := range []string{"⚖️ Рейтинг: Vasya 1032, Petya 968", "Победа даст Vasya +26, Petya +38"} {
+	for _, want := range []string{"📈 Vasya 1032, за победу +26", "📈 Petya 968, за победу +38"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelChallengeText stakes: want %q in output\ngot: %s", want, out)
 		}
@@ -578,7 +582,7 @@ func TestDuelExpiredText(t *testing.T) {
 
 func TestDuelChallengeTextShowsTTL(t *testing.T) {
 	out := duelChallengeText("Vasya", storage.Player{Name: "Petya"}, "medium", "", false, 0, 0, 0, 0)
-	if !strings.Contains(out, "Сгорит через 20 мин, если не принять") {
+	if !strings.Contains(out, "Вызов сгорит через 20 мин") {
 		t.Errorf("challenge must show the expiry line\ngot: %s", out)
 	}
 }
@@ -634,16 +638,16 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 	if !marked {
 		t.Errorf("speed_all: speed tab must carry the active marker")
 	}
-	// The table tab: 7 tab buttons in 2 rows (4 + 3) plus the chart row.
-	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 3 {
-		t.Errorf("table tab without archive: want 3 rows, got %d", n)
+	// The table tab: 7 tab buttons in 3 rows (3 + 3 + 1) plus the chart row.
+	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 4 {
+		t.Errorf("table tab without archive: want 4 rows, got %d", n)
 	}
 	// Table tab with archived seasons carries the season row above the chart row.
 	withSeasons := statsKeyboard("table", []int{1, 2, 3}, 4)
-	if n := len(withSeasons.InlineKeyboard); n != 4 {
-		t.Fatalf("table tab with archive: want 4 rows, got %d", n)
+	if n := len(withSeasons.InlineKeyboard); n != 5 {
+		t.Fatalf("table tab with archive: want 5 rows, got %d", n)
 	}
-	seasonRow := withSeasons.InlineKeyboard[2]
+	seasonRow := withSeasons.InlineKeyboard[3]
 	if len(seasonRow) != 4 {
 		t.Fatalf("season row: want 4 buttons, got %d", len(seasonRow))
 	}
@@ -729,9 +733,9 @@ func TestBadgeCollectionText(t *testing.T) {
 	for _, want := range []string{
 		"🏆", "Бейджи", "(4/7)", // header with earned count
 		"чемпион сезона ×2",        // 🏅 folds in the title count
-		"💯 50 побед — 34/50",       // locked count badge shows progress
+		"💯 50 побед · 34/50",       // locked count badge shows progress
 		"🔒 ⚡ решение быстрее 2:00", // locked speed badge, no best time
-		"📅 7 дней подряд — 2/7",    // locked streak badge
+		"📅 7 дней подряд · 2/7",    // locked streak badge
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("badgeCollectionText: want %q in\n%s", want, out)
@@ -739,7 +743,7 @@ func TestBadgeCollectionText(t *testing.T) {
 	}
 	// A locked speed badge with a recorded (but slow) best shows the time.
 	slow := badgeCollectionText(domain.BadgeProgress(domain.BadgeInput{BestSecs: 134}))
-	if !strings.Contains(slow, "🔒 ⚡ решение быстрее 2:00 — лучшее 2:14") {
+	if !strings.Contains(slow, "🔒 ⚡ решение быстрее 2:00, лучшее 2:14") {
 		t.Errorf("speed badge best-time hint missing:\n%s", slow)
 	}
 	// A single championship shows the label without a ×N suffix.
@@ -909,7 +913,7 @@ func TestStandingsTextDuelistMark(t *testing.T) {
 	}
 	form := map[int64][]int{1: {1, 2}, 2: {2, 1}}
 	out := standingsText(se, rows, raceWindow{Days: 7}, form, 2)
-	if !strings.Contains(out, "<b>Nur</b> ⚔️ · 5 поб") {
+	if !strings.Contains(out, "<b>Nur</b> ⚔️ · побед 5") {
 		t.Errorf("duelist must carry the mark after the name\ngot: %s", out)
 	}
 	if strings.Contains(out, "<b>mister</b> ⚔️") || strings.Count(out, "⚔️") != 1 {
@@ -1280,7 +1284,7 @@ func TestActivityText(t *testing.T) {
 		"mister",
 		"6 дн",
 		"Ghost",
-		"ещё не играл",
+		"игр ещё нет",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("activityText missing %q in:\n%s", want, got)
@@ -1328,12 +1332,12 @@ func TestStandingsTextRaceTable(t *testing.T) {
 	out := standingsText(se, rows, race, map[int64][]int{1: {1, 2, 3, 1, 1, 0}}, 0)
 	for _, want := range []string{
 		"гонка до 100 очков",
-		"<pre>1 mister 20 ▰▰▱▱▱▱▱▱▱▱ +5 ↗1\n",
-		"2 Nur    18 ▰▰▱▱▱▱▱▱▱▱ +1 ↘1\n",
-		"3 Max    15 ▰▰▱▱▱▱▱▱▱▱ +0</pre>",
+		"<pre>1 mister 20 ▰▱▱▱▱▱ +5 ↗1\n",
+		"2 Nur    18 ▰▱▱▱▱▱ +1 ↘1\n",
+		"3 Max    15 ▰▱▱▱▱▱ +0</pre>",
 		"за 7 дней · 4 игры",
-		"<b>mister</b> · 6 поб · 🥈🥉🥇🥇➖",
-		"<b>Max</b> · 4 поб",
+		"<b>mister</b> · побед 6 · 🥈🥉🥇🥇➖",
+		"<b>Max</b> · побед 4",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("standingsText missing %q\ngot: %s", want, out)
@@ -1355,7 +1359,7 @@ func TestStandingsTextQuietWeek(t *testing.T) {
 		t.Errorf("names must be escaped and clipped\ngot: %s", out)
 	}
 	// Only the target fills the bar: 99 stays one cell short.
-	if !strings.Contains(out, "100 ▰▰▰▰▰▰▰▰▰▰") || !strings.Contains(out, " 99 ▰▰▰▰▰▰▰▰▰▱") {
+	if !strings.Contains(out, "100 ▰▰▰▰▰▰") || !strings.Contains(out, " 99 ▰▰▰▰▰▱") {
 		t.Errorf("bars: full only at the target\ngot: %s", out)
 	}
 }
