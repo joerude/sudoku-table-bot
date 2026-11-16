@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tele "gopkg.in/telebot.v3"
 
@@ -92,8 +93,8 @@ func quickMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
 		styled(m.Data("🎮 Играть", cbQGame), styleSuccess),
-		m.Data("📊 Таблица", cbQStatus),
-		m.Data("❓ Помощь", cbQHelp),
+		m.Data("🏆 Таблица", cbQStatus),
+		m.Data("Помощь", cbQHelp),
 	))
 	return m
 }
@@ -123,7 +124,7 @@ func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount, locke
 		if pickedCount > locked { // usdoku's places cannot be undone or reset
 			rows = append(rows, m.Row(
 				m.Data("↩️ Назад", cbUndo, gid(gameID)),
-				m.Data("♻️ Сброс", cbReset, gid(gameID)),
+				m.Data("Сброс", cbReset, gid(gameID)),
 				m.Data("✖️ Отмена", cbCancel, gid(gameID)),
 			))
 		} else {
@@ -194,8 +195,8 @@ func confirmDeleteKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	payload := delPayload(gameID, origin)
 	m.Inline(m.Row(
-		styled(m.Data("✅ Да, удалить", cbDelY, payload), styleDanger),
-		m.Data("↩️ Отмена", cbDelN, payload),
+		styled(m.Data("🗑 Удалить", cbDelY, payload), styleDanger),
+		m.Data("Не удалять", cbDelN, payload),
 	))
 	return m
 }
@@ -270,10 +271,10 @@ func recordAndClaimKeyboard(gameID int64, unknown []string) *tele.ReplyMarkup {
 // it (the usual delete-with-confirmation path).
 func notCountedKeyboard(gameID int64) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(
-		m.Data("📝 Всё равно записать", cbRec, gid(gameID)),
-		styled(m.Data("🗑 Отменить", cbDel, gid(gameID)), styleDanger),
-	))
+	m.Inline(
+		m.Row(m.Data("📝 Всё равно записать", cbRec, gid(gameID))),
+		m.Row(styled(m.Data("🗑 Отменить", cbDel, gid(gameID)), styleDanger)),
+	)
 	return m
 }
 
@@ -367,10 +368,10 @@ func inviteKeyboard(gameID int64, count int) *tele.ReplyMarkup {
 // the stale game flows straight back into it.
 func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	m.Inline(m.Row(
-		recordButton(m, gameID),
-		styled(m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)), styleDanger),
-	))
+	m.Inline(
+		m.Row(recordButton(m, gameID)),
+		m.Row(styled(m.Data("🗑 Отменить игру", cbDel, delPayload(gameID, origin)), styleDanger)),
+	)
 	return m
 }
 
@@ -378,15 +379,15 @@ func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 var statsTabs = []struct{ id, label string }{
 	{"table", "🏆 Таблица"},
 	{"me", "👤 Я"},
-	{"speed", "⚡ Скорость"},
+	{"speed", "⏱ Скорость"},
 	{"duels", "⚔️ Дуэли"},
 	{"history", "📜 История"},
-	{"rating", "📊 Рейтинг"},
+	{"rating", "📈 Рейтинг"},
 	{"activity", "📣 Актив"},
 }
 
-// statsTabsPerRow keeps the tab layout even: 7 tabs make rows of 4 and 3.
-const statsTabsPerRow = 4
+// statsTabsPerRow keeps tab labels whole on a phone: 7 tabs make rows of 3, 3, 1.
+const statsTabsPerRow = 3
 
 // recentSeasonButtons is how many season buttons sit under the Table tab; the
 // rest hide behind the «Архив» button.
@@ -396,7 +397,7 @@ const recentSeasonButtons = 4
 func playMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(
-		m.Row(styled(m.Data("🆕 Обычная игра", cbPlayGame), styleSuccess)),
+		m.Row(styled(m.Data("🎮 Обычная игра", cbPlayGame), styleSuccess)),
 		m.Row(
 			m.Data("⚔️ Дуэль", cbPlayDuel),
 			m.Data("📣 Позвать всех", cbPlayInvite),
@@ -409,7 +410,7 @@ func playMenuKeyboard() *tele.ReplyMarkup {
 func playDiffKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(
-		m.Row(m.Data("⚡ Medium (обычная)", cbPlayDiff, "medium")),
+		m.Row(m.Data("🟡 Medium (обычная)", cbPlayDiff, "medium")),
 		m.Row(
 			m.Data("🟢 Easy", cbPlayDiff, "easy"),
 			m.Data("🔴 Hard", cbPlayDiff, "hard"),
@@ -433,15 +434,22 @@ func learnRootKeyboard() *tele.ReplyMarkup {
 	return m
 }
 
-// learnTierKeyboard lists a tier's techniques two per row, plus a way back.
+// learnPairMaxRunes is the longest technique name that still fits half a row
+// on a phone; longer names get a row of their own.
+const learnPairMaxRunes = 12
+
+// learnTierKeyboard lists a tier's techniques, two short names per row, plus a
+// way back.
 func learnTierKeyboard(tier domain.Tier) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	list := domain.TechniquesByTier(tier)
-	for i := 0; i < len(list); i += 2 {
+	short := func(name string) bool { return utf8.RuneCountInString(name) <= learnPairMaxRunes }
+	for i := 0; i < len(list); i++ {
 		row := tele.Row{m.Data(list[i].Name, cbLearnTech, list[i].Key)}
-		if i+1 < len(list) {
-			row = append(row, m.Data(list[i+1].Name, cbLearnTech, list[i+1].Key))
+		if i+1 < len(list) && short(list[i].Name) && short(list[i+1].Name) {
+			i++
+			row = append(row, m.Data(list[i].Name, cbLearnTech, list[i].Key))
 		}
 		rows = append(rows, row)
 	}
@@ -454,9 +462,9 @@ func learnTierKeyboard(tier domain.Tier) *tele.ReplyMarkup {
 // returns to the technique's own tier.
 func learnTechKeyboard(t domain.Technique) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	links := tele.Row{m.URL("🔗 Разбор с картинками", t.URL)}
+	links := tele.Row{m.URL("Разбор с картинками", t.URL)}
 	if t.Wiki != "" {
-		links = append(links, m.URL("📖 sudokuwiki", t.Wiki))
+		links = append(links, m.URL("sudokuwiki", t.Wiki))
 	}
 	m.Inline(
 		links,
@@ -491,19 +499,19 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 	}
 	switch active {
 	case "speed":
-		rows = append(rows, m.Row(m.Data("🌍 Все сезоны", cbStatsTab, "speed_all")))
+		rows = append(rows, m.Row(m.Data("Все сезоны", cbStatsTab, "speed_all")))
 	case "speed_all":
-		rows = append(rows, m.Row(m.Data("📅 Текущий сезон", cbStatsTab, "speed")))
+		rows = append(rows, m.Row(m.Data("Текущий сезон", cbStatsTab, "speed")))
 	case "table":
 		if len(archived) > 0 {
 			rows = append(rows, recentSeasonRows(m, archived, seasonNumber)...)
 		}
 		rows = append(rows, m.Row(
-			m.Data("📈 Гонка (бета)", cbRaceChart),
-			m.Data("📅 Календарь (бета)", cbCalendar),
+			m.Data("Гонка сезона", cbRaceChart),
+			m.Data("Календарь", cbCalendar),
 		))
 	case "rating":
-		rows = append(rows, m.Row(m.Data("📈 График рейтинга (бета)", cbRatingChart)))
+		rows = append(rows, m.Row(m.Data("График рейтинга", cbRatingChart)))
 	}
 	m.Inline(rows...)
 	return m
@@ -546,7 +554,7 @@ func recentSeasonRows(m *tele.ReplyMarkup, archived []int, active int) []tele.Ro
 	}
 	rows := []tele.Row{m.Row(btns...)}
 	if hidden {
-		rows = append(rows, m.Row(m.Data("📚 Архив", cbSeasonView, seasonArchive)))
+		rows = append(rows, m.Row(m.Data("Архив", cbSeasonView, seasonArchive)))
 	}
 	return rows
 }
@@ -576,7 +584,7 @@ func seasonViewKeyboard(archived []int, active, viewed int) *tele.ReplyMarkup {
 		rows = append(rows, arrows)
 	}
 	if viewed != active { // a finished season has a poster
-		rows = append(rows, m.Row(m.Data("🖼 Постер сезона (бета)", cbPoster, strconv.Itoa(viewed))))
+		rows = append(rows, m.Row(m.Data("Постер сезона", cbPoster, strconv.Itoa(viewed))))
 	}
 	rows = append(rows, m.Row(m.Data("⬅️ К статистике", cbStatsTab, "table")))
 	m.Inline(rows...)

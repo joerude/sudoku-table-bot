@@ -125,7 +125,7 @@ func racing(info *usdoku.GameInfo) bool {
 
 // fetchProgress reads the room's board progress.
 func (b *Bot) fetchProgress(code string) (usdoku.Progress, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	return b.ud.Progress(ctx, code)
 }
@@ -437,7 +437,7 @@ func (b *Bot) onRecordNow(c tele.Context) error {
 	if !game.UsdokuCode.Valid || game.UsdokuCode.String == "" {
 		return c.Respond(&tele.CallbackResponse{Text: "У игры нет комнаты usdoku"})
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // the tap is unanswered until Info returns
 	defer cancel()
 	info, err := b.ud.Info(ctx, game.UsdokuCode.String)
 	if err != nil {

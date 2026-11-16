@@ -67,7 +67,7 @@ func (b *Bot) onBackup(c tele.Context) error {
 		File:     tele.FromDisk(tmp),
 		FileName: fmt.Sprintf("sudoku-backup-%s.db", time.Now().Format("2006-01-02")),
 		Caption: "💾 Полный бэкап базы (игроки, ники, сезоны, игры, настройки).\n" +
-			"Чтобы восстановить — пришли этот файл боту с подписью <code>/restore</code>.",
+			"Чтобы восстановить, пришли этот файл боту с подписью <code>/restore</code>.",
 	}
 	return c.Send(doc)
 }
@@ -95,7 +95,7 @@ func (b *Bot) onDocument(c tele.Context) error {
 	}
 	if err := storage.ValidateDB(incoming); err != nil {
 		_ = os.Remove(incoming)
-		return c.Send("⚠️ Это не похоже на базу бота — восстановление отменено.")
+		return c.Send("⚠️ Это не похоже на базу бота, восстановление отменено.")
 	}
 
 	_ = c.Send("✅ База принята. Перезапускаюсь с новой базой… (Docker поднимет за пару секунд)")

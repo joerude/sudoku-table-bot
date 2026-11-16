@@ -339,14 +339,15 @@ func (s *Store) SoftDeleteGame(gameID int64) error {
 	return err
 }
 
-// RestoreGame un-deletes a previously soft-deleted game. A pending game is not
-// brought back while the chat has another live pending game (the league holds
-// one at a time): restored=false then, and nothing changes. Checked in the same
-// statement, so two restores cannot both win.
+// RestoreGame un-deletes a previously soft-deleted game; a game that is not
+// deleted is left alone (restored=false), so a second tap changes nothing. A
+// pending game is not brought back while the chat has another live pending game
+// (the league holds one at a time): restored=false then, and nothing changes.
+// Checked in the same statement, so two restores cannot both win.
 func (s *Store) RestoreGame(gameID int64) (restored bool, err error) {
 	return s.execOne(
 		`UPDATE games SET deleted=0
-		 WHERE id=? AND (status<>'pending' OR NOT EXISTS (
+		 WHERE id=? AND deleted=1 AND (status<>'pending' OR NOT EXISTS (
 		     SELECT 1 FROM games o
 		     WHERE o.chat_id=games.chat_id AND o.status='pending' AND o.deleted=0 AND o.id<>games.id))`,
 		gameID)

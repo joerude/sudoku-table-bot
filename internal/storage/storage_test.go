@@ -521,3 +521,21 @@ func TestRestoreGameBlockedByOtherPending(t *testing.T) {
 		t.Fatalf("restore with the slot free: ok=%v err=%v", ok, err)
 	}
 }
+
+// A second «Вернуть» tap finds the game already back: refused, so the handler
+// does not start a second watcher.
+func TestRestoreGameTwice(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-7103)
+	st.EnsureChat(chat, 1)
+	se, _ := st.ActiveSeason(chat)
+	gid, _ := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	st.SoftDeleteGame(gid)
+
+	if ok, err := st.RestoreGame(gid); err != nil || !ok {
+		t.Fatalf("first restore: ok=%v err=%v, want true", ok, err)
+	}
+	if ok, err := st.RestoreGame(gid); err != nil || ok {
+		t.Fatalf("second restore: ok=%v err=%v, want false", ok, err)
+	}
+}

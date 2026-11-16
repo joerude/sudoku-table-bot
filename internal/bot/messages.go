@@ -43,7 +43,7 @@ const helpText = `🧩 <b>Sudoku League</b> - учёт ваших игр в су
 
 💡 Дайте боту право удалять сообщения: служебные ответы тогда исчезают сами.`
 
-const anonMsg = "🙈 Похоже, ты пишешь анонимно (от имени группы). Отключи «Оставаться анонимным» в правах админа или напиши от своего аккаунта — тогда я тебя привяжу."
+const anonMsg = "🙈 Похоже, ты пишешь анонимно (от имени группы). Отключи «Оставаться анонимным» в правах админа или напиши от своего аккаунта, тогда я тебя привяжу."
 
 const welcomeText = `👋 <b>Привет!</b> Я веду учёт ваших игр в судоку (usdoku.com): очки, места, сезоны.
 
@@ -70,7 +70,7 @@ func tierTitle(t domain.Tier) string {
 
 func learnRootMsg() string {
 	return "📚 <b>Техники судоку</b>\n\nСправочник приёмов решения: от одиночек до цепочек. " +
-		"Выбери уровень — или жми «Случайная», если просто хочешь узнать что-то новое."
+		"Выбери уровень или жми «Случайная», чтобы узнать что-то новое."
 }
 
 func learnTierMsg(t domain.Tier) string {
@@ -81,7 +81,7 @@ func learnTierMsg(t domain.Tier) string {
 			fmt.Fprintf(&b, "• <b>%s</b>\n", esc(tech.Name))
 			continue
 		}
-		fmt.Fprintf(&b, "• <b>%s</b> — %s\n", esc(tech.Name), esc(tech.Alias))
+		fmt.Fprintf(&b, "• <b>%s</b> (%s)\n", esc(tech.Name), esc(tech.Alias))
 	}
 	b.WriteString("\nЖми технику, чтобы прочитать разбор.")
 	return b.String()
@@ -137,8 +137,8 @@ func newGameText(difficulty, mode string) string {
 			"1. Открой и создай комнату:\n%s\n"+
 			"2. Выбери <b>%s</b> и <b>%s</b> → <b>Create</b>\n"+
 			"3. Скинь ссылку друзьям и играйте\n"+
-			"4. Пришли мне код комнаты: <code>/code LOVI</code> — включу авто-запись\n\n"+
-			"Или когда доиграете — жми «📝 Записать результат».",
+			"4. Пришли мне код комнаты: <code>/code LOVI</code>, и я включу авто-запись\n\n"+
+			"Или жми «📝 Записать результат», когда доиграете.",
 		titleCase(difficulty), titleCase(mode), usdokuCreateURL, titleCase(difficulty), titleCase(mode))
 }
 
@@ -216,7 +216,7 @@ func autoMappingText(orderNicks, unknown []string) string {
 			"\nНе узнал ники: <b>%s</b>\nПусть эти игроки сделают /setnick &lt;ник&gt;, "+
 				"либо запишите вручную:", esc(strings.Join(unknown, ", "))))
 	} else {
-		b.WriteString("\nНикто из знакомых игроков не финишировал. Запишите вручную:")
+		b.WriteString("\nНикто из знакомых игроков не дошел до финиша. Запишите вручную:")
 	}
 	return b.String()
 }
@@ -226,7 +226,7 @@ func autoMappingText(orderNicks, unknown []string) string {
 // and are marked as fixed.
 func pickerText(picked []storage.ResultRow, locked int) string {
 	if len(picked) == 0 {
-		return "🏁 <b>Кто как финишировал?</b>\nЖми игроков <b>по порядку финиша</b> (1-й, 2-й, 3-й…).\nКто не играл — просто не выбирай."
+		return "🏁 <b>Кто как финишировал?</b>\nЖми игроков <b>по порядку финиша</b> (1-й, 2-й, 3-й…).\nКого не было в игре, не выбирай."
 	}
 	var b strings.Builder
 	b.WriteString("🏁 <b>Кто как финишировал?</b>\nТекущий порядок:\n")
@@ -240,7 +240,7 @@ func pickerText(picked []storage.ResultRow, locked int) string {
 	if locked > 0 {
 		b.WriteString("<i>✓ финиш из usdoku, его не поменять</i>\n")
 	}
-	b.WriteString("\nПродолжай тапать или жми «✅ Готово».")
+	b.WriteString("\nЖми следующего или «✅ Готово».")
 	return b.String()
 }
 
@@ -268,15 +268,17 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 	}
 	b.WriteString("\n")
 
-	if len(rows) > 0 && rows[0].Rank >= 1 {
-		b.WriteString(fmt.Sprintf("\n🏆 <b>%s</b> побеждает!\n", esc(rows[0].Name)))
-	}
+	b.WriteString("\n")
 	for _, r := range rows {
 		if r.Rank == 0 {
-			fmt.Fprintf(&b, "— <b>%s</b> · <i>не финишировал</i>\n", esc(r.Name))
+			fmt.Fprintf(&b, "▫️ %s · <i>без финиша</i>\n", esc(r.Name))
 			continue
 		}
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> — %s", medal(r.Rank), esc(r.Name), signedPts(r.Points)))
+		name := esc(r.Name)
+		if r.Rank == 1 {
+			name = "<b>" + name + "</b>"
+		}
+		b.WriteString(fmt.Sprintf("%s %s · %s", medal(r.Rank), name, signedPts(r.Points)))
 		if r.Duration > 0 {
 			b.WriteString(" · ⏱ " + fmtDuration(r.Duration))
 		}
@@ -284,7 +286,7 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 	}
 
 	if leader != nil && leader.Points > 0 && target > 0 {
-		b.WriteString(fmt.Sprintf("\n📈 <b>%s</b>: %d/%d %s",
+		b.WriteString(fmt.Sprintf("\n🏆 Лидер: <b>%s</b> %d/%d %s",
 			esc(leader.Name), leader.Points, target, progressBar(leader.Points, target)))
 	}
 	// The games counter rides along on every result post: it is the one message
@@ -333,7 +335,7 @@ func movesLine(moves []standingsMove) string {
 			parts = append(parts, fmt.Sprintf("↘️ %s %d", esc(m.Name), m.Delta))
 		}
 	}
-	return "📊 " + strings.Join(parts, " · ")
+	return "🏆 " + strings.Join(parts, " · ")
 }
 
 // badgeLabels names each badge emoji for the "new badge" announcement.
@@ -377,13 +379,13 @@ func badgeLine(name string, badges []string) string {
 
 // personalBestLine celebrates a new fastest solve at a difficulty.
 func personalBestLine(name, difficulty string, secs, prevSecs int) string {
-	return fmt.Sprintf("🚀 <b>%s</b>: личный рекорд на %s — <b>%s</b> (было %s)",
+	return fmt.Sprintf("🚀 <b>%s</b>: личный рекорд на %s, <b>%s</b> (было %s)",
 		esc(name), titleCase(difficulty), fmtDuration(secs), fmtDuration(prevSecs))
 }
 
 // winStreakLine hypes an ongoing win streak.
 func winStreakLine(name string, n int) string {
-	return fmt.Sprintf("🔥 <b>%s</b>: %d побед подряд!", esc(name), n)
+	return fmt.Sprintf("🔥 <b>%s</b>: %d побед подряд", esc(name), n)
 }
 
 // Milestone thresholds. The 100-game and 50-win marks are covered by the 🎯/💯
@@ -395,15 +397,15 @@ var (
 )
 
 func milestoneGamesLine(name string, n int) string {
-	return fmt.Sprintf("🎂 <b>%s</b>: игра №%d в карьере!", esc(name), n)
+	return fmt.Sprintf("🎂 <b>%s</b>: игра №%d в карьере", esc(name), n)
 }
 
 func milestoneWinsLine(name string, n int) string {
-	return fmt.Sprintf("🏆 <b>%s</b>: победа №%d в карьере!", esc(name), n)
+	return fmt.Sprintf("🏆 <b>%s</b>: победа №%d в карьере", esc(name), n)
 }
 
 func milestoneLeagueLine(n int) string {
-	return fmt.Sprintf("🎉 Сыграна игра №%d в истории лиги!", n)
+	return fmt.Sprintf("🎉 Игра №%d в истории лиги", n)
 }
 
 // award*Line renderers build the season-end nomination lines.
@@ -412,7 +414,7 @@ func awardWinsLine(name string, wins int) string {
 }
 
 func awardFastestLine(name string, secs int, difficulty string) string {
-	return fmt.Sprintf("⚡ Быстрейшее решение: <b>%s</b> — %s (%s)",
+	return fmt.Sprintf("⏱ Быстрейшее решение: <b>%s</b>, %s (%s)",
 		esc(name), fmtDuration(secs), titleCase(difficulty))
 }
 
@@ -511,7 +513,7 @@ type raceWindow struct {
 const (
 	formSize    = 5  // recent games shown in the table's form line
 	raceNameMax = 10 // name width in the aligned race block
-	raceBarSize = 10 // cells in a race bar
+	raceBarSize = 6  // cells in a race bar: short enough for a phone-width <pre>
 )
 
 // standingsText renders the season table as a race: an aligned block with
@@ -538,13 +540,13 @@ func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow,
 	if !played {
 		return b.String()
 	}
-	b.WriteString("\n\n🔥 <b>Форма</b> <i>(последние игры, новые справа)</i>")
+	b.WriteString("\n\n<b>Форма</b> <i>(последние игры, новые справа)</i>")
 	for _, r := range rows {
 		mark := ""
 		if duelist != 0 && r.PlayerID == duelist {
 			mark = " ⚔️"
 		}
-		fmt.Fprintf(&b, "\n<b>%s</b>%s · %d поб", esc(r.Name), mark, r.Wins)
+		fmt.Fprintf(&b, "\n<b>%s</b>%s · побед %d", esc(r.Name), mark, r.Wins)
 		if f := formLine(form[r.PlayerID]); f != "" {
 			b.WriteString(" · " + f)
 		}
@@ -749,7 +751,7 @@ func seasonExtendedText(se *storage.Season, games int, leader *storage.Standing,
 	}
 	fmt.Fprintf(&b, "\n📅 Новый финал: %s", fmtRuDate(newDeadline.Add(-time.Second), loc))
 	if days := domain.SeasonDaysLeft(newDeadline, now, loc); days > 0 {
-		fmt.Fprintf(&b, " (через %d %s)\n⚡ Это %.1f игры в день.",
+		fmt.Fprintf(&b, " (через %d %s)\n🎲 Это %.1f игры в день.",
 			days, daysWord(days), float64(short)/float64(days+1))
 	}
 	return b.String()
@@ -767,7 +769,7 @@ func seasonDeadlineLine(se *storage.Season, now time.Time, loc *time.Location) s
 	case days < 0:
 		return fmt.Sprintf("\n\n📅 Финал сезона: %s", fmtRuDate(last, loc))
 	case days == 0:
-		return fmt.Sprintf("\n\n📅 Финал сезона: %s, <b>сегодня!</b>", fmtRuDate(last, loc))
+		return fmt.Sprintf("\n\n📅 Финал сезона: %s, <b>сегодня</b>", fmtRuDate(last, loc))
 	case days == 1:
 		return fmt.Sprintf("\n\n📅 Финал сезона: %s (завтра)", fmtRuDate(last, loc))
 	default:
@@ -784,7 +786,7 @@ func seasonText(se *storage.Season, leader *storage.Standing) string {
 		b.WriteString("Ещё никто не набрал очков.")
 		return b.String()
 	}
-	b.WriteString(fmt.Sprintf("Лидер: <b>%s</b> — %d/%d %s",
+	b.WriteString(fmt.Sprintf("Лидер: <b>%s</b>, %d/%d %s",
 		esc(leader.Name), leader.Points, se.Target, progressBar(leader.Points, se.Target)))
 	return b.String()
 }
@@ -792,26 +794,26 @@ func seasonText(se *storage.Season, leader *storage.Standing) string {
 func meText(name string, st *storage.PlayerStat, sp *storage.SpeedStat, duelW, duelL int,
 	duelSp *storage.SpeedStat, duelStreak domain.Streak, se *storage.Season) string {
 	if st.Games == 0 {
-		base := fmt.Sprintf("📊 <b>%s</b>\nВ сезоне %d пока нет игр. Сыграй и запиши: /result", esc(name), se.Number)
+		base := fmt.Sprintf("👤 <b>%s</b>\nВ сезоне %d пока нет игр. Сыграй и запиши: /result", esc(name), se.Number)
 		if duelW+duelL > 0 {
-			base += fmt.Sprintf("\n⚔️ Дуэли: <b>%d–%d</b>", duelW, duelL)
+			base += fmt.Sprintf("\n⚔️ Дуэли: <b>%d:%d</b>", duelW, duelL)
 			base += duelDetailLines(duelSp, duelStreak)
 		}
 		return base
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b,
-		"📊 <b>%s</b> · сезон %d\nМесто: <b>%d</b>\nОчки: <b>%d</b>/%d %s\nПобед: %d\nИгр: %d",
+		"👤 <b>%s</b> · сезон %d\nМесто: <b>%d</b>\nОчки: <b>%d</b>/%d %s\nПобед: %d\nИгр: %d",
 		esc(name), se.Number, st.Rank, st.Points, se.Target,
 		progressBar(st.Points, se.Target), st.Wins, st.Games)
 	if sp != nil && sp.Games > 0 {
-		fmt.Fprintf(&b, "\n⏱ Ср. время: <b>%s</b> (по %d, medium)", fmtDuration(sp.AvgSecs), sp.Games)
-		fmt.Fprintf(&b, "\n⚡ Лучшее: <b>%s</b>", fmtDuration(sp.BestSecs))
+		fmt.Fprintf(&b, "\n⏱ Среднее время: <b>%s</b> (игр: %d, medium)", fmtDuration(sp.AvgSecs), sp.Games)
+		fmt.Fprintf(&b, "\n⏱ Лучшее: <b>%s</b>", fmtDuration(sp.BestSecs))
 	} else {
-		b.WriteString("\n⏱ Ср. время: — (нет авто-игр на medium)")
+		b.WriteString("\n⏱ Среднее время: нет авто-игр на medium")
 	}
 	if duelW+duelL > 0 {
-		fmt.Fprintf(&b, "\n⚔️ Дуэли: <b>%d–%d</b>", duelW, duelL)
+		fmt.Fprintf(&b, "\n⚔️ Дуэли: <b>%d:%d</b>", duelW, duelL)
 		b.WriteString(duelDetailLines(duelSp, duelStreak))
 	}
 	return b.String()
@@ -826,7 +828,7 @@ func duelDetailLines(sp *storage.SpeedStat, s domain.Streak) string {
 			fmtDuration(sp.AvgSecs), fmtDuration(sp.BestSecs))
 	}
 	if s.Best >= 2 {
-		fmt.Fprintf(&b, "\n🔥 Серия дуэлей: <b>%d</b> (лучшая <b>%d</b>)", s.Current, s.Best)
+		fmt.Fprintf(&b, "\n🔥 Серия побед в дуэлях: <b>%d</b> (лучшая <b>%d</b>)", s.Current, s.Best)
 	}
 	return b.String()
 }
@@ -839,39 +841,37 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 	var b strings.Builder
 	b.WriteString("⚔️ <b>Дуэль</b>\n")
 	if len(rows) == 0 {
-		b.WriteString("Никто не финишировал.")
+		b.WriteString("Никто не дошел до финиша.")
 		return b.String()
 	}
 	w := rows[0]
 	if w.Rank == 0 {
-		b.WriteString("Никто не финишировал.")
+		b.WriteString("Никто не дошел до финиша.")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "🏆 <b>%s</b> побеждает", esc(w.Name))
+	fmt.Fprintf(&b, "🏆 Победа: <b>%s</b>", esc(w.Name))
 	if len(rows) >= 2 {
 		if rows[1].Rank == 0 {
-			fmt.Fprintf(&b, " — %s не финишировал", esc(rows[1].Name))
-		} else {
-			fmt.Fprintf(&b, " — %s проигрывает", esc(rows[1].Name))
+			fmt.Fprintf(&b, "\n▫️ %s · без финиша", esc(rows[1].Name))
 		}
 	}
 	if w.Duration > 0 {
-		fmt.Fprintf(&b, " · ⏱ %s", fmtDuration(w.Duration))
+		fmt.Fprintf(&b, "\n⏱ %s", fmtDuration(w.Duration))
 		if len(rows) >= 2 && rows[1].Rank != 0 && rows[1].Duration > 0 {
 			delta := rows[1].Duration - w.Duration
 			sign := "+"
 			if delta < 0 {
 				sign, delta = "-", -delta
 			}
-			fmt.Fprintf(&b, " vs %s (%s%s)", fmtDuration(rows[1].Duration), sign, fmtDuration(delta))
+			fmt.Fprintf(&b, " против %s (%s%s)", fmtDuration(rows[1].Duration), sign, fmtDuration(delta))
 		}
 	}
 	if h2h && len(rows) >= 2 {
-		fmt.Fprintf(&b, "\n\nH2H: <b>%s</b> %d–%d <b>%s</b>",
+		fmt.Fprintf(&b, "\n\nЛичный счёт: <b>%s</b> %d:%d <b>%s</b>",
 			esc(rows[0].Name), winnerWins, loserWins, esc(rows[1].Name))
 	}
 	if upsetGain > 0 {
-		fmt.Fprintf(&b, "\n😮 Апсет: фаворит пал, <b>%s</b> берёт +%d", esc(w.Name), upsetGain)
+		fmt.Fprintf(&b, "\n😮 Победа над фаворитом: <b>%s</b> +%d", esc(w.Name), upsetGain)
 	}
 	return b.String()
 }
@@ -907,20 +907,20 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 	if len(h2h) > 0 {
 		b.WriteString("\n<b>Личные встречи</b>\n")
 		for _, p := range h2h {
-			fmt.Fprintf(&b, "%s <b>%d–%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
+			fmt.Fprintf(&b, "%s <b>%d:%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
 		}
 	}
 	if len(speed) > 0 {
 		b.WriteString("\n<b>⏱ Время в дуэлях</b>\n")
 		for _, r := range speed {
-			fmt.Fprintf(&b, "%s — <b>%s</b> <i>(лучшее %s · %d)</i>\n",
+			fmt.Fprintf(&b, "%s · <b>%s</b> <i>(лучшее %s, дуэлей %d)</i>\n",
 				esc(r.Name), fmtDuration(r.AvgSecs), fmtDuration(r.BestSecs), r.Games)
 		}
 	}
 	if len(challenges) > 0 {
 		b.WriteString("\n<b>🤺 Вызовы</b>\n")
 		for _, c := range challenges {
-			fmt.Fprintf(&b, "%s — бросил <b>%d</b> · получил <b>%d</b>",
+			fmt.Fprintf(&b, "%s · вызовов <b>%d</b>, получено <b>%d</b>",
 				esc(c.Name), c.Issued, c.Received)
 			if c.Declined > 0 {
 				fmt.Fprintf(&b, " · отказов <b>%d</b>", c.Declined)
@@ -933,9 +933,9 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 		for _, m := range recent {
 			when := fmtLocalDateTime(m.CompletedAt, loc)
 			if m.Loser != "" {
-				fmt.Fprintf(&b, "%s · <b>%s</b> обыграл %s\n", when, esc(m.Winner), esc(m.Loser))
+				fmt.Fprintf(&b, "%s · 🏆 <b>%s</b>, соперник: %s\n", when, esc(m.Winner), esc(m.Loser))
 			} else {
-				fmt.Fprintf(&b, "%s · <b>%s</b> (соперник не финишировал)\n", when, esc(m.Winner))
+				fmt.Fprintf(&b, "%s · <b>%s</b> (соперник без финиша)\n", when, esc(m.Winner))
 			}
 		}
 	}
@@ -951,14 +951,14 @@ func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.Sp
 	if se != nil {
 		scope = fmt.Sprintf("сезон %d", se.Number)
 	}
-	fmt.Fprintf(&b, "⚡ <b>Самые быстрые</b> · %s · %s\n", titleCase(difficulty), scope)
+	fmt.Fprintf(&b, "⏱ <b>Самые быстрые</b> · %s · %s\n", titleCase(difficulty), scope)
 	if len(ranked) == 0 {
-		fmt.Fprintf(&b, "\nПока мало данных — нужно ≥%d авто-игр на %s.\n"+
-			"Создавай игры через /newgame (и задай /setnick) — время подтянется само.",
+		fmt.Fprintf(&b, "\nПока мало данных: нужно от %d авто-игр на %s.\n"+
+			"Создавай игры через /play и задай /setnick, тогда время подтянется само.",
 			minGames, titleCase(difficulty))
 	} else {
 		for i, r := range ranked {
-			fmt.Fprintf(&b, "%s <b>%s</b> · %s   <i>(%d %s · ⚡ %s)</i>\n",
+			fmt.Fprintf(&b, "%s <b>%s</b> · %s   <i>(%d %s, лучшее %s)</i>\n",
 				medal(i+1), esc(r.Name), fmtDuration(r.AvgSecs), r.Games, gamesWord(r.Games), fmtDuration(r.BestSecs))
 		}
 	}
@@ -983,7 +983,7 @@ func historyText(games []storage.HistoryGame, tz string) string {
 		var b strings.Builder
 		if g.SeasonNumber != season {
 			season = g.SeasonNumber
-			fmt.Fprintf(&b, "\n<b>— Сезон %d —</b>\n", season)
+			fmt.Fprintf(&b, "\n<b>Сезон %d</b>\n", season)
 		}
 		var order []string
 		for i, name := range g.Order {
@@ -1016,7 +1016,7 @@ func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, f
 		fmt.Fprintf(&b, " · идёт, до %d %s", se.Target, pointsWord(se.Target))
 	}
 	if first != "" {
-		fmt.Fprintf(&b, "\n📅 %s — %s · игр: <b>%d</b>", first, last, games)
+		fmt.Fprintf(&b, "\n📅 %s…%s · игр: <b>%d</b>", first, last, games)
 	}
 	if winner != "" {
 		fmt.Fprintf(&b, "\n👑 Победитель: <b>%s</b>", esc(winner))
@@ -1028,7 +1028,7 @@ func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, f
 			continue
 		}
 		shown++
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> · <b>%d</b>   <i>(%d поб · %d %s)</i>\n",
+		b.WriteString(fmt.Sprintf("%s <b>%s</b> · <b>%d</b>   <i>(побед %d, %d %s)</i>\n",
 			medal(shown), esc(r.Name), r.Points, r.Wins, r.Games, gamesWord(r.Games)))
 	}
 	if shown == 0 {
@@ -1061,12 +1061,12 @@ func noSuchSeasonText(n int, nums []int) string {
 
 func seasonEndText(number int, winner string, points int, awards []string, nextTarget, nextNumber int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🎉🏆 <b>Сезон %d завершён!</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
+	fmt.Fprintf(&b, "🏆 <b>Сезон %d завершён</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
 		number, esc(winner), points, pointsWord(points))
 	if len(awards) > 0 {
 		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
 	}
-	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s. Поехали! 🔥",
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s.",
 		nextNumber, nextTarget, pointsWord(nextTarget))
 	return b.String()
 }
@@ -1077,12 +1077,12 @@ func seasonEndText(number int, winner string, points int, awards []string, nextT
 func seasonDeadlineEndText(number int, winner string, points int, awards []string,
 	nextNumber, nextTarget int, nextDeadline time.Time, loc *time.Location) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "📅🏆 <b>Сезон %d завершён по календарю!</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
+	fmt.Fprintf(&b, "🏆 <b>Сезон %d завершён по календарю</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
 		number, esc(winner), points, pointsWord(points))
 	if len(awards) > 0 {
 		b.WriteString("\n<b>Номинации сезона</b>\n" + strings.Join(awards, "\n") + "\n")
 	}
-	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s, финал %s. Поехали! 🔥",
+	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s, финал %s.",
 		nextNumber, nextTarget, pointsWord(nextTarget), fmtRuDate(nextDeadline.Add(-time.Second), loc))
 	return b.String()
 }
@@ -1162,23 +1162,21 @@ func parseDuelPick(s string) (difficulty string, targetID, ownerTg int64) {
 // pay each; ratC <= 0 hides the stakes line.
 func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool, ratC, ratT, gainC, gainT int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "⚔️ <b>%s</b> вызывает %s на дуэль! · %s\n",
-		esc(challenger), mention(target), titleCase(difficulty))
+	fmt.Fprintf(&b, "⚔️ <b>Вызов на дуэль</b> · %s\n%s → %s\n",
+		titleCase(difficulty), esc(challenger), mention(target))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
 	} else {
-		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную (%s) "+
+		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет. Создайте вручную (%s) "+
 			"и пришлите код: <code>/code LOVI</code>\n", usdokuCreateURL)
 	}
 	if ratC > 0 {
-		fmt.Fprintf(&b, "\n⚖️ Рейтинг: %s %d, %s %d. Победа даст %s +%d, %s +%d\n",
-			esc(challenger), ratC, esc(target.Name), ratT,
-			esc(challenger), gainC, esc(target.Name), gainT)
+		fmt.Fprintf(&b, "\n📈 %s %d, за победу +%d\n📈 %s %d, за победу +%d\n",
+			esc(challenger), ratC, gainC, esc(target.Name), ratT, gainT)
 	}
-	b.WriteString("\nПринимаешь вызов?")
-	fmt.Fprintf(&b, "\n⏳ Сгорит через %d мин, если не принять", duelChallengeTTLMinutes)
+	fmt.Fprintf(&b, "\n⏳ Вызов сгорит через %d мин", duelChallengeTTLMinutes)
 	if nickWarn {
-		b.WriteString("\n\n⚠️ У кого-то не задан /setnick — авто-запись не сработает, запишите результат через /result.")
+		b.WriteString("\n\n⚠️ У кого-то не задан /setnick, поэтому авто-запись не сработает. Запишите результат через /result.")
 	}
 	return b.String()
 }
@@ -1188,11 +1186,11 @@ const duelSentText = "⚔️ Вызов отправлен"
 
 func duelAcceptText(target storage.Player, code string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🔥 Вызов принят: %s. Поехали.\n", mention(target))
+	fmt.Fprintf(&b, "⚔️ Вызов принят: %s. Поехали.\n", mention(target))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s", code)
 	} else {
-		fmt.Fprintf(&b, "⚠️ Комнаты на usdoku нет (сайт не ответил) — создайте вручную (%s) "+
+		fmt.Fprintf(&b, "⚠️ Комнаты на usdoku нет (сайт не ответил). Создайте вручную (%s) "+
 			"и пришлите код: <code>/code LOVI</code>.\n"+
 			"Или запишите результат через «📝 Записать результат».", usdokuCreateURL)
 	}
@@ -1217,7 +1215,7 @@ func duelDeclineText(target storage.Player) string {
 // duelAcceptReplyText is the reply under the challenge post that pings the
 // challenger: edits do not notify, a fresh reply does.
 func duelAcceptReplyText(challenger storage.Player) string {
-	return fmt.Sprintf("🔥 Вызов принят, %s! Поехали", mention(challenger))
+	return fmt.Sprintf("⚔️ Вызов принят, %s. Поехали", mention(challenger))
 }
 
 func duelDeclineReplyText(challenger storage.Player) string {
@@ -1230,7 +1228,7 @@ func duelDeclineReplyText(challenger storage.Player) string {
 // does NOT re-notify (Telegram only notifies on new messages).
 func inviteText(difficulty, code string, pings, roster []storage.Player) string {
 	var b strings.Builder
-	b.WriteString("🎮 <b>Играем в судоку!</b>")
+	b.WriteString("🎮 <b>Играем в судоку</b>")
 	if difficulty != "" {
 		b.WriteString(" · " + titleCase(difficulty))
 	}
@@ -1245,7 +1243,7 @@ func inviteText(difficulty, code string, pings, roster []storage.Player) string 
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
 	} else {
-		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет — создайте вручную (%s) "+
+		fmt.Fprintf(&b, "⚠️ usdoku не ответил, комнаты нет. Создайте вручную (%s) "+
 			"и пришлите код: <code>/code LOVI</code>\n", usdokuCreateURL)
 	}
 	b.WriteString("\nЖми «Я в деле», если играешь 👇")
@@ -1287,7 +1285,7 @@ func recordsText(rows []storage.RecordRow, titles []storage.TitleRow) string {
 			return ri < rj
 		})
 		for _, r := range sorted {
-			fmt.Fprintf(&b, "<b>%s</b> — %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
+			fmt.Fprintf(&b, "<b>%s</b> · %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
 		}
 	}
 	if len(titles) > 0 {
@@ -1326,10 +1324,10 @@ func badgeCollectionText(statuses []domain.BadgeStatus) string {
 			// Speed badge: no cur/target — show best time when there is one.
 			b.WriteString("\n🔒 " + s.Emoji + " " + name)
 			if s.Cur > 0 {
-				fmt.Fprintf(&b, " — лучшее %s", fmtDuration(s.Cur))
+				fmt.Fprintf(&b, ", лучшее %s", fmtDuration(s.Cur))
 			}
 		case s.Target > 1:
-			fmt.Fprintf(&b, "\n🔒 %s %s — %d/%d", s.Emoji, name, s.Cur, s.Target)
+			fmt.Fprintf(&b, "\n🔒 %s %s · %d/%d", s.Emoji, name, s.Cur, s.Target)
 		default:
 			// Binary locked (target 1, e.g. 🏅 with no titles).
 			fmt.Fprintf(&b, "\n🔒 %s %s", s.Emoji, name)
@@ -1385,7 +1383,7 @@ func digestText(se *storage.Season, top []storage.Standing, fastest *storage.Rec
 	var b strings.Builder
 	fmt.Fprintf(&b, "📅 <b>Итоги недели</b> · Сезон %d\n\n", se.Number)
 	for i, s := range top {
-		fmt.Fprintf(&b, "%s <b>%s</b> — %d <i>(%d поб)</i>\n", medal(i+1), esc(s.Name), s.Points, s.Wins)
+		fmt.Fprintf(&b, "%s <b>%s</b> · %d <i>(побед %d)</i>\n", medal(i+1), esc(s.Name), s.Points, s.Wins)
 	}
 	fmt.Fprintf(&b, "\n🎮 Игр за неделю: <b>%d</b>", weekGames)
 	if fastest != nil {
@@ -1393,7 +1391,7 @@ func digestText(se *storage.Season, top []storage.Standing, fastest *storage.Rec
 		if fastest.Difficulty != "" {
 			diff = titleCase(fastest.Difficulty) + " · "
 		}
-		fmt.Fprintf(&b, "\n⚡ Быстрейшее: <b>%s</b> · %s%s",
+		fmt.Fprintf(&b, "\n⏱ Быстрейшее: <b>%s</b> · %s%s",
 			fmtDuration(fastest.Secs), diff, esc(fastest.Name))
 	}
 	if streakName != "" && streakLen >= 2 {
@@ -1502,10 +1500,10 @@ func weightPct(w float64) int { return int(math.Round(w * 100)) }
 // a 👑 on the current crown and a marker on provisional (calibrating) players.
 func ratingLadder(r domain.Ratings, names map[int64]string) string {
 	if len(r.Ladder) == 0 {
-		return "📊 <b>Рейтинг за всё время</b>\n\nПока нет сыгранных игр."
+		return "📈 <b>Рейтинг за всё время</b>\n\nПока нет сыгранных игр."
 	}
 	var sb strings.Builder
-	sb.WriteString("📊 <b>Рейтинг за всё время</b>")
+	sb.WriteString("📈 <b>Рейтинг за всё время</b>")
 	for i, p := range r.Ladder {
 		crown := ""
 		if p.PlayerID == r.Crown {
@@ -1513,9 +1511,9 @@ func ratingLadder(r domain.Ratings, names map[int64]string) string {
 		}
 		prov := ""
 		if p.Provisional {
-			prov = " <i>(калибр.)</i>"
+			prov = " <i>(калибровка)</i>"
 		}
-		sb.WriteString(fmt.Sprintf("\n%d. <b>%s</b> — %d (пик %d)%s%s",
+		sb.WriteString(fmt.Sprintf("\n%d. <b>%s</b> · %d (пик %d)%s%s",
 			i+1, esc(names[p.PlayerID]), p.Rating, p.Peak, crown, prov))
 	}
 	return sb.String()
@@ -1545,7 +1543,7 @@ func ratingDeltaLines(gr domain.GameRating, names map[int64]string) string {
 		}
 		parts = append(parts, fmt.Sprintf("%s %s%d → %d", esc(names[r.id]), sign, r.d, r.nr))
 	}
-	out := "\n\n📊 Рейтинг: " + strings.Join(parts, ", ")
+	out := "\n\n📈 Рейтинг: " + strings.Join(parts, ", ")
 	if line := crownChangeLine(gr, names); line != "" {
 		out += "\n" + line
 	}
@@ -1558,9 +1556,9 @@ func crownChangeLine(gr domain.GameRating, names map[int64]string) string {
 		return ""
 	}
 	if gr.CrownBefore == 0 {
-		return fmt.Sprintf("👑 %s забирает корону!", esc(names[gr.CrownAfter]))
+		return fmt.Sprintf("👑 Новый первый номер: %s", esc(names[gr.CrownAfter]))
 	}
-	return fmt.Sprintf("👑 Корона сменилась: %s свергает %s!",
+	return fmt.Sprintf("👑 Корона сменилась: %s вместо %s",
 		esc(names[gr.CrownAfter]), esc(names[gr.CrownBefore]))
 }
 
@@ -1588,20 +1586,20 @@ func activityText(rows []storage.InitiativeRow, now time.Time, loc *time.Locatio
 // by calendar date in loc (a game at 00:30 yesterday is "вчера", not "сегодня").
 func lastPlayedPhrase(lastPlayed string, now time.Time, loc *time.Location) string {
 	if lastPlayed == "" {
-		return "ещё не играл"
+		return "игр ещё нет"
 	}
 	t, err := parseDBTime(lastPlayed)
 	if err != nil {
-		return "ещё не играл"
+		return "игр ещё нет"
 	}
 	lt, ln := t.In(loc), now.In(loc)
 	day := func(x time.Time) time.Time { return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, time.UTC) }
 	switch days := int(day(ln).Sub(day(lt)) / (24 * time.Hour)); {
 	case days <= 0:
-		return "играл сегодня"
+		return "сегодня в игре"
 	case days == 1:
-		return "играл вчера"
+		return "вчера в игре"
 	default:
-		return fmt.Sprintf("не играл %d %s", days, daysWord(days))
+		return fmt.Sprintf("%d %s без игр", days, daysWord(days))
 	}
 }

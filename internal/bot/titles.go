@@ -35,7 +35,7 @@ func titleLine(a domain.TitleAward, name string) string {
 	case domain.TitleOwl:
 		return fmt.Sprintf("🦉 Сова недели: %s (%d %s после 22:00)", n, a.Score, gamesWord(a.Score))
 	case domain.TitleSprinter:
-		return fmt.Sprintf("⚡ Спринтер недели: %s (%s на %s)", n, fmtDuration(a.Score), titleCase(a.Difficulty))
+		return fmt.Sprintf("⏱ Спринтер недели: %s (%s на %s)", n, fmtDuration(a.Score), titleCase(a.Difficulty))
 	}
 	return ""
 }

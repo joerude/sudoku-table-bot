@@ -168,7 +168,11 @@ func (b *Bot) replyBusy(c tele.Context) {
 // showCreating gives instant feedback while the usdoku room is being made: the
 // pressed button's message turns into «Создаю комнату…» (dropping its stale
 // keyboard), or a fresh notice is sent. The returned message becomes the card.
+// A button press is answered here too, so every guard toast has to come earlier.
 func (b *Bot) showCreating(c tele.Context, place placement) *tele.Message {
+	if c.Callback() != nil {
+		_ = c.Respond() // stop the button spinner now: room creation takes seconds
+	}
 	if place == placeAuto && c.Callback() != nil && c.Callback().Message != nil {
 		if err := c.Edit(creatingText); err != nil {
 			log.Printf("showCreating.edit: %v", err)
@@ -310,7 +314,7 @@ func (b *Bot) onSetCode(c tele.Context) error {
 		return b.fail(c, "onSetCode.pending", err)
 	}
 	if pending == nil {
-		return b.ephemeral(c, "Нет незакрытой игры — сначала создай её: /play")
+		return b.ephemeral(c, "Нет незакрытой игры, сначала создай её: /play")
 	}
 	if pending.UsdokuCode.String != "" {
 		return b.ephemeral(c, fmt.Sprintf(
@@ -319,6 +323,7 @@ func (b *Bot) onSetCode(c tele.Context) error {
 	}
 	// Check the room exists before binding: a typo would otherwise start a
 	// watcher that polls nothing for three hours.
+	_ = b.tb.Notify(c.Chat(), tele.Typing)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	info, err := b.ud.Info(ctx, code)
@@ -422,7 +427,7 @@ func (b *Bot) startNewGameAt(c tele.Context, difficulty, mode string, place plac
 	if players, perr := b.st.ListPlayers(c.Chat().ID); perr == nil {
 		if missing := namesMissingNick(players); len(missing) > 0 {
 			text += fmt.Sprintf(
-				"\n\n⚠️ Без ника (авто-учёт не сработает): <b>%s</b> — задайте /setnick.",
+				"\n\n⚠️ Без ника, авто-учёт не сработает: <b>%s</b>. Задайте /setnick.",
 				esc(strings.Join(missing, ", ")))
 		}
 	}
@@ -823,6 +828,9 @@ func (b *Bot) onDeleteCancel(c tele.Context) error {
 // restoreBlockedToast answers «Вернуть» while another game is waiting for its result.
 const restoreBlockedToast = "Уже есть незавершённая игра, сначала закрой её"
 
+// restoredAlreadyToast answers «Вернуть» on a game that is no longer deleted.
+const restoredAlreadyToast = "Уже возвращено"
+
 // onRestore un-deletes a game and rebuilds its view.
 func (b *Bot) onRestore(c tele.Context) error {
 	gameID := parseID(c.Data())
@@ -838,6 +846,10 @@ func (b *Bot) onRestore(c tele.Context) error {
 		return b.fail(c, "onRestore.restore", err)
 	}
 	if !restored {
+		// A second tap finds the game already back: say so, not "blocked".
+		if cur, gerr := b.st.GameByID(gameID); gerr == nil && cur != nil && !cur.Deleted {
+			return c.Respond(&tele.CallbackResponse{Text: restoredAlreadyToast})
+		}
 		return c.Respond(&tele.CallbackResponse{Text: restoreBlockedToast})
 	}
 	// The watcher stopped when the game was deleted: a restored pending game
@@ -883,7 +895,7 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target, games, minGames),
 			b.resultKB(gameID), nil
 	}
-	return "🧩 Игра ожидает результата — жми «📝 Записать результат».", recordKeyboard(gameID), nil
+	return "🧩 Игра ждёт результата: жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
 
 // scoreAndCheck assigns points to a game's picks, then rolls the season if the
@@ -1097,22 +1109,40 @@ func (b *Bot) ratingFooter(game *storage.Game) string {
 	return ratingDeltaLines(*gr, names)
 }
 
+// recordingText replaces the picker while a manual result is being scored.
+const recordingText = "⏳ Записываю…"
+
 // finalize scores the game and edits the callback's message with the result,
-// rolling the season if needed.
+// rolling the season if needed. The tap is answered first and the picker turns
+// into «Записываю…» (no keyboard, so a second tap has nothing to press) because
+// the usdoku backfill and the footers take a few seconds. Callers hold
+// recordingGames and re-check the game is pending, so a second tap never gets
+// here after the result landed; do not take that lock again in here.
 func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
+	_ = c.Respond()
+	if err := c.Edit(recordingText); err != nil {
+		log.Printf("finalize.busy: %v", err)
+	}
 	noNick := b.backfillUsdokuTimes(game) // manual records: pull solve times from usdoku
 	result, seasonEnd, err := b.scoreAndCheck(game)
 	if errors.Is(err, storage.ErrGameNotPending) {
-		// Closed meanwhile by another tap or by auto-record: that path already
-		// posted the result, so stay quiet here.
-		return c.Respond(&tele.CallbackResponse{Text: "Уже записано"})
+		// Closed meanwhile by auto-record: that path posted the result, so this
+		// message only points to it.
+		if err := c.Edit(cardClosedText); err != nil {
+			log.Printf("finalize.closed: %v", err)
+		}
+		return nil
 	}
 	if err != nil {
+		if text, markup, perr := b.pickerView(game.ChatID, game.ID, b.syncPicks(game)); perr != nil {
+			log.Printf("finalize.picker: %v", perr)
+		} else if eerr := c.Edit(text, markup); eerr != nil {
+			log.Printf("finalize.restore: %v", eerr)
+		}
 		return b.fail(c, "finalize", err)
 	}
-	_ = c.Respond()
 	if len(noNick) > 0 {
-		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b> — задайте /setnick",
+		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b>. Задайте /setnick",
 			esc(strings.Join(noNick, ", ")))
 	}
 	result += b.resultFooters(game)

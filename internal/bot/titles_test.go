@@ -20,7 +20,7 @@ func TestTitleLine(t *testing.T) {
 		{domain.TitleAward{Kind: domain.TitleBreaker, Score: 1}, "🧯 Стоп-кран: <b>Вика</b> (прервана серия побед)"},
 		{domain.TitleAward{Kind: domain.TitleBreaker, Score: 2}, "🧯 Стоп-кран: <b>Вика</b> (прервано серий побед: 2)"},
 		{domain.TitleAward{Kind: domain.TitleOwl, Score: 5}, "🦉 Сова недели: <b>Вика</b> (5 игр после 22:00)"},
-		{domain.TitleAward{Kind: domain.TitleSprinter, Score: 252, Difficulty: "medium"}, "⚡ Спринтер недели: <b>Вика</b> (4:12 на Medium)"},
+		{domain.TitleAward{Kind: domain.TitleSprinter, Score: 252, Difficulty: "medium"}, "⏱ Спринтер недели: <b>Вика</b> (4:12 на Medium)"},
 	}
 	for _, c := range cases {
 		if got := titleLine(c.a, "Вика"); got != c.want {
