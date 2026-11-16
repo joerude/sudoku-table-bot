@@ -77,7 +77,7 @@ func titlesChat(t *testing.T, chat int64) (*Bot, *storage.Store) {
 
 func TestDigestCarriesTitles(t *testing.T) {
 	b, _ := titlesChat(t, -7601)
-	text, hasGames, err := b.buildWeeklyDigest(-7601, true)
+	text, _, hasGames, err := b.buildWeeklyDigest(-7601, true)
 	if err != nil || !hasGames {
 		t.Fatalf("digest: %v %v", hasGames, err)
 	}
@@ -90,7 +90,7 @@ func TestDigestCarriesTitles(t *testing.T) {
 		t.Errorf("the runner-up never gets the sprinter title:\n%s", text)
 	}
 	// /weekly on any day shows a rolling week: titles belong to Monday's post.
-	if text, _, _ := b.buildWeeklyDigest(-7601, false); strings.Contains(text, "Титулы недели") {
+	if text, _, _, _ := b.buildWeeklyDigest(-7601, false); strings.Contains(text, "Титулы недели") {
 		t.Errorf("the /weekly preview must not hand out titles:\n%s", text)
 	}
 }
@@ -98,7 +98,7 @@ func TestDigestCarriesTitles(t *testing.T) {
 func TestDigestTitlesOff(t *testing.T) {
 	b, st := titlesChat(t, -7602)
 	st.SetFeature(-7602, featTitles, false)
-	text, _, _ := b.buildWeeklyDigest(-7602, true)
+	text, _, _, _ := b.buildWeeklyDigest(-7602, true)
 	if strings.Contains(text, "Титулы недели") {
 		t.Errorf("switched off, still there:\n%s", text)
 	}
@@ -113,7 +113,7 @@ func TestDigestSkipsLastSeason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text, hasGames, err := b.buildWeeklyDigest(-7603, true); err != nil || hasGames {
+	if text, _, hasGames, err := b.buildWeeklyDigest(-7603, true); err != nil || hasGames {
 		t.Fatalf("a fresh season has no week yet: %v %v\n%s", hasGames, err, text)
 	}
 
@@ -124,7 +124,7 @@ func TestDigestSkipsLastSeason(t *testing.T) {
 	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
 		t.Fatal(err)
 	}
-	text, hasGames, err := b.buildWeeklyDigest(-7603, true)
+	text, _, hasGames, err := b.buildWeeklyDigest(-7603, true)
 	if err != nil || !hasGames {
 		t.Fatalf("digest: %v %v", hasGames, err)
 	}

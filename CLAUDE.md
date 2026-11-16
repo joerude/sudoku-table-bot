@@ -168,7 +168,12 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
 - Каждая механика регистрируется в `features` (`features.go`) и проверяется через
   `b.featureOn` (ошибка БД = выкл: сбой делает бота тише, не громче); включается и
   выключается `/settings <key> on|off`. Сейчас: `hook`, `pace`, `meet`, `nudge`, `titles`,
-  `weekpic`, `replay`, `latefinish`, `dnfprogress`.
+  `weekpic`, `replay`, `latefinish`, `dnfprogress`, `weekboards`.
+- `weekboards`: блок «Доски недели» в дайджесте и `/weekly` (`weekBoardsBlock`): каждая
+  доска считается один раз, по самой сложной технике; под постом кнопка этой техники
+  (`cbBoardTech`). Берутся только игры с сохранённой сеткой (`BoardsSince`), от трёх досок.
+- Полоса победителей под гонкой сезона и недели (`chart.Race.Winners`): только победы,
+  места и DNF не рисуем намеренно (серые клетки выставили бы напоказ недоигрывающего).
 - `weekpic`: «Гонка недели» тихим фото после понедельничного дайджеста и `/weekly`
   (`postWeekRace`, от `weekRaceMinGames` игр). Окно то же, что у дайджеста (`weekSince`),
   линии стартуют с очков на начало окна (`chart.Race.Fit`). Игры делятся по

@@ -158,26 +158,28 @@ func dailyDue(nowHHMM, dailyTime string) bool {
 // The digest speaks for the active season: in the week a season changes, the
 // window starts at the new season and its games only count, so last season's
 // games never fill a post headed by the new season's table of zeros.
-func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, hasGames bool, err error) {
+// kb, when not nil, is the digest's keyboard: the button that explains the
+// week's hardest technique (featWeekBoards).
+func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, kb *tele.ReplyMarkup, hasGames bool, err error) {
 	season, err := b.st.ActiveSeason(chatID)
 	if err != nil {
-		return "", false, err
+		return "", nil, false, err
 	}
 	since := b.weekSince(season, time.Now())
 	sinceUTC := fmtDBTime(since)
 	weekGames, err := b.st.GamesSince(chatID, season.ID, sinceUTC)
 	if err != nil {
-		return "", false, err
+		return "", nil, false, err
 	}
 	if weekGames == 0 {
-		return "", false, nil
+		return "", nil, false, nil
 	}
 	standings, err := b.st.Standings(chatID, season.ID)
 	if err != nil {
-		return "", false, err
+		return "", nil, false, err
 	}
 	if len(standings) == 0 {
-		return "", false, nil // no active players: nobody to address
+		return "", nil, false, nil // no active players: nobody to address
 	}
 	top := standings
 	if len(top) > 3 {
@@ -192,9 +194,10 @@ func (b *Bot) buildWeeklyDigest(chatID int64, withTitles bool) (text string, has
 	if withTitles {
 		titles = b.weekTitlesBlock(chatID, since, season, standings)
 	}
-	text = digestText(season, top, fastest, streakName, streakLen, weekGames) + titles +
+	boards, kb := b.weekBoards(chatID, season, since)
+	text = digestText(season, top, fastest, streakName, streakLen, weekGames) + titles + boards +
 		digestFinalLine(season, standings, time.Now(), loadLoc(b.chatTZ(chatID)))
-	return text, true, nil
+	return text, kb, true, nil
 }
 
 // weekSince is the start of the weekly digest's window: seven days back, or
@@ -236,7 +239,7 @@ func (b *Bot) remindWeekly() {
 		if err := b.st.SetLastWeekly(ch.ChatID, date); err != nil {
 			log.Printf("remindWeekly mark: %v", err)
 		}
-		text, hasGames, err := b.buildWeeklyDigest(ch.ChatID, true)
+		text, kb, hasGames, err := b.buildWeeklyDigest(ch.ChatID, true)
 		if err != nil {
 			log.Printf("remindWeekly build: %v", err)
 			continue
@@ -244,7 +247,11 @@ func (b *Bot) remindWeekly() {
 		if !hasGames {
 			continue // quiet week, skip the digest
 		}
-		if b.postChat(ch.ChatID, text) {
+		var opts []interface{}
+		if kb != nil {
+			opts = append(opts, kb)
+		}
+		if b.postChat(ch.ChatID, text, opts...) {
 			b.postWeekRace(ch.ChatID)
 		}
 	}
@@ -318,14 +325,14 @@ func seasonNudgeKind(daysLeft int, hhmm, deadline, last string) string {
 // nudgeMarker is the value stored in seasons.last_nudge for a sent post.
 func nudgeMarker(kind, deadline string) string { return kind + "@" + deadline }
 
-// postChat sends a plain-text post to a chat, logging failures; false when
-// the send failed. A nil bot client (unit tests) sends nothing and reports
+// postChat sends a text post to a chat (opts: an optional keyboard), logging
+// failures; false when the send failed. A nil bot client (unit tests) sends nothing and reports
 // success, so callers' bookkeeping still runs under test.
-func (b *Bot) postChat(chatID int64, text string) bool {
+func (b *Bot) postChat(chatID int64, text string, opts ...interface{}) bool {
 	if b.tb == nil {
 		return true
 	}
-	if _, err := b.tb.Send(tele.ChatID(chatID), text); err != nil {
+	if _, err := b.tb.Send(tele.ChatID(chatID), text, opts...); err != nil {
 		log.Printf("postChat %d: %v", chatID, err)
 		return false
 	}
