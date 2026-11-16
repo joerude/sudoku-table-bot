@@ -77,6 +77,25 @@ docker compose up -d --build --force-recreate
 `docker compose up -d --force-recreate`. (Рецепт `just up` не пересоздаёт
 контейнер, для обновления используй `just rebuild` или команду выше.)
 
+### Автоматическое обновление
+
+Сервер может обновляться сам. `deploy/autodeploy.sh` раз в пару минут проверяет
+`origin/main` и при новом коммите пересобирает и перезапускает бота, а если новая
+сборка не поднялась, возвращает прошлую. Ключи в GitHub и входящий доступ к серверу
+не нужны. Ставится одной строкой в `crontab -e` (путь замени на свой):
+
+```
+*/2 * * * * /path/to/sudoku-table-bot/deploy/autodeploy.sh >> /path/to/sudoku-table-bot/deploy/autodeploy.log 2>&1
+```
+
+На сервере должна быть открыта ветка `main` без локальных правок. Если в `.env` задан
+`OWNER_TG_ID`, бот пишет владельцу в личку, что выкатил или что пошло не так.
+
+Ветки `feat/**`, `fix/**` и подобные после зелёных тестов попадают в `main` сами
+(`.github/workflows/ci.yml`). Для этого в настройках репозитория (Settings, Actions,
+General, Workflow permissions) включи «Allow GitHub Actions to create and approve
+pull requests».
+
 ## Добавить бота в чат
 
 1. Создай бота у [@BotFather](https://t.me/BotFather) (`/newbot`) и вставь токен в `.env`.

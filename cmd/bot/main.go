@@ -13,7 +13,12 @@ import (
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
+// commit is the git commit the binary was built from, set at build time with
+// -ldflags "-X main.commit=..." (see Dockerfile); "dev" for a plain build.
+var commit = "dev"
+
 func main() {
+	log.Printf("build %s", commit)
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
