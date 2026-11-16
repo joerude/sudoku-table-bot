@@ -219,7 +219,11 @@ func (b *Bot) onWeekly(c tele.Context) error {
 	if !hasGames {
 		return b.ephemeral(c, "📅 За неделю в этом сезоне ещё нет сыгранных игр.")
 	}
-	return c.Send(text)
+	if err := c.Send(text); err != nil {
+		return err
+	}
+	b.postWeekRace(c.Chat().ID)
+	return nil
 }
 
 // onMe is an alias of the stats hub's «Я» tab.

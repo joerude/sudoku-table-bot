@@ -43,6 +43,40 @@ func TestRaceChartData(t *testing.T) {
 	}
 }
 
+func TestWeekRaceData(t *testing.T) {
+	se := &storage.Season{Number: 7, Target: 100}
+	standings := []storage.Standing{{PlayerID: 2, Name: "Nur"}, {PlayerID: 1, Name: "mister"}}
+	since := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
+	ranks := []storage.SeasonRank{
+		// Before the window: only moves the lines' start.
+		{GameID: 10, PlayerID: 1, Points: 3, CompletedAt: "2026-11-08 20:00:00"},
+		{GameID: 10, PlayerID: 2, Points: 1, CompletedAt: "2026-11-08 20:00:00"},
+		// Game 11 was finished after game 12 (reopened and re-recorded): the
+		// window goes by completion time, not by id.
+		{GameID: 11, PlayerID: 2, Points: 3, CompletedAt: "2026-11-11 09:00:00"},
+		{GameID: 12, PlayerID: 1, Points: 3, CompletedAt: "2026-11-10 09:00:00"},
+		{GameID: 12, PlayerID: 2, Points: 1, CompletedAt: "2026-11-10 09:00:00"},
+	}
+	race, games := weekRaceData(se, standings, ranks, since)
+	if games != 2 || !race.Fit || race.Target != 100 {
+		t.Fatalf("games = %d, race = %+v", games, race)
+	}
+	want := []chart.Series{
+		{Name: "mister", Base: 3, Points: []int{6, 6}},
+		{Name: "Nur", Base: 1, Points: []int{2, 5}},
+	}
+	if len(race.Series) != len(want) {
+		t.Fatalf("want %d series, got %+v", len(want), race.Series)
+	}
+	for i, w := range want {
+		got := race.Series[i]
+		if got.Name != w.Name || got.Base != w.Base || len(got.Points) != 2 ||
+			got.Points[0] != w.Points[0] || got.Points[1] != w.Points[1] {
+			t.Errorf("series %d = %+v, want %+v", i, got, w)
+		}
+	}
+}
+
 func TestRatingChartData(t *testing.T) {
 	r := domain.Ratings{PerGame: []domain.GameRating{
 		{GameID: 1, NewRating: map[int64]int{1: 1032, 2: 968}},

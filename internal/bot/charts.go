@@ -119,6 +119,109 @@ func raceChartData(se *storage.Season, standings []storage.Standing, ranks []sto
 	return race
 }
 
+// featWeekPic follows the weekly digest (Monday's post and /weekly) with a
+// picture of the week's race.
+const featWeekPic = "weekpic"
+
+// weekRaceMinGames is how many games the window needs: fewer draw a picture
+// of almost flat lines, which says nothing the digest's text does not.
+const weekRaceMinGames = 3
+
+// weekRaceData is the race over the season games completed since `since`:
+// every line starts at the player's points before the window and adds the
+// window's games in completion order. games is how many fell into the window.
+// Lines keep raceChartData's order (by player id), so colours match the
+// season race.
+func weekRaceData(se *storage.Season, standings []storage.Standing, ranks []storage.SeasonRank,
+	since time.Time) (race chart.Race, games int) {
+	type weekGame struct {
+		id  int64
+		at  time.Time
+		pts map[int64]int
+	}
+	base := map[int64]int{}
+	idx := map[int64]int{}
+	var week []weekGame
+	for _, r := range ranks {
+		at, err := parseDBTime(r.CompletedAt)
+		if err != nil || at.Before(since) { // unreadable time: an old row, not this week's
+			base[r.PlayerID] += r.Points
+			continue
+		}
+		i, ok := idx[r.GameID]
+		if !ok {
+			i = len(week)
+			idx[r.GameID] = i
+			week = append(week, weekGame{id: r.GameID, at: at, pts: map[int64]int{}})
+		}
+		week[i].pts[r.PlayerID] = r.Points
+	}
+	sort.SliceStable(week, func(i, j int) bool {
+		if !week[i].at.Equal(week[j].at) {
+			return week[i].at.Before(week[j].at)
+		}
+		return week[i].id < week[j].id
+	})
+
+	players := make([]storage.Standing, len(standings))
+	copy(players, standings)
+	sort.Slice(players, func(i, j int) bool { return players[i].PlayerID < players[j].PlayerID })
+
+	race = chart.Race{
+		Title:  fmt.Sprintf("Сезон %d · гонка за неделю", se.Number),
+		Target: se.Target,
+		Fit:    true,
+		XTitle: "игры за неделю",
+	}
+	for _, p := range players {
+		total := base[p.PlayerID]
+		line := make([]int, len(week))
+		for i, g := range week {
+			total += g.pts[p.PlayerID]
+			line[i] = total
+		}
+		race.Series = append(race.Series, chart.Series{Name: p.Name, Base: base[p.PlayerID], Points: line})
+	}
+	return race, len(week)
+}
+
+// postWeekRace follows a weekly digest with the week's race as a silent
+// photo. Best-effort: the digest's text is already out, a failure only logs.
+func (b *Bot) postWeekRace(chatID int64) {
+	if b.tb == nil || !b.featureOn(chatID, featWeekPic) {
+		return
+	}
+	season, err := b.st.ActiveSeason(chatID)
+	if err != nil {
+		log.Printf("postWeekRace.season %d: %v", chatID, err)
+		return
+	}
+	standings, err := b.st.Standings(chatID, season.ID)
+	if err != nil {
+		log.Printf("postWeekRace.standings %d: %v", chatID, err)
+		return
+	}
+	ranks, err := b.st.SeasonRanks(chatID, season.ID)
+	if err != nil {
+		log.Printf("postWeekRace.ranks %d: %v", chatID, err)
+		return
+	}
+	race, games := weekRaceData(season, standings, ranks, b.weekSince(season, time.Now()))
+	if games < weekRaceMinGames {
+		return
+	}
+	png, err := chart.RenderRace(race)
+	if err != nil {
+		log.Printf("postWeekRace.render %d: %v", chatID, err)
+		return
+	}
+	photo := &tele.Photo{File: tele.FromReader(bytes.NewReader(png)),
+		Caption: fmt.Sprintf("🏆 Гонка недели · сезон %d", season.Number)}
+	if _, err := b.tb.Send(tele.ChatID(chatID), photo, tele.Silent); err != nil {
+		log.Printf("postWeekRace.send %d: %v", chatID, err)
+	}
+}
+
 // onRatingChart posts the eternal Elo history of the active players.
 func (b *Bot) onRatingChart(c tele.Context) error {
 	unlock, ok := b.chartLock(c)

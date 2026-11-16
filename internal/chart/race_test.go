@@ -84,6 +84,47 @@ func TestRenderRaceDrawsEverySeries(t *testing.T) {
 	save(t, "race", b)
 }
 
+func TestRenderRaceWeekWindow(t *testing.T) {
+	b, err := RenderRace(Race{Title: "Сезон 7 · гонка за неделю", Target: 100, Fit: true, XTitle: "игры за неделю",
+		Series: []Series{
+			{Name: "mister", Base: 61, Points: []int{64, 64, 67, 68, 71, 74, 74, 77}},
+			{Name: "Nur", Base: 55, Points: []int{56, 59, 60, 63, 63, 64, 67, 68}},
+			{Name: "Joe Rude", Base: 38, Points: []int{38, 39, 39, 39, 40, 40, 41, 41}},
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decode(t, b)
+	save(t, "race_week", b)
+}
+
+func TestRenderReplay(t *testing.T) {
+	// 10 s a point: mister finishes at 6:40, Nur at 7:50, Joe stops at 48 of 54.
+	grow := func(n, to int) []int {
+		out := make([]int, n)
+		for i := range out {
+			out[i] = to * (i + 1) / n
+		}
+		return out
+	}
+	r := Replay{Title: "Ход игры · QWER", Tag: "Medium · Hardcore", Open: 54, Step: 10, Series: []Series{
+		{Name: "mister", Points: grow(40, 54), Label: "mister 6:40"},
+		{Name: "Nur", Points: grow(47, 54), Label: "Nur 7:50"},
+		{Name: "Joe Rude", Points: grow(52, 48), Label: "Joe Rude 48/54"},
+	}}
+	b, err := RenderReplay(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := decode(t, b)
+	for i := range r.Series {
+		if !has(img, slots[i]) {
+			t.Errorf("series %d colour %v not drawn", i, slots[i])
+		}
+	}
+	save(t, "replay", b)
+}
+
 func TestRenderRaceNoGames(t *testing.T) {
 	b, err := RenderRace(Race{Title: "Сезон 1", Target: 100, Series: []Series{{Name: "A"}, {Name: "B"}}})
 	if err != nil {

@@ -16,3 +16,12 @@ func withOptions(opts []interface{}, add ...interface{}) []interface{} {
 func (b *Bot) quiet(c tele.Context, what interface{}, opts ...interface{}) error {
 	return c.Send(what, withOptions(opts, tele.Silent)...)
 }
+
+// quietReply are the send options of a silent answer to msg, for posts the bot
+// makes on its own (no tele.Context). A *SendOptions replaces telebot's
+// defaults wholesale, the bot's parse mode included, so HTML is set here.
+// A nil or deleted msg sends the post without the reply.
+func quietReply(msg *tele.Message) *tele.SendOptions {
+	return &tele.SendOptions{ReplyTo: msg, ParseMode: tele.ModeHTML,
+		DisableNotification: true, AllowWithoutReply: true}
+}
