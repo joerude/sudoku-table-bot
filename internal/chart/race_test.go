@@ -84,6 +84,29 @@ func TestRenderRaceDrawsEverySeries(t *testing.T) {
 	save(t, "race", b)
 }
 
+func TestRenderRaceWinnersStrip(t *testing.T) {
+	r := Race{Title: "Сезон 6 · гонка до 100", Target: 100, Series: []Series{
+		{Name: "mister", Points: []int{3, 6, 7, 10, 13, 13, 16}},
+		{Name: "Nur", Points: []int{1, 1, 4, 5, 5, 8, 9}},
+		{Name: "Joe Rude", Points: []int{0, 3, 3, 3, 4, 5, 5}},
+	}, Winners: []int{0, 0, 1, 0, 0, 1, 0}} // Joe never won: only two colours in the strip
+	b, err := RenderRace(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := decodeSize(t, b, raceW, raceH+raceStripH)
+	strip := image.NewRGBA(img.Bounds())
+	for y := raceH; y < raceH+raceStripH; y++ {
+		for x := 0; x < raceW; x++ {
+			strip.Set(x, y, img.At(x, y))
+		}
+	}
+	if !has(strip, slots[0]) || !has(strip, slots[1]) || has(strip, slots[2]) {
+		t.Errorf("the strip must show the winners' colours only")
+	}
+	save(t, "race_winners", b)
+}
+
 func TestRenderRaceWeekWindow(t *testing.T) {
 	b, err := RenderRace(Race{Title: "Сезон 7 · гонка за неделю", Target: 100, Fit: true, XTitle: "игры за неделю",
 		Series: []Series{

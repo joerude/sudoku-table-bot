@@ -212,14 +212,19 @@ func (b *Bot) onWeekly(c tele.Context) error {
 	if _, err := b.ensure(c); err != nil {
 		return b.fail(c, "onWeekly.ensure", err)
 	}
-	text, hasGames, err := b.buildWeeklyDigest(c.Chat().ID, false)
+	text, kb, hasGames, err := b.buildWeeklyDigest(c.Chat().ID, false)
 	if err != nil {
 		return b.fail(c, "onWeekly.build", err)
 	}
 	if !hasGames {
 		return b.ephemeral(c, "📅 За неделю в этом сезоне ещё нет сыгранных игр.")
 	}
-	if err := c.Send(text); err != nil {
+	if kb != nil {
+		err = c.Send(text, kb)
+	} else {
+		err = c.Send(text)
+	}
+	if err != nil {
 		return err
 	}
 	b.postWeekRace(c.Chat().ID)

@@ -96,12 +96,16 @@ func raceChartData(se *storage.Season, standings []storage.Standing, ranks []sto
 
 	var games []int64
 	pts := map[int64]map[int64]int{} // game → player → points
+	won := map[int64]int64{}         // game → winner's player id
 	for _, r := range ranks {
 		if pts[r.GameID] == nil {
 			pts[r.GameID] = map[int64]int{}
 			games = append(games, r.GameID)
 		}
 		pts[r.GameID][r.PlayerID] = r.Points
+		if r.Rank == 1 {
+			won[r.GameID] = r.PlayerID
+		}
 	}
 
 	race := chart.Race{
@@ -117,7 +121,28 @@ func raceChartData(se *storage.Season, standings []storage.Standing, ranks []sto
 		}
 		race.Series = append(race.Series, chart.Series{Name: p.Name, Points: line})
 	}
+	race.Winners = raceWinners(players, games, won)
 	return race
+}
+
+// raceWinners maps each game to the chart line of its winner: the index of
+// that player in players (the lines' order), -1 when nobody won it or the
+// winner has no line (left the league).
+func raceWinners(players []storage.Standing, games []int64, won map[int64]int64) []int {
+	line := make(map[int64]int, len(players))
+	for i, p := range players {
+		line[p.PlayerID] = i
+	}
+	out := make([]int, len(games))
+	for i, g := range games {
+		out[i] = -1
+		if id, ok := won[g]; ok {
+			if l, ok := line[id]; ok {
+				out[i] = l
+			}
+		}
+	}
+	return out
 }
 
 // featWeekPic follows the weekly digest (Monday's post and /weekly) with a
@@ -142,6 +167,7 @@ func weekRaceData(se *storage.Season, standings []storage.Standing, ranks []stor
 	}
 	base := map[int64]int{}
 	idx := map[int64]int{}
+	won := map[int64]int64{} // game → winner's player id
 	var week []weekGame
 	for _, r := range ranks {
 		at, err := parseDBTime(r.CompletedAt)
@@ -156,6 +182,9 @@ func weekRaceData(se *storage.Season, standings []storage.Standing, ranks []stor
 			week = append(week, weekGame{id: r.GameID, at: at, pts: map[int64]int{}})
 		}
 		week[i].pts[r.PlayerID] = r.Points
+		if r.Rank == 1 {
+			won[r.GameID] = r.PlayerID
+		}
 	}
 	sort.SliceStable(week, func(i, j int) bool {
 		if !week[i].at.Equal(week[j].at) {
@@ -183,6 +212,11 @@ func weekRaceData(se *storage.Season, standings []storage.Standing, ranks []stor
 		}
 		race.Series = append(race.Series, chart.Series{Name: p.Name, Base: base[p.PlayerID], Points: line})
 	}
+	ids := make([]int64, len(week))
+	for i, g := range week {
+		ids[i] = g.id
+	}
+	race.Winners = raceWinners(players, ids, won)
 	return race, len(week)
 }
 
