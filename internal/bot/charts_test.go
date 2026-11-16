@@ -26,6 +26,10 @@ func TestRaceChartData(t *testing.T) {
 	if race.Target != 100 || race.Title != "Сезон 6 · гонка до 100" {
 		t.Errorf("title/target: %+v", race)
 	}
+	// Lines go mister, Nur, Joe (by id): game 10 was mister's, 11 Nur's, 12 Joe's.
+	if w := race.Winners; len(w) != 3 || w[0] != 0 || w[1] != 1 || w[2] != 2 {
+		t.Errorf("winners strip = %v, want [0 1 2]", w)
+	}
 	want := map[string][]int{"mister": {3, 3, 3}, "Nur": {1, 4, 4}, "Joe": {0, 0, 3}}
 	order := []string{"mister", "Nur", "Joe"}
 	if len(race.Series) != 3 {

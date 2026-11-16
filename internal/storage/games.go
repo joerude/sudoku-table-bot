@@ -435,6 +435,42 @@ func (s *Store) BoardGame(chatID int64, code string) (*Game, error) {
 		 ORDER BY id DESC LIMIT 1`, chatID, code, code))
 }
 
+// SeasonBoard is one counted season game's stored starting grid, with its room
+// code and winner (both "" when unknown).
+type SeasonBoard struct {
+	GameID int64
+	Code   string
+	Puzzle string
+	Winner string
+}
+
+// BoardsSince returns the stored starting grids of the season games completed
+// since sinceUTC, oldest first. Games without a grid (recorded by hand, or
+// played before grids were kept) are left out.
+func (s *Store) BoardsSince(chatID, seasonID int64, sinceUTC string) ([]SeasonBoard, error) {
+	rows, err := s.db.Query(`
+		SELECT g.id, COALESCE(g.usdoku_code, ''), g.puzzle,
+		       COALESCE((SELECT p.name FROM game_results gr JOIN players p ON p.id = gr.player_id
+		                 WHERE gr.game_id = g.id AND gr.rank = 1 LIMIT 1), '')
+		FROM games g
+		WHERE g.chat_id = ? AND g.season_id = ? AND `+sqlSeasonalGames+`
+		  AND g.completed_at >= ? AND g.puzzle IS NOT NULL AND g.puzzle <> ''
+		ORDER BY g.completed_at, g.id`, chatID, seasonID, sinceUTC)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeasonBoard
+	for rows.Next() {
+		var b SeasonBoard
+		if err := rows.Scan(&b.GameID, &b.Code, &b.Puzzle, &b.Winner); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
 // Puzzle returns a game's stored starting grid, "" when there is none.
 func (s *Store) Puzzle(gameID int64) (string, error) {
 	var p sql.NullString
