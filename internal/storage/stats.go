@@ -418,18 +418,19 @@ func (s *Store) FastestInSeason(chatID, seasonID int64) (*RecordRow, error) {
 // season, ordered oldest game first: the season's longest win run, the table's
 // form line and the race chart are built from it.
 type SeasonRank struct {
-	GameID   int64
-	PlayerID int64
-	Name     string
-	Rank     int
-	Points   int
+	GameID      int64
+	PlayerID    int64
+	Name        string
+	Rank        int
+	Points      int
+	CompletedAt string // the game's completion, UTC "2006-01-02 15:04:05"
 }
 
 // SeasonRanks returns every (player, rank) of a season's completed non-duel
 // games in game order.
 func (s *Store) SeasonRanks(chatID, seasonID int64) ([]SeasonRank, error) {
 	rows, err := s.db.Query(`
-		SELECT g.id, gr.player_id, p.name, gr.rank, gr.points
+		SELECT g.id, gr.player_id, p.name, gr.rank, gr.points, COALESCE(g.completed_at, '')
 		FROM game_results gr
 		JOIN games g ON g.id = gr.game_id
 		JOIN players p ON p.id = gr.player_id
@@ -442,7 +443,7 @@ func (s *Store) SeasonRanks(chatID, seasonID int64) ([]SeasonRank, error) {
 	var out []SeasonRank
 	for rows.Next() {
 		var r SeasonRank
-		if err := rows.Scan(&r.GameID, &r.PlayerID, &r.Name, &r.Rank, &r.Points); err != nil {
+		if err := rows.Scan(&r.GameID, &r.PlayerID, &r.Name, &r.Rank, &r.Points, &r.CompletedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
