@@ -108,7 +108,7 @@ func (b *Bot) onJoin(c tele.Context) error {
 	}
 	_ = b.st.SetUsername(p.ID, sender.Username) // best-effort; refreshes/clears
 	if created {
-		return b.quiet(c, fmt.Sprintf("✅ <b>%s</b> в игре! Удачи 🍀", esc(name)))
+		return b.quiet(c, fmt.Sprintf("✅ <b>%s</b> в игре. Удачи 🍀", esc(name)))
 	}
 	return b.quiet(c, fmt.Sprintf("👌 Имя обновлено: <b>%s</b>", esc(name)))
 }
@@ -172,7 +172,7 @@ func (b *Bot) onRemovePlayer(c tele.Context) error {
 	if n == 0 {
 		return b.ephemeral(c, playerNotFoundText(name))
 	}
-	return b.quiet(c, "🗑 Игрок убран: <b>"+esc(name)+"</b> (его прошлые игры сохранены).")
+	return b.quiet(c, "🗑 Игрок убран: <b>"+esc(name)+"</b>. Прошлые игры остались в истории.")
 }
 
 func (b *Bot) onPlayers(c tele.Context) error {
@@ -191,9 +191,9 @@ func (b *Bot) onPlayers(c tele.Context) error {
 	for _, p := range players {
 		line := "• <b>" + esc(p.Name) + "</b>"
 		if p.UsdokuNick.Valid && p.UsdokuNick.String != "" {
-			line += " — usdoku: <code>" + esc(p.UsdokuNick.String) + "</code>"
+			line += " · usdoku: <code>" + esc(p.UsdokuNick.String) + "</code>"
 		} else {
-			line += " — <i>ник не задан</i>"
+			line += " · <i>ник не задан</i>"
 		}
 		sb.WriteString(line + "\n")
 	}

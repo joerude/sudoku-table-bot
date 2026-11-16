@@ -147,7 +147,7 @@ func TestAutoMappingTextDoesNotBlameMissingPlayers(t *testing.T) {
 	if strings.Contains(got, "минимум 2") {
 		t.Errorf("all nicks are known, the old minimum-players line is a lie: %q", got)
 	}
-	if !strings.Contains(got, "не финишировал") {
+	if !strings.Contains(got, "не дошел до финиша") {
 		t.Errorf("must say nobody finished: %q", got)
 	}
 }

@@ -46,7 +46,7 @@ func (b *Bot) onRaceChart(c tele.Context) error {
 	}
 	png, err := chart.RenderRace(raceChartData(season, standings, ranks))
 	return b.sendPicture(c, "onRaceChart", png, err,
-		fmt.Sprintf("📈 Гонка сезона %d <i>(бета)</i>", season.Number))
+		fmt.Sprintf("📈 Гонка сезона %d", season.Number))
 }
 
 // raceChartData turns the season's results into chart lines: one per active
@@ -99,7 +99,7 @@ func (b *Bot) onRatingChart(c tele.Context) error {
 	}
 	active := b.activePlayerSet(chatID)
 	png, err := chart.RenderRating(ratingChartData(domain.ComputeRatingsActive(games, active), names, active))
-	return b.sendPicture(c, "onRatingChart", png, err, "📈 Рейтинг Эло <i>(бета)</i>")
+	return b.sendPicture(c, "onRatingChart", png, err, "📈 Рейтинг Эло")
 }
 
 // ratingChartData draws one line per active player (all players when active is
@@ -162,7 +162,7 @@ func (b *Bot) onCalendar(c tele.Context) error {
 	cal := calendarData(season, started, times, time.Now(), loadLoc(b.chatTZ(chatID)))
 	png, err := chart.RenderCalendar(cal)
 	return b.sendPicture(c, "onCalendar", png, err,
-		fmt.Sprintf("📅 Игры сезона %d по дням <i>(бета)</i>", season.Number))
+		fmt.Sprintf("📅 Игры сезона %d по дням", season.Number))
 }
 
 // calendarData counts the season's games per local day and frames the grid

@@ -61,9 +61,9 @@ func (b *Bot) onJoinIn(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onJoinIn.players", err)
 	}
-	resp := "Ты в деле! 🔥"
+	resp := "Ты в деле"
 	if !nowIn {
-		resp = "Вышел из игры"
+		resp = "Ты не в деле"
 	}
 	_ = c.Respond(&tele.CallbackResponse{Text: resp})
 	text := inviteText(game.Difficulty.String, game.UsdokuCode.String, players, roster)

@@ -89,7 +89,7 @@ func (b *Bot) onExport(c tele.Context) error {
 	doc := &tele.Document{
 		File:     tele.FromReader(bytes.NewReader(buf.Bytes())),
 		FileName: fmt.Sprintf("sudoku-season-%d.csv", season.Number),
-		Caption:  fmt.Sprintf("📊 Экспорт сезона %d — игр: %d", season.Number, len(games)),
+		Caption:  fmt.Sprintf("🏆 Экспорт сезона %d · игр: %d", season.Number, len(games)),
 	}
 	return c.Send(doc)
 }
@@ -191,7 +191,7 @@ func (b *Bot) onSeasonView(c tele.Context) error {
 		return b.fail(c, "onSeasonView.archived", err)
 	}
 	if c.Data() == seasonArchive {
-		return editInPlace(c, "📚 <b>Архив сезонов</b>\nВыбери сезон.", archiveKeyboard(nums, season.Number))
+		return editInPlace(c, "🏆 <b>Архив сезонов</b>\nВыбери сезон", archiveKeyboard(nums, season.Number))
 	}
 	n, aerr := strconv.Atoi(c.Data())
 	if aerr != nil || n < 1 {
@@ -277,18 +277,18 @@ func (b *Bot) onHistory(c tele.Context) error {
 	text := historyText(games, b.chatTZ(c.Chat().ID))
 	// Hint at the full list only when the view is likely truncated.
 	if n == historyDefault && len(games) >= historyDefault {
-		text += "\n<i>/history all — весь список</i>"
+		text += "\n<i>/history all: весь список</i>"
 	}
 	return c.Send(text)
 }
 
 const settingsUsage = `⚙️ <b>Настройки</b>
-/settings target &lt;N&gt; — порог сезона (очки до победы)
-/settings mingames &lt;N&gt; — игр за сезон до закрытия по дедлайну
-/settings points &lt;a b c…&gt; — таблица очков по местам
-/settings minplayers &lt;N&gt; — мин. участников, чтобы игра засчиталась
-/settings daily &lt;HH:MM|off&gt; — ежедневное напоминание
-/settings weekly &lt;on|off&gt; — недельный дайджест (понедельник)`
+/settings target &lt;N&gt;: порог сезона (очки до победы)
+/settings mingames &lt;N&gt;: игр за сезон до закрытия по дедлайну
+/settings points &lt;a b c…&gt;: таблица очков по местам
+/settings minplayers &lt;N&gt;: мин. участников, чтобы игра засчиталась
+/settings daily &lt;HH:MM|off&gt;: ежедневное напоминание
+/settings weekly &lt;on|off&gt;: недельный дайджест (понедельник)`
 
 func (b *Bot) onSettings(c tele.Context) error {
 	season, err := b.ensure(c)
@@ -665,7 +665,7 @@ func (b *Bot) onSpeed(c tele.Context) error {
 	}
 	text := speedText(se, difficulty, ranked, fewer, speedMinGames)
 	if !all && len(ranked) > 0 {
-		text += "\n<i>/speed all — топ за все сезоны</i>"
+		text += "\n<i>/speed all: топ за все сезоны</i>"
 	}
 	return c.Send(text)
 }

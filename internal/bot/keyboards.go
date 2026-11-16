@@ -92,8 +92,8 @@ func quickMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(m.Row(
 		styled(m.Data("🎮 Играть", cbQGame), styleSuccess),
-		m.Data("📊 Таблица", cbQStatus),
-		m.Data("❓ Помощь", cbQHelp),
+		m.Data("🏆 Таблица", cbQStatus),
+		m.Data("Помощь", cbQHelp),
 	))
 	return m
 }
@@ -123,7 +123,7 @@ func pickerKeyboard(gameID int64, remaining []storage.Player, pickedCount, locke
 		if pickedCount > locked { // usdoku's places cannot be undone or reset
 			rows = append(rows, m.Row(
 				m.Data("↩️ Назад", cbUndo, gid(gameID)),
-				m.Data("♻️ Сброс", cbReset, gid(gameID)),
+				m.Data("Сброс", cbReset, gid(gameID)),
 				m.Data("✖️ Отмена", cbCancel, gid(gameID)),
 			))
 		} else {
@@ -194,8 +194,8 @@ func confirmDeleteKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	payload := delPayload(gameID, origin)
 	m.Inline(m.Row(
-		styled(m.Data("✅ Да, удалить", cbDelY, payload), styleDanger),
-		m.Data("↩️ Отмена", cbDelN, payload),
+		styled(m.Data("🗑 Удалить", cbDelY, payload), styleDanger),
+		m.Data("Не удалять", cbDelN, payload),
 	))
 	return m
 }
@@ -378,10 +378,10 @@ func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 var statsTabs = []struct{ id, label string }{
 	{"table", "🏆 Таблица"},
 	{"me", "👤 Я"},
-	{"speed", "⚡ Скорость"},
+	{"speed", "⏱ Скорость"},
 	{"duels", "⚔️ Дуэли"},
 	{"history", "📜 История"},
-	{"rating", "📊 Рейтинг"},
+	{"rating", "📈 Рейтинг"},
 	{"activity", "📣 Актив"},
 }
 
@@ -396,7 +396,7 @@ const recentSeasonButtons = 4
 func playMenuKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(
-		m.Row(styled(m.Data("🆕 Обычная игра", cbPlayGame), styleSuccess)),
+		m.Row(styled(m.Data("🎮 Обычная игра", cbPlayGame), styleSuccess)),
 		m.Row(
 			m.Data("⚔️ Дуэль", cbPlayDuel),
 			m.Data("📣 Позвать всех", cbPlayInvite),
@@ -409,7 +409,7 @@ func playMenuKeyboard() *tele.ReplyMarkup {
 func playDiffKeyboard() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	m.Inline(
-		m.Row(m.Data("⚡ Medium (обычная)", cbPlayDiff, "medium")),
+		m.Row(m.Data("🟡 Medium (обычная)", cbPlayDiff, "medium")),
 		m.Row(
 			m.Data("🟢 Easy", cbPlayDiff, "easy"),
 			m.Data("🔴 Hard", cbPlayDiff, "hard"),
@@ -454,9 +454,9 @@ func learnTierKeyboard(tier domain.Tier) *tele.ReplyMarkup {
 // returns to the technique's own tier.
 func learnTechKeyboard(t domain.Technique) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	links := tele.Row{m.URL("🔗 Разбор с картинками", t.URL)}
+	links := tele.Row{m.URL("Разбор с картинками", t.URL)}
 	if t.Wiki != "" {
-		links = append(links, m.URL("📖 sudokuwiki", t.Wiki))
+		links = append(links, m.URL("sudokuwiki", t.Wiki))
 	}
 	m.Inline(
 		links,
@@ -491,19 +491,19 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 	}
 	switch active {
 	case "speed":
-		rows = append(rows, m.Row(m.Data("🌍 Все сезоны", cbStatsTab, "speed_all")))
+		rows = append(rows, m.Row(m.Data("Все сезоны", cbStatsTab, "speed_all")))
 	case "speed_all":
-		rows = append(rows, m.Row(m.Data("📅 Текущий сезон", cbStatsTab, "speed")))
+		rows = append(rows, m.Row(m.Data("Текущий сезон", cbStatsTab, "speed")))
 	case "table":
 		if len(archived) > 0 {
 			rows = append(rows, recentSeasonRows(m, archived, seasonNumber)...)
 		}
 		rows = append(rows, m.Row(
-			m.Data("📈 Гонка (бета)", cbRaceChart),
-			m.Data("📅 Календарь (бета)", cbCalendar),
+			m.Data("Гонка сезона", cbRaceChart),
+			m.Data("Календарь", cbCalendar),
 		))
 	case "rating":
-		rows = append(rows, m.Row(m.Data("📈 График рейтинга (бета)", cbRatingChart)))
+		rows = append(rows, m.Row(m.Data("График рейтинга", cbRatingChart)))
 	}
 	m.Inline(rows...)
 	return m
@@ -546,7 +546,7 @@ func recentSeasonRows(m *tele.ReplyMarkup, archived []int, active int) []tele.Ro
 	}
 	rows := []tele.Row{m.Row(btns...)}
 	if hidden {
-		rows = append(rows, m.Row(m.Data("📚 Архив", cbSeasonView, seasonArchive)))
+		rows = append(rows, m.Row(m.Data("Архив", cbSeasonView, seasonArchive)))
 	}
 	return rows
 }
@@ -576,7 +576,7 @@ func seasonViewKeyboard(archived []int, active, viewed int) *tele.ReplyMarkup {
 		rows = append(rows, arrows)
 	}
 	if viewed != active { // a finished season has a poster
-		rows = append(rows, m.Row(m.Data("🖼 Постер сезона (бета)", cbPoster, strconv.Itoa(viewed))))
+		rows = append(rows, m.Row(m.Data("Постер сезона", cbPoster, strconv.Itoa(viewed))))
 	}
 	rows = append(rows, m.Row(m.Data("⬅️ К статистике", cbStatsTab, "table")))
 	m.Inline(rows...)

@@ -16,12 +16,12 @@ func TestLastPlayedPhraseUsesLocalCalendarDay(t *testing.T) {
 		name, last, want string
 	}{
 		// 18:00 UTC on the 20th is 00:00 local on the 21st: today, though under 24h either way.
-		{"after local midnight", "2026-07-20 18:00:00", "играл сегодня"},
+		{"after local midnight", "2026-07-20 18:00:00", "сегодня в игре"},
 		// 17:00 UTC on the 20th is 23:00 local on the 20th: yesterday, only 10h ago.
-		{"before local midnight", "2026-07-20 17:00:00", "играл вчера"},
-		{"three days", "2026-07-18 10:00:00", "не играл 3 дня"},
-		{"eleven days", "2026-07-10 10:00:00", "не играл 11 дней"},
-		{"never", "", "ещё не играл"},
+		{"before local midnight", "2026-07-20 17:00:00", "вчера в игре"},
+		{"three days", "2026-07-18 10:00:00", "3 дня без игр"},
+		{"eleven days", "2026-07-10 10:00:00", "11 дней без игр"},
+		{"never", "", "игр ещё нет"},
 	}
 	for _, tc := range cases {
 		if got := lastPlayedPhrase(tc.last, now, loc); got != tc.want {

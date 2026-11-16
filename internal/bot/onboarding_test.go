@@ -55,8 +55,8 @@ func TestQuickMenuKeyboard(t *testing.T) {
 	row := quickMenuKeyboard().InlineKeyboard[0]
 	want := []struct{ text, unique string }{
 		{"🎮 Играть", cbQGame},
-		{"📊 Таблица", cbQStatus},
-		{"❓ Помощь", cbQHelp},
+		{"🏆 Таблица", cbQStatus},
+		{"Помощь", cbQHelp},
 	}
 	if len(row) != len(want) {
 		t.Fatalf("want %d buttons, got %d", len(want), len(row))

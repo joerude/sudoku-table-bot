@@ -213,7 +213,7 @@ func (b *Bot) duelTargetGuard(c tele.Context, gameID int64) (*storage.Player, bo
 		return nil, false
 	}
 	if presser == nil || presser.ID != targetID {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Этот вызов не тебе ✋"})
+		_ = c.Respond(&tele.CallbackResponse{Text: "Этот вызов не тебе"})
 		return nil, false
 	}
 	return presser, true

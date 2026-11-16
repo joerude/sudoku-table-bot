@@ -310,7 +310,7 @@ func (b *Bot) onSetCode(c tele.Context) error {
 		return b.fail(c, "onSetCode.pending", err)
 	}
 	if pending == nil {
-		return b.ephemeral(c, "Нет незакрытой игры — сначала создай её: /play")
+		return b.ephemeral(c, "Нет незакрытой игры, сначала создай её: /play")
 	}
 	if pending.UsdokuCode.String != "" {
 		return b.ephemeral(c, fmt.Sprintf(
@@ -422,7 +422,7 @@ func (b *Bot) startNewGameAt(c tele.Context, difficulty, mode string, place plac
 	if players, perr := b.st.ListPlayers(c.Chat().ID); perr == nil {
 		if missing := namesMissingNick(players); len(missing) > 0 {
 			text += fmt.Sprintf(
-				"\n\n⚠️ Без ника (авто-учёт не сработает): <b>%s</b> — задайте /setnick.",
+				"\n\n⚠️ Без ника, авто-учёт не сработает: <b>%s</b>. Задайте /setnick.",
 				esc(strings.Join(missing, ", ")))
 		}
 	}
@@ -883,7 +883,7 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target, games, minGames),
 			b.resultKB(gameID), nil
 	}
-	return "🧩 Игра ожидает результата — жми «📝 Записать результат».", recordKeyboard(gameID), nil
+	return "🧩 Игра ждёт результата: жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
 
 // scoreAndCheck assigns points to a game's picks, then rolls the season if the
@@ -1112,7 +1112,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 	}
 	_ = c.Respond()
 	if len(noNick) > 0 {
-		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b> — задайте /setnick",
+		result += fmt.Sprintf("\n\n⏱ Время не подтянулось: <b>%s</b>. Задайте /setnick",
 			esc(strings.Join(noNick, ", ")))
 	}
 	result += b.resultFooters(game)
