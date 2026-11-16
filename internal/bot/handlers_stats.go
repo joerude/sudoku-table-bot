@@ -55,6 +55,7 @@ func (b *Bot) onExport(c tele.Context) error {
 		return b.ephemeral(c, "В этом сезоне ещё нет сыгранных игр для экспорта.")
 	}
 
+	_ = b.tb.Notify(c.Chat(), tele.UploadingDocument)
 	var buf bytes.Buffer
 	buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM so Excel reads Cyrillic correctly
 	w := csv.NewWriter(&buf)

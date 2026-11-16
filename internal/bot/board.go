@@ -152,6 +152,7 @@ func (b *Bot) onBoard(c tele.Context) error {
 		}
 		return b.ephemeral(c, "Сохранённых досок пока нет: они появляются с новыми играми")
 	}
+	_ = b.tb.Notify(c.Chat(), tele.UploadingPhoto)
 	grid, ok := b.ensurePuzzle(g) // stored: no usdoku call
 	if !ok {
 		return b.ephemeral(c, "Доска повреждена, показать не получится")

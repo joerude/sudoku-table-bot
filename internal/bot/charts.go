@@ -20,21 +20,56 @@ import (
 // silent photo; nothing is stored. A photo can't replace the text panel it was
 // asked from, so it always goes out as its own message.
 
-// sendPicture answers the button press and posts png, or reports err.
+// chartBusyText is the toast for a second chart tap while one is being drawn.
+const chartBusyText = "Уже рисую"
+
+// drawingCharts serialises chart rendering per chat: a second tap while a chart
+// is being drawn would only post a duplicate photo.
+var drawingCharts keyLocks
+
+// chartLock takes the chat's drawing lock. When another chart is in flight it
+// answers the tap with chartBusyText and returns ok=false; otherwise call
+// unlock when the photo is sent.
+func (b *Bot) chartLock(c tele.Context) (unlock func(), ok bool) {
+	unlock, ok = drawingCharts.TryLock(c.Chat().ID)
+	if !ok {
+		_ = c.Respond(&tele.CallbackResponse{Text: chartBusyText})
+	}
+	return unlock, ok
+}
+
+// chartStart answers the tap (so the button stops spinning and Telegram does not
+// drop the answer) and shows «отправляет фото» while the picture is rendered.
+// Called after the cheap guards, so their toasts can still show.
+func (b *Bot) chartStart(c tele.Context) {
+	_ = c.Respond()
+	_ = b.tb.Notify(c.Chat(), tele.UploadingPhoto)
+}
+
+// sendPicture posts png (the tap is already answered by chartStart), or reports
+// err: a toast would be lost by now, so the failure goes out as an ephemeral note.
 func (b *Bot) sendPicture(c tele.Context, where string, png []byte, err error, caption string) error {
 	if err != nil {
-		return b.fail(c, where, err)
+		log.Printf("%s: %v", where, err)
+		return b.ephemeral(c, guardFailText)
 	}
-	_ = c.Respond()
 	return b.quiet(c, &tele.Photo{File: tele.FromReader(bytes.NewReader(png)), Caption: caption})
 }
 
 // onRaceChart posts the season race: cumulative points of every active player,
 // game by game.
 func (b *Bot) onRaceChart(c tele.Context) error {
+	unlock, ok := b.chartLock(c)
+	if !ok {
+		return nil
+	}
+	defer unlock()
 	season, err := b.ensure(c)
-	if err != nil || season == nil {
-		return err
+	if err != nil {
+		return b.fail(c, "onRaceChart.ensure", err)
+	}
+	if season == nil {
+		return c.Respond()
 	}
 	standings, err := b.st.Standings(c.Chat().ID, season.ID)
 	if err != nil {
@@ -44,6 +79,7 @@ func (b *Bot) onRaceChart(c tele.Context) error {
 	if err != nil {
 		return b.fail(c, "onRaceChart.ranks", err)
 	}
+	b.chartStart(c)
 	png, err := chart.RenderRace(raceChartData(season, standings, ranks))
 	return b.sendPicture(c, "onRaceChart", png, err,
 		fmt.Sprintf("📈 Гонка сезона %d", season.Number))
@@ -85,8 +121,17 @@ func raceChartData(se *storage.Season, standings []storage.Standing, ranks []sto
 
 // onRatingChart posts the eternal Elo history of the active players.
 func (b *Bot) onRatingChart(c tele.Context) error {
-	if season, err := b.ensure(c); err != nil || season == nil {
-		return err
+	unlock, ok := b.chartLock(c)
+	if !ok {
+		return nil
+	}
+	defer unlock()
+	season, err := b.ensure(c)
+	if err != nil {
+		return b.fail(c, "onRatingChart.ensure", err)
+	}
+	if season == nil {
+		return c.Respond()
 	}
 	chatID := c.Chat().ID
 	games, err := b.st.GamesForRating(chatID)
@@ -98,6 +143,7 @@ func (b *Bot) onRatingChart(c tele.Context) error {
 		return b.fail(c, "onRatingChart.names", err)
 	}
 	active := b.activePlayerSet(chatID)
+	b.chartStart(c)
 	png, err := chart.RenderRating(ratingChartData(domain.ComputeRatingsActive(games, active), names, active))
 	return b.sendPicture(c, "onRatingChart", png, err, "📈 Рейтинг Эло")
 }
@@ -146,9 +192,17 @@ func ratingChartData(r domain.Ratings, names map[int64]string, active map[int64]
 
 // onCalendar posts the active season's days as a grid shaded by games played.
 func (b *Bot) onCalendar(c tele.Context) error {
+	unlock, ok := b.chartLock(c)
+	if !ok {
+		return nil
+	}
+	defer unlock()
 	season, err := b.ensure(c)
-	if err != nil || season == nil {
-		return err
+	if err != nil {
+		return b.fail(c, "onCalendar.ensure", err)
+	}
+	if season == nil {
+		return c.Respond()
 	}
 	chatID := c.Chat().ID
 	started, err := b.st.SeasonStartedAt(season.ID)
@@ -160,6 +214,7 @@ func (b *Bot) onCalendar(c tele.Context) error {
 		return b.fail(c, "onCalendar.times", err)
 	}
 	cal := calendarData(season, started, times, time.Now(), loadLoc(b.chatTZ(chatID)))
+	b.chartStart(c)
 	png, err := chart.RenderCalendar(cal)
 	return b.sendPicture(c, "onCalendar", png, err,
 		fmt.Sprintf("📅 Игры сезона %d по дням", season.Number))
@@ -217,8 +272,17 @@ func calendarData(se *storage.Season, startedAt string, times []string, now time
 
 // onPoster posts an archived season's poster on request.
 func (b *Bot) onPoster(c tele.Context) error {
-	if season, err := b.ensure(c); err != nil || season == nil {
-		return err
+	unlock, ok := b.chartLock(c)
+	if !ok {
+		return nil
+	}
+	defer unlock()
+	season, err := b.ensure(c)
+	if err != nil {
+		return b.fail(c, "onPoster.ensure", err)
+	}
+	if season == nil {
+		return c.Respond()
 	}
 	n, _ := strconv.Atoi(c.Data())
 	se, err := b.st.SeasonByNumber(c.Chat().ID, n)
@@ -228,6 +292,7 @@ func (b *Bot) onPoster(c tele.Context) error {
 	if se == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Сезон не найден"})
 	}
+	b.chartStart(c)
 	png, err := b.seasonPoster(c.Chat().ID, se)
 	return b.sendPicture(c, "onPoster", png, err, fmt.Sprintf("🏆 Сезон %d", se.Number))
 }
@@ -243,6 +308,7 @@ func (b *Bot) postSeasonPoster(chatID, seasonID int64) {
 		log.Printf("postSeasonPoster.season %d: %v", seasonID, err)
 		return
 	}
+	_ = b.tb.Notify(tele.ChatID(chatID), tele.UploadingPhoto)
 	png, err := b.seasonPoster(chatID, se)
 	if err != nil {
 		log.Printf("postSeasonPoster.render %d: %v", seasonID, err)
