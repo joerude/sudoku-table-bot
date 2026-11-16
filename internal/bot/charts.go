@@ -145,6 +145,35 @@ func raceWinners(players []storage.Standing, games []int64, won map[int64]int64)
 	return out
 }
 
+// featSeasonPic follows the season's own posts (last week, final day, season
+// extended) with the season race picture: those posts already notify the
+// chat, the picture rides along silently.
+const featSeasonPic = "seasonpic"
+
+// postSeasonRace sends the season race as a silent photo after a season post.
+// Best-effort: the text is already out and nothing about the season depends
+// on the picture, so a failure only logs.
+func (b *Bot) postSeasonRace(season *storage.Season, standings []storage.Standing) {
+	if b.tb == nil || !b.featureOn(season.ChatID, featSeasonPic) {
+		return
+	}
+	ranks, err := b.st.SeasonRanks(season.ChatID, season.ID)
+	if err != nil {
+		log.Printf("postSeasonRace.ranks %d: %v", season.ID, err)
+		return
+	}
+	png, err := chart.RenderRace(raceChartData(season, standings, ranks))
+	if err != nil {
+		log.Printf("postSeasonRace.render %d: %v", season.ID, err)
+		return
+	}
+	photo := &tele.Photo{File: tele.FromReader(bytes.NewReader(png)),
+		Caption: fmt.Sprintf("🏆 Гонка сезона %d", season.Number)}
+	if _, err := b.tb.Send(tele.ChatID(season.ChatID), photo, tele.Silent); err != nil {
+		log.Printf("postSeasonRace.send %d: %v", season.ID, err)
+	}
+}
+
 // featWeekPic follows the weekly digest (Monday's post and /weekly) with a
 // picture of the week's race.
 const featWeekPic = "weekpic"
