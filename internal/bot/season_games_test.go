@@ -104,7 +104,7 @@ func TestSeasonExtendedTextWithoutLeader(t *testing.T) {
 func TestResultTextCarriesGamesCounter(t *testing.T) {
 	rows := []storage.ResultRow{{Rank: 1, Name: "A", Points: 3}}
 
-	out := resultText(rows, "medium", "hardcore", nil, 100, 29, 66)
+	out := resultText(rows, "medium", "hardcore", nil, 100, 29, 66, nil)
 
 	if !strings.Contains(out, "29") || !strings.Contains(out, "66") {
 		t.Errorf("resultText = %q, want the 29/66 counter", out)

@@ -72,6 +72,27 @@ func (s *Store) RecentEvents(chatID int64, kind string, limit int) ([]Event, err
 	return out, rows.Err()
 }
 
+// GameEvents returns one game's events of a kind, oldest first.
+func (s *Store) GameEvents(chatID, gameID int64, kind string) ([]Event, error) {
+	rows, err := s.db.Query(`
+		SELECT chat_id, COALESCE(game_id, 0), COALESCE(player_id, 0), kind, COALESCE(detail, ''), at
+		FROM bot_events WHERE chat_id=? AND kind=? AND game_id=?
+		ORDER BY at, id`, chatID, kind, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		if err := rows.Scan(&e.ChatID, &e.GameID, &e.PlayerID, &e.Kind, &e.Detail, &e.At); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // CountEvents counts a chat's logged events of one kind.
 func (s *Store) CountEvents(chatID int64, kind string) (int, error) {
 	var n int

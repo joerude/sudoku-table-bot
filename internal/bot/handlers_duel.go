@@ -190,6 +190,7 @@ func (b *Bot) onRematch(c tele.Context) error {
 	if target == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
 	}
+	b.logTap(c, tapRematch, 0)
 	// The result post stays as it is: the rematch notice and challenge are new messages.
 	_, err = b.issueDuel(c, caller, target, difficulty, placeNew)
 	return err

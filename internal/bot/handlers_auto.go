@@ -290,6 +290,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 			}
 		}
 	}
+	b.logDNFProgress(game, info)
 	result, seasonEnd, err := b.scoreAndCheck(game)
 	if errors.Is(err, storage.ErrGameNotPending) {
 		log.Printf("🤖 game %d already closed, skipping auto-post", game.ID)
@@ -316,7 +317,6 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 		_, _ = b.tb.Send(to, seasonEnd)
 		b.postSeasonPoster(game.ChatID, game.SeasonID)
 	}
-	go b.watchSuccessor(game.ChatID, game.ID, info.Info.SupersededBy)
 	return true
 }
 

@@ -41,7 +41,7 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
   `handlers_stats.go`, `handlers_basic.go`, `handlers_admin.go`, `reminders.go`,
   `keyboards.go`, `messages.go` (все текст-билдеры), `bot.go` (routes, helpers).
   Механики привычки (см. раздел ниже): `features.go`, `hook.go`, `pace.go`,
-  `meet.go`, `nudge.go`, `titles.go`, `metrics.go`, `successor.go`.
+  `meet.go`, `nudge.go`, `titles.go`, `metrics.go`.
 - `internal/storage/`: слой БД (database/sql, сырой SQL). `store.go` (Open+migrate),
   `schema.sql` (embed, применяется на каждом Open), `games.go`, `players.go`,
   `seasons.go`, `standings.go`, `stats.go`, `duels.go`.
@@ -168,7 +168,7 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
 - Каждая механика регистрируется в `features` (`features.go`) и проверяется через
   `b.featureOn` (ошибка БД = выкл: сбой делает бота тише, не громче); включается и
   выключается `/settings <key> on|off`. Сейчас: `hook`, `pace`, `meet`, `nudge`, `titles`,
-  `weekpic`, `replay`, `latefinish`.
+  `weekpic`, `replay`, `latefinish`, `dnfprogress`.
 - `weekpic`: «Гонка недели» тихим фото после понедельничного дайджеста и `/weekly`
   (`postWeekRace`, от `weekRaceMinGames` игр). Окно то же, что у дайджеста (`weekSince`),
   линии стартуют с очков на начало окна (`chart.Race.Fit`). Игры делятся по
@@ -181,6 +181,12 @@ Telegram-бот для учёта игр лиги в судоку (usdoku.com): 
   на результат, если игрок с DNF всё же решил доску. Только пост и событие
   `late_finish`: ранг, очки и рейтинг не меняются. Останавливается, если запись
   открыли на правку или удалили.
+- `dnfprogress`: «без финиша · 48 из 54» в строке результата, только от половины доски
+  (`boardProgress.worthShowing`). Авто-запись пишет событие `dnf_progress` из последнего
+  среза watcher'а (всегда, даже при выключенной механике), пост результата читает его
+  обратно (`dnfProgress`), поэтому строка переживает правку и рестарт.
+- Нажатия кнопок пишутся событием `tap` (`taps.go`, detail: again, rematch, tech, chart).
+  `/metrics` показывает их, а также `replay_shown`, `late_finish` и `dnf_progress`.
 - Тихий ответ бота на своё сообщение (без `tele.Context`) слать через `quietReply`:
   `*tele.SendOptions` целиком заменяет дефолты telebot, включая `ParseMode`, и без
   него HTML уйдёт сырыми тегами.

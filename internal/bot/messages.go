@@ -258,9 +258,10 @@ func duelPickerText(picked []storage.ResultRow, locked int) string {
 }
 
 // resultText is the finalised game summary: winner spotlight, per-finisher
-// points + solve time (when known), and the season leader's progress.
+// points + solve time (when known), and the season leader's progress. left is
+// how far the non-finishers got on the board (by player id, nil = unknown).
 func resultText(rows []storage.ResultRow, difficulty, mode string, leader *storage.Standing,
-	target, games, minGames int) string {
+	target, games, minGames int, left map[int64]boardProgress) string {
 	var b strings.Builder
 	b.WriteString("🏁 <b>Игра записана</b>")
 	if tag := gameTag(difficulty, mode); tag != "" {
@@ -271,7 +272,11 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 	b.WriteString("\n")
 	for _, r := range rows {
 		if r.Rank == 0 {
-			fmt.Fprintf(&b, "▫️ %s · <i>без финиша</i>\n", esc(r.Name))
+			note := "без финиша"
+			if p := left[r.PlayerID]; p.worthShowing() {
+				note += fmt.Sprintf(" · %d из %d", p.Solved, p.Open)
+			}
+			fmt.Fprintf(&b, "▫️ %s · <i>%s</i>\n", esc(r.Name), note)
 			continue
 		}
 		name := esc(r.Name)

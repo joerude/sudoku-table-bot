@@ -42,6 +42,7 @@ func (b *Bot) chartLock(c tele.Context) (unlock func(), ok bool) {
 // drop the answer) and shows «отправляет фото» while the picture is rendered.
 // Called after the cheap guards, so their toasts can still show.
 func (b *Bot) chartStart(c tele.Context) {
+	b.logTap(c, tapChart, 0)
 	_ = c.Respond()
 	_ = b.tb.Notify(c.Chat(), tele.UploadingPhoto)
 }

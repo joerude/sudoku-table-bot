@@ -37,21 +37,21 @@ func parseMetricsDays(args []string) (int, bool) {
 
 // metricsView is everything one chat's /metrics message shows.
 type metricsView struct {
-	Days        int
-	Cur, Prev   domain.Metrics
-	Names       map[int64]string
-	Order       []int64 // active players in display order
-	Meets       int     // games with a «Буду через…» promise (current window)
-	MeetsPlayed int
-	Pace        int // pace lines shown (current window)
-	// usdoku successor rooms watched after a game, how many somebody entered,
-	// and how many got a round started (current window).
-	Successors       int
-	SuccessorJoined  int
-	SuccessorStarted int
-	HookNear         int
-	HookStake        int
-	Off              []string // switched-off mechanics, by key
+	Days         int
+	Cur, Prev    domain.Metrics
+	Names        map[int64]string
+	Order        []int64 // active players in display order
+	Meets        int     // games with a «Буду через…» promise (current window)
+	MeetsPlayed  int
+	Pace         int // pace lines shown (current window)
+	HookNear     int
+	HookStake    int
+	Taps         map[string]int // button presses by tap kind (current window)
+	Replays      int            // «Ход игры» pictures posted (current window)
+	LateFinishes int            // boards solved after the record (current window)
+	DNFKnown     int            // non-finishes with a known board progress (current window)
+	DNFNear      int            // of them, with at least half of the board solved
+	Off          []string       // switched-off mechanics, by key
 }
 
 // pct renders hits/base as a whole percent, "н/д" without a base.
@@ -94,12 +94,10 @@ func metricsText(v metricsView) string {
 	fmt.Fprintf(&b, "⏰ Напоминаний: %d, игра в течение 2 ч: %d\n", c.Nudges, c.NudgesPlayed)
 	fmt.Fprintf(&b, "🏃 Строк темпа: %d · крючков: %d (😤 %d, ⏭ %d)\n",
 		v.Pace, v.HookNear+v.HookStake, v.HookNear, v.HookStake)
-	if v.Successors == 0 {
-		b.WriteString("🔗 Комната-продолжение usdoku: н/д\n")
-	} else {
-		fmt.Fprintf(&b, "🔗 Комната-продолжение usdoku: заходили после %d из %d %s, сыграли %d\n",
-			v.SuccessorJoined, v.Successors, plural(v.Successors, "игры", "игр", "игр"), v.SuccessorStarted)
-	}
+	fmt.Fprintf(&b, "👆 Нажатий: ещё одну %d · реванш в дуэли %d · техника доски %d · картинки %d\n",
+		v.Taps[tapAgain], v.Taps[tapRematch], v.Taps[tapTech], v.Taps[tapChart])
+	fmt.Fprintf(&b, "🧩 Картинок «Ход игры»: %d · 🧱 досок, решённых после записи: %d\n", v.Replays, v.LateFinishes)
+	fmt.Fprintf(&b, "▫️ Без финиша с известным прогрессом: %d, из них от половины доски: %d\n", v.DNFKnown, v.DNFNear)
 	off := "ничего"
 	if len(v.Off) > 0 {
 		labels := make([]string, len(v.Off))
@@ -246,21 +244,38 @@ func (b *Bot) chatMetrics(chatID int64, now time.Time, days int) (metricsView, e
 		lines[line{e.GameID, e.PlayerID}] = true
 	}
 	v.Pace = len(lines)
-	succ, err := b.st.EventsBetween(chatID, evSuccessorRoom, f, t)
+	taps, err := b.st.EventsBetween(chatID, evTap, f, t)
 	if err != nil {
 		return v, err
 	}
-	for _, e := range succ {
-		players, started, ok := parseSuccessorDetail(e.Detail)
-		if !ok {
-			continue
+	v.Taps = map[string]int{}
+	for _, e := range taps {
+		v.Taps[e.Detail]++
+	}
+	replays, err := b.st.EventsBetween(chatID, evReplayShown, f, t)
+	if err != nil {
+		return v, err
+	}
+	v.Replays = len(replays)
+	late, err := b.st.EventsBetween(chatID, evLateFinish, f, t)
+	if err != nil {
+		return v, err
+	}
+	v.LateFinishes = len(late)
+	left, err := b.st.EventsBetween(chatID, evDNFProgress, f, t)
+	if err != nil {
+		return v, err
+	}
+	newest := map[line]boardProgress{} // a re-record logs again: the newest wins
+	for _, e := range left {
+		if p, ok := parseBoardProgress(e.Detail); ok {
+			newest[line{e.GameID, e.PlayerID}] = p
 		}
-		v.Successors++
-		if players > 0 {
-			v.SuccessorJoined++
-		}
-		if started {
-			v.SuccessorStarted++
+	}
+	for _, p := range newest {
+		v.DNFKnown++
+		if p.worthShowing() {
+			v.DNFNear++
 		}
 	}
 	v.Off, err = b.st.DisabledFeatures(chatID)
