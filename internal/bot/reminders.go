@@ -373,10 +373,12 @@ func (b *Bot) nudgeSeason(season *storage.Season, deadline, now time.Time, loc *
 	if len(standings) == 0 || standings[0].Points == 0 {
 		return nil
 	}
+	text := seasonLastWeekText(season.Number, standings, games, season.MinGames)
 	if kind == "final" {
-		b.postChat(season.ChatID, seasonFinalDayText(season.Number, standings))
-	} else {
-		b.postChat(season.ChatID, seasonLastWeekText(season.Number, standings, games, season.MinGames))
+		text = seasonFinalDayText(season.Number, standings)
+	}
+	if b.postChat(season.ChatID, text) {
+		b.postSeasonRace(season, standings)
 	}
 	return nil
 }
@@ -427,7 +429,9 @@ func (b *Bot) closeExpiredSeasonAt(ch storage.ChatSettings, now time.Time) error
 		if games == 0 || len(standings) == 0 {
 			return nil // nothing played or no active players: extend silently, don't nag a dead chat
 		}
-		b.postChat(ch.ChatID, seasonExtendedText(season, games, &standings[0], ext, now, loc))
+		if b.postChat(ch.ChatID, seasonExtendedText(season, games, &standings[0], ext, now, loc)) {
+			b.postSeasonRace(season, standings)
+		}
 		return nil
 	}
 

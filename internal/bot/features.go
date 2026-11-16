@@ -29,6 +29,7 @@ var features = []feature{
 	{Key: featLateFinish, Label: "Строка о доске, решённой после записи"},
 	{Key: featDNFProgress, Label: "Сколько клеток решено без финиша"},
 	{Key: featWeekBoards, Label: "Доски недели в итогах недели"},
+	{Key: featSeasonPic, Label: "Картинка гонки к постам о конце сезона"},
 }
 
 // featureByKey finds a registered mechanic by its /settings key.
