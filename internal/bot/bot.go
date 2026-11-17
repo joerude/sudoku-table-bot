@@ -114,7 +114,7 @@ func commandMenus() []commandMenu {
 
 // ephemeralCommands are sent invisibly to the rest of the chat (is_ephemeral in
 // the menu). Their handlers see EphemeralMessageID and answer the sender alone.
-var ephemeralCommands = []string{"help", "learn", "setnick", "me"}
+var ephemeralCommands = []string{"help", "learn", "setnick", "me", "phrase"}
 
 // markEphemeral sets IsEphemeral on the menu entries listed in ephemeralCommands.
 func markEphemeral(cmds []tele.Command) []tele.Command {
@@ -133,6 +133,7 @@ func groupCommands() []tele.Command {
 		{Text: "me", Description: "моя статистика (видна только мне)"},
 		{Text: "rating", Description: "рейтинг игроков"},
 		{Text: "setnick", Description: "ник на usdoku (регистрирует и включает авто-учёт)"},
+		{Text: "phrase", Description: "моя фраза под результатом победы"},
 		{Text: "learn", Description: "справочник техник решения"},
 		{Text: "help", Description: "справка и все команды"},
 	}
@@ -158,7 +159,7 @@ func privateCommands() []tele.Command {
 // knownCommands lists every command routes() registers, for "did you mean"
 // hints on a mistyped command. TestKnownCommandsMatchRoutes keeps it in sync.
 var knownCommands = []string{
-	"start", "help", "join", "setnick", "players", "removeplayer", "export",
+	"start", "help", "join", "setnick", "phrase", "players", "removeplayer", "export",
 	"play", "newgame", "code", "result", "duel", "invite", "learn",
 	"stats", "duels", "status", "season", "me", "rating", "history", "speed",
 	"weekly", "settings", "backup", "board", "metrics",
@@ -169,6 +170,7 @@ func (b *Bot) routes() {
 	b.tb.Handle("/help", b.onHelp)
 	b.tb.Handle("/join", b.onJoin)
 	b.tb.Handle("/setnick", b.onSetNick)
+	b.tb.Handle("/phrase", b.onPhrase)
 	b.tb.Handle("/players", b.onPlayers)
 	b.tb.Handle("/removeplayer", b.onRemovePlayer)
 	b.tb.Handle("/export", b.onExport)

@@ -18,7 +18,7 @@ func commandTexts(cmds []tele.Command) []string {
 }
 
 func TestGroupMenu(t *testing.T) {
-	want := []string{"play", "stats", "me", "rating", "setnick", "learn", "help"}
+	want := []string{"play", "stats", "me", "rating", "setnick", "phrase", "learn", "help"}
 	if got := commandTexts(groupCommands()); !reflect.DeepEqual(got, want) {
 		t.Errorf("group menu = %v, want %v", got, want)
 	}

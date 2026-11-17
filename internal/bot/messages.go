@@ -23,6 +23,7 @@ const helpText = `🧩 <b>Sudoku League</b> - учёт ваших игр в су
 /rating - рейтинг сезона, лестница за всё время (ELO) и корона 👑
 /learn - справочник техник решения
 /setnick &lt;ник&gt; - ник на usdoku, сразу регистрирует (нужен для авто-учёта)
+/phrase &lt;текст&gt; - твоя фраза, жирным под результатом победы
 /players - кто играет и какие у них ники
 
 <b>Ещё</b>
@@ -261,7 +262,7 @@ func duelPickerText(picked []storage.ResultRow, locked int) string {
 // points + solve time (when known), and the season table. left is
 // how far the non-finishers got on the board (by player id, nil = unknown).
 func resultText(rows []storage.ResultRow, difficulty, mode string, standings []storage.Standing,
-	target, games, minGames int, left map[int64]boardProgress) string {
+	target, games, minGames int, left map[int64]boardProgress, phrase string) string {
 	var b strings.Builder
 	b.WriteString("🏁 <b>Игра записана</b>")
 	if tag := gameTag(difficulty, mode); tag != "" {
@@ -288,6 +289,9 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, standings []s
 			b.WriteString(" · ⏱ " + fmtDuration(r.Duration))
 		}
 		b.WriteString("\n")
+	}
+	if phrase != "" && len(rows) > 0 && rows[0].Rank == 1 {
+		b.WriteString("\n" + phraseLine(phrase))
 	}
 
 	if block := seasonTableBlock(standings, target); block != "" {
@@ -855,7 +859,7 @@ func duelDetailLines(sp *storage.SpeedStat, s domain.Streak) string {
 // winnerWins/loserWins are the pair's head-to-head tally, shown only when h2h.
 // upsetGain > 0 means the winner entered the duel rated below the loser and the
 // win paid that many rating points; it adds the upset line.
-func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, upsetGain int) string {
+func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, upsetGain int, phrase string) string {
 	var b strings.Builder
 	b.WriteString("⚔️ <b>Дуэль</b>\n")
 	if len(rows) == 0 {
@@ -883,6 +887,9 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 			}
 			fmt.Fprintf(&b, " против %s (%s%s)", fmtDuration(rows[1].Duration), sign, fmtDuration(delta))
 		}
+	}
+	if phrase != "" {
+		b.WriteString("\n\n" + phraseLine(phrase))
 	}
 	if h2h && len(rows) >= 2 {
 		fmt.Fprintf(&b, "\n\nЛичный счёт: <b>%s</b> %d:%d <b>%s</b>",

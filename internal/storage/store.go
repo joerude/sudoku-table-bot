@@ -108,6 +108,8 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE games ADD COLUMN meet_at TEXT`,
 		`ALTER TABLE games ADD COLUMN meet_by INTEGER`,
 		`ALTER TABLE games ADD COLUMN meet_done INTEGER NOT NULL DEFAULT 0`,
+		// /phrase: the player's line under a win in the result post.
+		`ALTER TABLE players ADD COLUMN phrase TEXT`,
 	} {
 		_, _ = db.Exec(stmt)
 	}

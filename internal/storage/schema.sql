@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS players (
     tg_id       INTEGER,                       -- Telegram user id (nullable)
     name        TEXT    NOT NULL,
     usdoku_nick TEXT,                          -- nickname used on usdoku (for auto-record)
+    phrase      TEXT,                          -- /phrase: shown in bold under the player's wins
     active      INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(chat_id, tg_id)

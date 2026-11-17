@@ -33,7 +33,7 @@ func TestResultTextShowsDNFProgress(t *testing.T) {
 		{PlayerID: 2, Rank: 0, Name: "Bob"},
 		{PlayerID: 3, Rank: 0, Name: "Kate"},
 	}
-	out := resultText(rows, "medium", "hardcore", nil, 0, 0, 0, left)
+	out := resultText(rows, "medium", "hardcore", nil, 0, 0, 0, left, "")
 	if !strings.Contains(out, "▫️ Bob · <i>без финиша · 48 из 54</i>") {
 		t.Errorf("most of the board solved must show:\n%s", out)
 	}

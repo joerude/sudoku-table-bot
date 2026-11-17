@@ -897,7 +897,7 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 			log.Printf("gameView.standings: %v", serr) // table line hidden, the rest renders
 		}
 		return resultText(rows, game.Difficulty.String, game.Mode.String, standings, target, games, minGames,
-			b.dnfProgress(game)), b.resultKB(gameID), nil
+			b.dnfProgress(game), b.winnerPhrase(game.ChatID, rows)), b.resultKB(gameID), nil
 	}
 	return "🧩 Игра ждёт результата: жми «📝 Записать результат».", recordKeyboard(gameID), nil
 }
@@ -944,7 +944,7 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		log.Printf("scoreAndCheck.gamecount: %v", err) // counter hidden, scoring unaffected
 	}
 	result = resultText(rows, game.Difficulty.String, game.Mode.String, standings, season.Target,
-		games, season.MinGames, b.dnfProgress(game))
+		games, season.MinGames, b.dnfProgress(game), b.winnerPhrase(game.ChatID, rows))
 	if line := movesLine(standingsMoves(before, standings)); line != "" {
 		result += "\n" + line
 	}
@@ -981,8 +981,9 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 // duelResult renders a finished duel: winner, time, the pair's head-to-head,
 // and an upset line when the lower-rated player won.
 func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
+	phrase := b.winnerPhrase(game.ChatID, rows)
 	if len(rows) < 2 {
-		return duelResultText(rows, 0, 0, false, 0)
+		return duelResultText(rows, 0, 0, false, 0, phrase)
 	}
 	upset := 0
 	if rows[0].Rank == 1 {
@@ -991,9 +992,9 @@ func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 	wWins, lWins, err := b.st.HeadToHead(game.ChatID, rows[0].PlayerID, rows[1].PlayerID)
 	if err != nil {
 		log.Printf("duelResult.h2h: %v", err)
-		return duelResultText(rows, 0, 0, false, upset)
+		return duelResultText(rows, 0, 0, false, upset, phrase)
 	}
-	return duelResultText(rows, wWins, lWins, true, upset)
+	return duelResultText(rows, wWins, lWins, true, upset, phrase)
 }
 
 // onDoneDNF finalises the game, recording every remaining active player as a

@@ -184,6 +184,22 @@ func (s *Store) SetUsername(playerID int64, username string) error {
 	return err
 }
 
+// SetPhrase stores a player's /phrase; an empty phrase clears it.
+func (s *Store) SetPhrase(playerID int64, phrase string) error {
+	_, err := s.db.Exec(`UPDATE players SET phrase=? WHERE id=?`, nullStr(phrase), playerID)
+	return err
+}
+
+// Phrase reads a player's /phrase ("" when none is set or the player is gone).
+func (s *Store) Phrase(playerID int64) (string, error) {
+	var phrase sql.NullString
+	err := s.db.QueryRow(`SELECT phrase FROM players WHERE id=?`, playerID).Scan(&phrase)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return phrase.String, err
+}
+
 // PlayerByID loads one player (any active state) with all fields, or nil.
 func (s *Store) PlayerByID(playerID int64) (*Player, error) {
 	var p Player
