@@ -1437,3 +1437,19 @@ func TestAllTimeText(t *testing.T) {
 		t.Errorf("no titles: crown legend must be absent")
 	}
 }
+
+// The result post shows the whole season table, aligned like /stats.
+func TestSeasonTableBlock(t *testing.T) {
+	st := []storage.Standing{
+		{PlayerID: 1, Name: "Аня", Points: 45},
+		{PlayerID: 2, Name: "Боря", Points: 41},
+		{PlayerID: 3, Name: "Вова", Points: 9},
+	}
+	want := "🏆 Гонка до 100 очков\n<pre>1 Аня  45 ▰▰▰▱▱▱\n2 Боря 41 ▰▰▱▱▱▱\n3 Вова  9 ▰▱▱▱▱▱</pre>"
+	if got := seasonTableBlock(st, 100); got != want {
+		t.Errorf("seasonTableBlock =\n%q\nwant\n%q", got, want)
+	}
+	if got := seasonTableBlock([]storage.Standing{{Name: "Аня"}}, 100); got != "" {
+		t.Errorf("seasonTableBlock with no points = %q, want empty", got)
+	}
+}

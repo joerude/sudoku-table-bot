@@ -258,9 +258,9 @@ func duelPickerText(picked []storage.ResultRow, locked int) string {
 }
 
 // resultText is the finalised game summary: winner spotlight, per-finisher
-// points + solve time (when known), and the season leader's progress. left is
+// points + solve time (when known), and the season table. left is
 // how far the non-finishers got on the board (by player id, nil = unknown).
-func resultText(rows []storage.ResultRow, difficulty, mode string, leader *storage.Standing,
+func resultText(rows []storage.ResultRow, difficulty, mode string, standings []storage.Standing,
 	target, games, minGames int, left map[int64]boardProgress) string {
 	var b strings.Builder
 	b.WriteString("🏁 <b>Игра записана</b>")
@@ -290,9 +290,8 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 		b.WriteString("\n")
 	}
 
-	if leader != nil && leader.Points > 0 && target > 0 {
-		b.WriteString(fmt.Sprintf("\n🏆 Лидер: <b>%s</b> %d/%d %s",
-			esc(leader.Name), leader.Points, target, progressBar(leader.Points, target)))
+	if block := seasonTableBlock(standings, target); block != "" {
+		b.WriteString("\n\n" + block)
 	}
 	// The games counter rides along on every result post: it is the one message
 	// everyone reads, so it is where the season's tempo stays visible.
@@ -300,6 +299,20 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, leader *stora
 		fmt.Fprintf(&b, "\n🎲 Игр в сезоне: <b>%d</b>/%d", games, minGames)
 	}
 	return b.String()
+}
+
+// seasonTableBlock is the season table under a result, so nobody has to open
+// /stats after a game: the same aligned block as /stats (place, name, points,
+// bar), without the window columns. Hidden until somebody has scored.
+func seasonTableBlock(standings []storage.Standing, target int) string {
+	if len(standings) == 0 || standings[0].Points <= 0 {
+		return ""
+	}
+	head := "🏆 Сезон"
+	if target > 0 {
+		head = fmt.Sprintf("🏆 Гонка до %d %s", target, pointsWord(target))
+	}
+	return head + "\n" + raceTable(target, standings, raceWindow{})
 }
 
 // standingsMove is one player's position change after a recorded game.
