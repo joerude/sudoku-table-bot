@@ -470,3 +470,55 @@ func TestResultsSince(t *testing.T) {
 		t.Errorf("duels count and a DNF comes last: %+v", last)
 	}
 }
+
+func TestAllTimeStandings(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-9200)
+	st.EnsureChat(chat, 1)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	b, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	play := func(se *Season, first, second int64, after func(gid int64)) {
+		t.Helper()
+		gid, err := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.AddPick(gid, first)
+		st.AddPick(gid, second)
+		if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+			t.Fatal(err)
+		}
+		if after != nil {
+			after(gid)
+		}
+	}
+	s1, _ := st.ActiveSeason(chat)
+	play(s1, a.ID, b.ID, nil)
+	play(s1, a.ID, b.ID, nil)
+	if _, err := st.CloseSeason(s1, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := st.ActiveSeason(chat)
+	play(s2, b.ID, a.ID, nil)
+	play(s2, b.ID, a.ID, func(gid int64) { st.SetDuelTarget(gid, a.ID) }) // duel: not counted
+	play(s2, b.ID, a.ID, func(gid int64) { st.SoftDeleteGame(gid) })      // deleted: not counted
+
+	got, err := st.AllTimeStandings(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 rows, got %+v", got)
+	}
+	p1, p2 := s1.PointsTable, s2.PointsTable
+	alice := AllTimeStanding{Standing{a.ID, "Alice", 2*p1[0] + p2[1], 2, 3}, 1}
+	bob := AllTimeStanding{Standing{b.ID, "Bob", 2*p1[1] + p2[0], 1, 3}, 0}
+	if got[0] != alice || got[1] != bob {
+		t.Errorf("got %+v, want %+v then %+v", got, alice, bob)
+	}
+
+	seasons, games, err := st.AllTimeTotals(chat)
+	if err != nil || seasons != 2 || games != 3 {
+		t.Errorf("AllTimeTotals = %d seasons, %d games, err %v; want 2, 3", seasons, games, err)
+	}
+}

@@ -514,6 +514,16 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 			return "", nil, e
 		}
 		text = historyText(games, b.chatTZ(chatID))
+	case "table_all":
+		rows, e := b.st.AllTimeStandings(chatID)
+		if e != nil {
+			return "", nil, e
+		}
+		seasons, games, e := b.st.AllTimeTotals(chatID)
+		if e != nil {
+			return "", nil, e
+		}
+		text = allTimeText(rows, seasons, games)
 	case "activity":
 		since := time.Now().UTC().AddDate(0, 0, -30).Format("2006-01-02 15:04:05")
 		init, e := b.st.InitiativeStats(chatID, since)

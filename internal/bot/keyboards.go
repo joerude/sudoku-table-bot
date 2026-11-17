@@ -46,7 +46,7 @@ const (
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
 
-	cbStatsTab    = "ststab"    // payload: "<tab>" (see statsTabs) or "speed_all"
+	cbStatsTab    = "ststab"    // payload: "<tab>" (see statsTabs), "speed_all" or "table_all"
 	cbRaceChart   = "racechart" // no payload: posts the season race chart (beta)
 	cbRatingChart = "ratechart" // no payload: posts the Elo history chart (beta)
 	cbCalendar    = "calendar"  // no payload: posts the season calendar (beta)
@@ -481,8 +481,11 @@ func learnTechKeyboard(t domain.Technique) *tele.ReplyMarkup {
 func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	tabActive := active
-	if active == "speed_all" {
+	switch active {
+	case "speed_all":
 		tabActive = "speed"
+	case "table_all":
+		tabActive = "table"
 	}
 	var btns []tele.Btn
 	for _, t := range statsTabs {
@@ -509,7 +512,9 @@ func statsKeyboard(active string, archived []int, seasonNumber int) *tele.ReplyM
 		rows = append(rows, m.Row(
 			m.Data("Гонка сезона", cbRaceChart),
 			m.Data("Календарь", cbCalendar),
-		))
+		), m.Row(m.Data("За всё время", cbStatsTab, "table_all")))
+	case "table_all":
+		rows = append(rows, m.Row(m.Data("Текущий сезон", cbStatsTab, "table")))
 	case "rating":
 		rows = append(rows, m.Row(m.Data("График рейтинга", cbRatingChart)))
 	}

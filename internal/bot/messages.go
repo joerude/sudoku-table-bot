@@ -1608,3 +1608,53 @@ func lastPlayedPhrase(lastPlayed string, now time.Time, loc *time.Location) stri
 		return fmt.Sprintf("%d %s без игр", days, daysWord(days))
 	}
 }
+
+// allTimeText is the table tab's career view: every season summed, one aligned
+// row per player ("1 mister 812 41  96 43% 👑2") and a caption naming the
+// columns, since a header row would need abbreviations.
+func allTimeText(rows []storage.AllTimeStanding, seasons, games int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🏆 <b>За всё время</b> · %d %s · %d %s\n\n",
+		seasons, seasonsWord(seasons), games, gamesWord(games))
+	if len(rows) == 0 {
+		b.WriteString("Пока нет игроков. /join")
+		return b.String()
+	}
+	names := make([]string, len(rows))
+	nameW, ptsW, winsW, gamesW := 0, 0, 0, 0
+	for i, r := range rows {
+		names[i] = clipRunes(r.Name, raceNameMax)
+		nameW = max(nameW, utf8.RuneCountInString(names[i]))
+		ptsW = max(ptsW, len(strconv.Itoa(r.Points)))
+		winsW = max(winsW, len(strconv.Itoa(r.Wins)))
+		gamesW = max(gamesW, len(strconv.Itoa(r.Games)))
+	}
+	placeW := len(strconv.Itoa(len(rows)))
+	b.WriteString("<pre>")
+	for i, r := range rows {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		pct := 0
+		if r.Games > 0 {
+			pct = (r.Wins*100 + r.Games/2) / r.Games
+		}
+		pad := strings.Repeat(" ", nameW-utf8.RuneCountInString(names[i]))
+		fmt.Fprintf(&b, "%*d %s%s %*d %*d %*d %3d%%",
+			placeW, i+1, esc(names[i]), pad, ptsW, r.Points, winsW, r.Wins, gamesW, r.Games, pct)
+		if r.Titles > 0 {
+			fmt.Fprintf(&b, " 👑%d", r.Titles)
+		}
+	}
+	b.WriteString("</pre>\n<i>очки · победы · игры · доля побед")
+	for _, r := range rows {
+		if r.Titles > 0 {
+			b.WriteString(" · 👑 выигранные сезоны")
+			break
+		}
+	}
+	b.WriteString("\nТолько сезонные игры, дуэли не входят</i>")
+	return b.String()
+}
+
+func seasonsWord(n int) string { return plural(n, "сезон", "сезона", "сезонов") }
