@@ -188,6 +188,23 @@ func (s *Store) SeasonGameCount(chatID, seasonID int64) (int, error) {
 	return n, err
 }
 
+// SeasonCleanGames counts the season's clean boards: seasonal games where
+// nobody who joined quit (no rank 0 row). With until set (a DB time, like
+// completed_at) only games completed by then count, so an old result can be
+// redrawn with the tally as it stood.
+func (s *Store) SeasonCleanGames(chatID, seasonID int64, until string) (int, error) {
+	q := `SELECT COUNT(*) FROM games g WHERE g.chat_id=? AND g.season_id=? AND ` + sqlSeasonalGames + `
+		  AND NOT EXISTS (SELECT 1 FROM game_results gr WHERE gr.game_id=g.id AND gr.rank=0)`
+	args := []any{chatID, seasonID}
+	if until != "" {
+		q += ` AND g.completed_at <= ?`
+		args = append(args, until)
+	}
+	var n int
+	err := s.db.QueryRow(q, args...).Scan(&n)
+	return n, err
+}
+
 // SetSeasonDeadline stores when the season ends by the calendar (UTC
 // "2006-01-02 15:04:05").
 func (s *Store) SetSeasonDeadline(seasonID int64, deadline string) error {

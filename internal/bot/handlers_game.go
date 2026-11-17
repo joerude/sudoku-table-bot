@@ -969,7 +969,7 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 			}
 			awards := b.seasonAwards(game.ChatID, season.ID, standings)
 			seasonEnd = seasonEndText(season.Number, standings[0].Name, standings[0].Points,
-				awards, newSeason.Target, newSeason.Number)
+				awards, newSeason.Target, newSeason.Number, b.coopSeasonEndBlock(season, newSeason))
 			log.Printf("🏁 season %d closed, winner=%s (%d pts) → season %d started",
 				season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
 		}
@@ -1076,9 +1076,10 @@ func (b *Bot) backfillUsdokuTimes(game *storage.Game) []string {
 }
 
 // resultFooters is everything under a fresh result: rating moves, the board's
-// grading, and the hook line last, right above the «Ещё одну» button.
+// grading, the shared goal, and the hook line last, right above the «Ещё одну»
+// button.
 func (b *Bot) resultFooters(game *storage.Game) string {
-	return b.ratingFooter(game) + b.boardFooter(game) + b.hookFooter(game)
+	return b.ratingFooter(game) + b.boardFooter(game) + b.coopFooter(game) + b.hookFooter(game)
 }
 
 // ratingFooter computes the rating impact of the just-recorded game and renders

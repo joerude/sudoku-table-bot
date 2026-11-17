@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -30,11 +32,11 @@ const (
 	nudgeDayStart = 5 * time.Hour
 )
 
-// nudgeTexts rotate by day, so the nudge does not read the same every time.
-var nudgeTexts = []string{
-	"☕ Обычно в это время уже играете. Партию? /play",
-	"🧩 Свежая доска ждёт. Кто первый? /play",
-	"⏱ Пять минут на судоку? /play",
+// nudgeOpeners rotate by day, so the nudge does not read the same every time.
+var nudgeOpeners = []string{
+	"☕ Обычно в это время уже играете",
+	"🧩 Свежая доска ждёт",
+	"⏱ Самое время для судоку",
 }
 
 // firstPerDay turns game start times (DB UTC) into the first start of each
@@ -154,13 +156,45 @@ func nudgeSilenced(recs []nudgeRecord, now time.Time, loc *time.Location) bool {
 	return days <= nudgePauseDays
 }
 
-// smartNudgeText leads with a live season stake when there is one, else
-// rotates the plain invitations by day.
-func smartNudgeText(stake string, now time.Time) string {
-	if stake != "" {
-		return stake + "\nПартию? /play"
+// nudgeOpener is the day's opening line.
+func nudgeOpener(now time.Time) string {
+	return nudgeOpeners[now.YearDay()%len(nudgeOpeners)]
+}
+
+// smartNudgeText is the daily summary: the opener, the season lines that have
+// something to say (empty ones are skipped) and the invitation.
+func smartNudgeText(opener string, lines []string) string {
+	out := []string{opener}
+	for _, l := range lines {
+		if l != "" {
+			out = append(out, l)
+		}
 	}
-	return nudgeTexts[now.YearDay()%len(nudgeTexts)]
+	return strings.Join(append(out, "Партию? /play"), "\n")
+}
+
+// nudgeGamesLine is the games counter against the season floor and the days
+// to the final: "🎲 Игр: 18/66 · до финала 41 день". The days part is left out
+// without a deadline or once it has passed. "" without a games floor.
+func nudgeGamesLine(se *storage.Season, games int, now time.Time, loc *time.Location) string {
+	if se == nil || se.MinGames < 1 {
+		return ""
+	}
+	line := fmt.Sprintf("🎲 Игр: %d/%d", games, se.MinGames)
+	if games >= se.MinGames {
+		line += " ✅"
+	}
+	last, ok := seasonLastDay(se)
+	if !ok {
+		return line
+	}
+	switch days := domain.SeasonDaysLeft(last.Add(time.Second), now, loc); {
+	case days > 0:
+		line += fmt.Sprintf(" · до финала %d %s", days, daysWord(days))
+	case days == 0:
+		line += " · финал сегодня"
+	}
+	return line
 }
 
 // smartNudgeTime reads today's nudge time from the chat's history: whole
@@ -212,17 +246,27 @@ func (b *Bot) nudgeRecords(chatID int64, loc *time.Location) []nudgeRecord {
 	return recs
 }
 
-// nudgeStake is the season stake for the nudge's first line, "" when none.
-func (b *Bot) nudgeStake(chatID int64) string {
+// nudgeSummary gathers the season lines of the smart nudge: the live stake,
+// the shared goal and the games counter. A part that can't be read is left
+// out, and nil when the season itself can't be.
+func (b *Bot) nudgeSummary(chatID int64, now time.Time, loc *time.Location) []string {
 	season, err := b.st.ActiveSeason(chatID)
 	if err != nil {
-		return ""
+		return nil
 	}
-	standings, err := b.st.Standings(chatID, season.ID)
-	if err != nil {
-		return ""
+	var lines []string
+	if standings, err := b.st.Standings(chatID, season.ID); err == nil {
+		lines = append(lines, stakeLine(standings, season.PointsTable, season.Target))
 	}
-	return stakeLine(standings, season.PointsTable, season.Target)
+	if tiers := b.coopTiers(season); len(tiers) > 0 {
+		if n, ok := b.coopClean(season, ""); ok {
+			lines = append(lines, coopNudgeLine(n, tiers))
+		}
+	}
+	if games, err := b.st.SeasonGameCount(chatID, season.ID); err == nil {
+		lines = append(lines, nudgeGamesLine(season, games, now, loc))
+	}
+	return lines
 }
 
 // markDaily records that today's nudge is handled (sent or skipped).
@@ -277,7 +321,7 @@ func (b *Bot) remindDailyAt(clock time.Time) {
 		}
 		detail := "fixed"
 		if smart {
-			text, detail = smartNudgeText(b.nudgeStake(ch.ChatID), now), "smart"
+			text, detail = smartNudgeText(nudgeOpener(now), b.nudgeSummary(ch.ChatID, now, loc)), "smart"
 		}
 		if b.postChat(ch.ChatID, text) {
 			b.logEvent(storage.Event{ChatID: ch.ChatID, Kind: evNudgeSent, Detail: detail, At: fmtDBTime(now)})

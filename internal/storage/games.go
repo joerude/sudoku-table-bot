@@ -26,7 +26,9 @@ type Game struct {
 	UsdokuCode sql.NullString
 	CreatedBy  sql.NullInt64 // tg id of who started the game
 	CreatedAt  string        // UTC datetime "2006-01-02 15:04:05"
-	Deleted    bool
+	// CompletedAt is when the game was recorded (UTC, as CreatedAt); NULL while pending.
+	CompletedAt sql.NullString
+	Deleted     bool
 	// The game's single chat card: its message id, the base text the live
 	// updates append to, and the card kind ("invite" adds the RSVP button).
 	PostMsgID sql.NullInt64
@@ -40,13 +42,13 @@ type Game struct {
 
 // gameCols is the column list every Game scan shares (see scanGame).
 const gameCols = `id, chat_id, season_id, status, difficulty, mode, usdoku_code, created_by,
-	created_at, deleted, post_msg_id, post_text, post_kind, meet_at, meet_by`
+	created_at, completed_at, deleted, post_msg_id, post_text, post_kind, meet_at, meet_by`
 
 func scanGame(row interface{ Scan(...any) error }) (*Game, error) {
 	var g Game
 	var deleted int
 	err := row.Scan(&g.ID, &g.ChatID, &g.SeasonID, &g.Status, &g.Difficulty, &g.Mode,
-		&g.UsdokuCode, &g.CreatedBy, &g.CreatedAt, &deleted, &g.PostMsgID, &g.PostText, &g.PostKind,
+		&g.UsdokuCode, &g.CreatedBy, &g.CreatedAt, &g.CompletedAt, &deleted, &g.PostMsgID, &g.PostText, &g.PostKind,
 		&g.MeetAt, &g.MeetBy)
 	if err == sql.ErrNoRows {
 		return nil, nil

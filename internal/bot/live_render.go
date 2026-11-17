@@ -21,6 +21,7 @@ type liveSnapshot struct {
 	Solving   []string  // joined, not finished yet
 	Bars      []liveBar // progress of the solving ones, most solved first; nil = unknown
 	Open      int       // cells to solve, the bars' 100%
+	Coop      string    // shared-goal line, prebuilt by the caller; "" = none
 }
 
 // liveBar is one still-solving player's progress on the board.
@@ -87,6 +88,9 @@ func liveSectionText(s liveSnapshot) string {
 		b.WriteString("\n⏳ <b>Ещё решают:</b>\n" + barLines(s) + "\n")
 	} else {
 		fmt.Fprintf(&b, "\n⏳ Ещё решают: %s\n", escJoin(s.Solving))
+	}
+	if s.Coop != "" {
+		b.WriteString(s.Coop + "\n")
 	}
 	fmt.Fprintf(&b, "<i>Запишу сам через ~%d мин без новых финишей.</i>", int(settleQuiet.Minutes()))
 	return b.String()

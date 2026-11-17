@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -139,18 +140,81 @@ func TestNudgeSilenced(t *testing.T) {
 func TestSmartNudgeText(t *testing.T) {
 	seen := map[string]bool{}
 	for day := 19; day < 25; day++ {
-		got := smartNudgeText("", at(day, 15, 0))
+		got := smartNudgeText(nudgeOpener(at(day, 15, 0)), nil)
 		seen[got] = true
-		if !strings.Contains(got, "/play") || strings.ContainsAny(got, "—–") || strings.Contains(got, "🌙") {
+		if !strings.HasSuffix(got, "\nПартию? /play") || strings.ContainsAny(got, "—–") || strings.Contains(got, "🌙") {
 			t.Errorf("bad nudge %q", got)
 		}
 	}
 	if len(seen) < 3 {
 		t.Errorf("the nudge must not repeat the same words every day, got %d variants", len(seen))
 	}
-	if got := smartNudgeText("⏭ <b>Вика</b> в 1 очке от 2-го места: хватит одной победы", at(19, 15, 0)); got !=
-		"⏭ <b>Вика</b> в 1 очке от 2-го места: хватит одной победы\nПартию? /play" {
-		t.Errorf("a live stake leads the nudge: %q", got)
+	got := smartNudgeText("☕ Обычно в это время уже играете", []string{
+		"⏭ <b>Вика</b> в 1 очке от 2-го места: хватит одной победы",
+		"",
+		"🌟 Общая цель: 13/23 ⭐ · до второй звезды 10 досок",
+		"🎲 Игр: 18/66 · до финала 41 день",
+	})
+	want := "☕ Обычно в это время уже играете\n" +
+		"⏭ <b>Вика</b> в 1 очке от 2-го места: хватит одной победы\n" +
+		"🌟 Общая цель: 13/23 ⭐ · до второй звезды 10 досок\n" +
+		"🎲 Игр: 18/66 · до финала 41 день\n" +
+		"Партию? /play"
+	if got != want {
+		t.Errorf("summary =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestNudgeGamesLine(t *testing.T) {
+	// Deadline 1 Aug 00:00 +06: the last playable day is 31 July.
+	se := &storage.Season{MinGames: 66, Deadline: sql.NullString{String: "2026-07-31 18:00:00", Valid: true}}
+	now := func(day int) time.Time { return time.Date(2026, 7, day, 12, 0, 0, 0, utc6) }
+	cases := []struct {
+		name  string
+		se    *storage.Season
+		games int
+		now   time.Time
+		want  string
+	}{
+		{"many days", se, 18, time.Date(2026, 6, 20, 12, 0, 0, 0, utc6), "🎲 Игр: 18/66 · до финала 41 день"},
+		{"floor met", se, 70, now(26), "🎲 Игр: 70/66 ✅ · до финала 5 дней"},
+		{"final day", se, 30, now(31), "🎲 Игр: 30/66 · финал сегодня"},
+		{"deadline passed", se, 30, time.Date(2026, 8, 2, 12, 0, 0, 0, utc6), "🎲 Игр: 30/66"},
+		{"no deadline", &storage.Season{MinGames: 66}, 3, now(1), "🎲 Игр: 3/66"},
+		{"no floor", &storage.Season{}, 3, now(1), ""},
+	}
+	for _, c := range cases {
+		if got := nudgeGamesLine(c.se, c.games, c.now, utc6); got != c.want {
+			t.Errorf("%s: nudgeGamesLine = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestNudgeSummaryCarriesCoopLine(t *testing.T) {
+	const chat = int64(-7505)
+	b, st, loc := nudgeChat(t, chat)
+	se, _ := st.ActiveSeason(chat)
+	pa, _, _ := st.RegisterPlayer(chat, 3, "Cara")
+	pb, _, _ := st.RegisterPlayer(chat, 4, "Dan")
+	gid, err := st.CreatePendingGame(chat, se.ID, 1, "medium", "hardcore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.AddPick(gid, pa.ID)
+	st.AddPick(gid, pb.ID)
+	if err := st.FinalizeGame(gid, se.PointsTable); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Join(b.nudgeSummary(chat, time.Now().In(loc), loc), "\n")
+	for _, want := range []string{"🌟 Общая цель: 1/13 · до первой звезды 12 досок", "🎲 Игр: 1/66"} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("summary lacks %q:\n%s", want, lines)
+		}
+	}
+	st.SetFeature(chat, featCoop, false)
+	if got := strings.Join(b.nudgeSummary(chat, time.Now().In(loc), loc), "\n"); strings.Contains(got, "🌟") {
+		t.Errorf("coop switched off, but the nudge carries it:\n%s", got)
 	}
 }
 

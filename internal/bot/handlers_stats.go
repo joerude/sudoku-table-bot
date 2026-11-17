@@ -439,7 +439,7 @@ func (b *Bot) seasonStatus(chatID int64, season *storage.Season) string {
 		log.Printf("seasonStatus: %v", err)
 		return seasonDeadlineLine(season, time.Now(), loc)
 	}
-	return seasonStatusBlock(season, games, first, time.Now(), loc)
+	return seasonStatusBlock(season, games, first, time.Now(), loc, b.coopPanel(season))
 }
 
 // isAdmin reports whether the sender may perform privileged actions: in a group

@@ -718,15 +718,19 @@ func seasonGamesLine(se *storage.Season, games int, firstGame string, now time.T
 }
 
 // seasonStatusBlock is the block a season panel ends with: the deadline line
-// and, under it, the games counter. Either half may be missing.
+// and, under it, the games counter and the shared-goal line (coop, prebuilt,
+// "" when off). Any part may be missing.
 func seasonStatusBlock(se *storage.Season, games int, firstGame string, now time.Time,
-	loc *time.Location) string {
+	loc *time.Location, coop string) string {
 	block := seasonDeadlineLine(se, now, loc)
-	if g := seasonGamesLine(se, games, firstGame, now); g != "" {
+	for _, line := range []string{seasonGamesLine(se, games, firstGame, now), coop} {
+		if line == "" {
+			continue
+		}
 		if block == "" {
 			block = "\n"
 		}
-		block += "\n" + g
+		block += "\n" + line
 	}
 	return block
 }
@@ -1084,7 +1088,11 @@ func noSuchSeasonText(n int, nums []int) string {
 	return fmt.Sprintf("Сезона %d нет. В архиве: %d…%d.", n, nums[0], nums[len(nums)-1])
 }
 
-func seasonEndText(number int, winner string, points int, awards []string, nextTarget, nextNumber int) string {
+// seasonEndText announces a season that reached its target. coop is the
+// prebuilt shared-goal block ("" when the mechanic is off), put under the new
+// season's line.
+func seasonEndText(number int, winner string, points int, awards []string, nextTarget, nextNumber int,
+	coop string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "🏆 <b>Сезон %d завершён</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
 		number, esc(winner), points, pointsWord(points))
@@ -1093,14 +1101,18 @@ func seasonEndText(number int, winner string, points int, awards []string, nextT
 	}
 	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s.",
 		nextNumber, nextTarget, pointsWord(nextTarget))
+	if coop != "" {
+		b.WriteString("\n\n" + coop)
+	}
 	return b.String()
 }
 
 // seasonDeadlineEndText announces a season closed by the calendar rather than
 // by reaching the target. nextDeadline is the new season's end instant (UTC);
-// the text shows the last playable day, i.e. the day before it.
+// the text shows the last playable day, i.e. the day before it. coop is the
+// prebuilt shared-goal block ("" when the mechanic is off).
 func seasonDeadlineEndText(number int, winner string, points int, awards []string,
-	nextNumber, nextTarget int, nextDeadline time.Time, loc *time.Location) string {
+	nextNumber, nextTarget int, nextDeadline time.Time, loc *time.Location, coop string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "🏆 <b>Сезон %d завершён по календарю</b>\nПобедитель: <b>%s</b> (%d %s) 👑\n",
 		number, esc(winner), points, pointsWord(points))
@@ -1109,6 +1121,9 @@ func seasonDeadlineEndText(number int, winner string, points int, awards []strin
 	}
 	fmt.Fprintf(&b, "\nНачат <b>сезон %d</b>, все с нуля. Цель: %d %s, финал %s.",
 		nextNumber, nextTarget, pointsWord(nextTarget), fmtRuDate(nextDeadline.Add(-time.Second), loc))
+	if coop != "" {
+		b.WriteString("\n\n" + coop)
+	}
 	return b.String()
 }
 

@@ -1048,16 +1048,20 @@ func TestCelebrationLines(t *testing.T) {
 
 func TestSeasonEndTextWithAwards(t *testing.T) {
 	awards := []string{awardWinsLine("Ann", 9), awardFastestLine("Joe", 118, "medium")}
-	out := seasonEndText(3, "Ann", 101, awards, 100, 4)
+	out := seasonEndText(3, "Ann", 101, awards, 100, 4, "🌟 coop block")
 	for _, want := range []string{"Сезон 3 завершён", "Ann", "101", "Номинации",
-		"Больше всех побед", "1:58", "сезон 4", "100"} {
+		"Больше всех побед", "1:58", "сезон 4", "100", "🌟 coop block"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("seasonEndText awards: want %q in output\ngot: %s", want, out)
 		}
 	}
 	// No awards → no nominations block.
-	if plain := seasonEndText(3, "Ann", 101, nil, 100, 4); strings.Contains(plain, "Номинации") {
+	plain := seasonEndText(3, "Ann", 101, nil, 100, 4, "")
+	if strings.Contains(plain, "Номинации") {
 		t.Errorf("seasonEndText no awards: should NOT contain 'Номинации'\ngot: %s", plain)
+	}
+	if strings.Contains(plain, "🌟") || strings.HasSuffix(plain, "\n") {
+		t.Errorf("seasonEndText without coop must not leave a stub\ngot: %q", plain)
 	}
 }
 
@@ -1184,7 +1188,7 @@ func TestFmtDBTime(t *testing.T) {
 func TestSeasonDeadlineEndText(t *testing.T) {
 	loc := time.FixedZone("UTC+6", 6*3600)
 	next := time.Date(2026, 9, 1, 0, 0, 0, 0, loc).UTC()
-	got := seasonDeadlineEndText(5, "Nur", 42, []string{"🏅 award"}, 6, 100, next, loc)
+	got := seasonDeadlineEndText(5, "Nur", 42, []string{"🏅 award"}, 6, 100, next, loc, "🌟 coop block")
 
 	for _, want := range []string{
 		"Сезон 5 завершён",
@@ -1195,6 +1199,7 @@ func TestSeasonDeadlineEndText(t *testing.T) {
 		"сезон 6",
 		"100",
 		"31 августа",
+		"🌟 coop block",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("seasonDeadlineEndText missing %q in:\n%s", want, got)
@@ -1205,7 +1210,7 @@ func TestSeasonDeadlineEndText(t *testing.T) {
 func TestSeasonDeadlineEndTextNoAwards(t *testing.T) {
 	loc := time.FixedZone("UTC+6", 6*3600)
 	next := time.Date(2026, 9, 1, 0, 0, 0, 0, loc).UTC()
-	got := seasonDeadlineEndText(1, "Joe <b>", 3, nil, 2, 100, next, loc)
+	got := seasonDeadlineEndText(1, "Joe <b>", 3, nil, 2, 100, next, loc, "")
 	if strings.Contains(got, "Номинации") {
 		t.Errorf("no awards, but the awards block rendered:\n%s", got)
 	}

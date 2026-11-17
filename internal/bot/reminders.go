@@ -459,7 +459,8 @@ func (b *Bot) closeExpiredSeasonAt(ch storage.ChatSettings, now time.Time) error
 		season.Number, standings[0].Name, standings[0].Points, newSeason.Number)
 	b.postChat(ch.ChatID,
 		seasonDeadlineEndText(season.Number, standings[0].Name, standings[0].Points,
-			awards, newSeason.Number, newSeason.Target, nextDeadline, loc))
+			awards, newSeason.Number, newSeason.Target, nextDeadline, loc,
+			b.coopSeasonEndBlock(season, newSeason)))
 	b.postSeasonPoster(ch.ChatID, season.ID)
 	return nil
 }

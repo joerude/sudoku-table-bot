@@ -211,6 +211,9 @@ func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo, prog *usdoku.Progr
 		}
 		return nick
 	}, prog)
+	if len(snap.Finishers) > 0 && len(snap.Solving) > 0 { // the only state that shows the line
+		snap.Coop = b.coopLive(game)
+	}
 	offer, meetLine := b.meetView(game, info.Info.Status, len(info.Players))
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
