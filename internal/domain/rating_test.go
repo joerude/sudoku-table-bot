@@ -67,11 +67,28 @@ func TestDNFvsDNFIgnored(t *testing.T) {
 	if r.Players[20].Rating != r.Players[30].Rating {
 		t.Errorf("DNF-vs-DNF should not move them: 20=%d 30=%d", r.Players[20].Rating, r.Players[30].Rating)
 	}
-	if r.Players[20].Rating != 968 {
-		t.Errorf("DNF loser rating=%d want 968", r.Players[20].Rating)
+	// K=64 split by 2 others: 10 takes 16 from each DNF.
+	if r.Players[20].Rating != 984 || r.Players[10].Rating != 1032 {
+		t.Errorf("ratings: 10=%d 20=%d want 1032/984", r.Players[10].Rating, r.Players[20].Rating)
 	}
-	if r.Players[10].Rating <= 1000 {
-		t.Errorf("finisher should rise: 10=%d", r.Players[10].Rating)
+}
+
+func TestRatingsAreZeroSum(t *testing.T) {
+	// Whatever the mix of finishers and DNFs (equal K here), the league
+	// average stays at the start rating (up to rounding).
+	r := ComputeRatings([]RatingGame{
+		game(1, []int64{10}, 20, 30),
+		game(2, []int64{20}, 10, 30),
+		game(3, []int64{30, 10}, 20),
+		game(4, []int64{10}, 20, 30),
+		game(5, []int64{20, 30, 10}),
+	})
+	sum := 0
+	for _, p := range r.Players {
+		sum += p.Rating
+	}
+	if want := StartRating * len(r.Players); sum < want-3 || sum > want+3 {
+		t.Errorf("rating sum=%d want %d±3", sum, want)
 	}
 }
 
