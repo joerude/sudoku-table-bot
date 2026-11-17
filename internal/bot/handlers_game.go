@@ -892,8 +892,11 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 				games = n
 			}
 		}
-		leader, _ := b.st.Leader(game.ChatID, game.SeasonID)
-		return resultText(rows, game.Difficulty.String, game.Mode.String, leader, target, games, minGames,
+		standings, serr := b.st.Standings(game.ChatID, game.SeasonID)
+		if serr != nil {
+			log.Printf("gameView.standings: %v", serr) // table line hidden, the rest renders
+		}
+		return resultText(rows, game.Difficulty.String, game.Mode.String, standings, target, games, minGames,
 			b.dnfProgress(game)), b.resultKB(gameID), nil
 	}
 	return "🧩 Игра ждёт результата: жми «📝 Записать результат».", recordKeyboard(gameID), nil
@@ -936,15 +939,11 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 	if err != nil {
 		return "", "", err
 	}
-	var leader *storage.Standing
-	if len(standings) > 0 {
-		leader = &standings[0]
-	}
 	games, err := b.st.SeasonGameCount(game.ChatID, season.ID)
 	if err != nil {
 		log.Printf("scoreAndCheck.gamecount: %v", err) // counter hidden, scoring unaffected
 	}
-	result = resultText(rows, game.Difficulty.String, game.Mode.String, leader, season.Target,
+	result = resultText(rows, game.Difficulty.String, game.Mode.String, standings, season.Target,
 		games, season.MinGames, b.dnfProgress(game))
 	if line := movesLine(standingsMoves(before, standings)); line != "" {
 		result += "\n" + line
