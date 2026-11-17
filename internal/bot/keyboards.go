@@ -378,7 +378,7 @@ func pendingConflictKeyboard(gameID int64, origin string) *tele.ReplyMarkup {
 // statsTabs are the /stats dashboard tabs in display order.
 var statsTabs = []struct{ id, label string }{
 	{"table", "🏆 Таблица"},
-	{"me", "👤 Я"},
+	{"me", "👤 Игроки"},
 	{"speed", "⏱ Скорость"},
 	{"duels", "⚔️ Дуэли"},
 	{"history", "📜 История"},

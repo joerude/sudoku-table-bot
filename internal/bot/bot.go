@@ -129,8 +129,8 @@ func markEphemeral(cmds []tele.Command) []tele.Command {
 func groupCommands() []tele.Command {
 	return []tele.Command{
 		{Text: "play", Description: "новая игра, дуэль или позвать всех"},
-		{Text: "stats", Description: "таблица, моё, скорость, дуэли, история"},
-		{Text: "me", Description: "моя статистика (видна только мне)"},
+		{Text: "stats", Description: "таблица, игроки, скорость, дуэли, история"},
+		{Text: "me", Description: "мой профиль (виден только мне)"},
 		{Text: "rating", Description: "рейтинг игроков"},
 		{Text: "setnick", Description: "ник на usdoku (регистрирует и включает авто-учёт)"},
 		{Text: "phrase", Description: "моя фраза под результатом победы"},

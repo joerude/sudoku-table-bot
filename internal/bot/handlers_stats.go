@@ -479,10 +479,16 @@ func (b *Bot) statsView(c tele.Context, tab string) (string, *tele.ReplyMarkup, 
 	if tab == "records" { // legacy button: records moved into the Speed tab
 		tab = "speed"
 	}
+	if _, ok := parseProfileTab(tab); ok || tab == "me" {
+		text, shownID, err := b.profileView(c, season, tab)
+		if err != nil {
+			return "", nil, err
+		}
+		kb := b.withProfileRows(statsKeyboard("me", nil, season.Number), chatID, shownID)
+		return clipText(text, tgMaxText), kb, nil
+	}
 	var text string
 	switch tab {
-	case "me":
-		text, err = b.meTab(c, season)
 	case "speed", "speed_all":
 		seasonID, se := season.ID, season
 		if tab == "speed_all" {
@@ -596,37 +602,10 @@ func (b *Bot) seasonForm(chatID int64, season *storage.Season) map[int64][]int {
 	return form
 }
 
-// meTab renders the caller's personal stats, or a join hint if unregistered.
+// meTab renders the caller's profile, or a join hint if unregistered.
 func (b *Bot) meTab(c tele.Context, season *storage.Season) (string, error) {
-	sender := realSender(c)
-	if sender == nil {
-		return "Не удалось определить пользователя.", nil
-	}
-	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
-	if err != nil {
-		return "", err
-	}
-	if player == nil {
-		return "Ты ещё не в игре. Жми /join", nil
-	}
-	stat, err := b.st.StatFor(c.Chat().ID, season.ID, player.ID)
-	if err != nil {
-		return "", err
-	}
-	sp, err := b.st.SpeedFor(c.Chat().ID, season.ID, player.ID, "medium")
-	if err != nil {
-		return "", err
-	}
-	duelW, duelL, err := b.st.DuelRecord(c.Chat().ID, player.ID)
-	if err != nil {
-		return "", err
-	}
-	duelSp, duelStreak, err := b.duelExtras(c.Chat().ID, player.ID)
-	if err != nil {
-		return "", err
-	}
-	return meText(player.Name, stat, sp, duelW, duelL, duelSp, duelStreak, season) +
-		b.meExtra(c.Chat().ID, player.ID, b.chatTZ(c.Chat().ID)), nil
+	text, _, err := b.profileView(c, season, "me")
+	return text, err
 }
 
 func (b *Bot) onStats(c tele.Context) error { return b.openStatsTab(c, "table") }
