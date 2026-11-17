@@ -638,13 +638,20 @@ func TestStatsKeyboardSpeedToggle(t *testing.T) {
 	if !marked {
 		t.Errorf("speed_all: speed tab must carry the active marker")
 	}
-	// The table tab: 7 tab buttons in 3 rows (3 + 3 + 1) plus the chart row.
-	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 4 {
-		t.Errorf("table tab without archive: want 4 rows, got %d", n)
+	// The table tab: 7 tab buttons in 3 rows (3 + 3 + 1), the chart row and
+	// the all-time toggle.
+	if n := len(statsKeyboard("table", nil, 4).InlineKeyboard); n != 5 {
+		t.Errorf("table tab without archive: want 5 rows, got %d", n)
+	}
+	if !find(statsKeyboard("table", nil, 4), "table_all") {
+		t.Errorf("table tab: want all-time toggle button")
+	}
+	if !find(statsKeyboard("table_all", nil, 4), "table") {
+		t.Errorf("table_all: want back-to-season toggle button")
 	}
 	// Table tab with archived seasons carries the season row above the chart row.
 	withSeasons := statsKeyboard("table", []int{1, 2, 3}, 4)
-	if n := len(withSeasons.InlineKeyboard); n != 5 {
+	if n := len(withSeasons.InlineKeyboard); n != 6 {
 		t.Fatalf("table tab with archive: want 5 rows, got %d", n)
 	}
 	seasonRow := withSeasons.InlineKeyboard[3]
@@ -1406,5 +1413,27 @@ func TestHistoryTextShowsRoomCode(t *testing.T) {
 		Difficulty: "easy", Order: []string{"Аня"}, UsdokuCode: "QWER"}}
 	if out := historyText(games, "UTC"); !strings.Contains(out, "Easy · QWER:") {
 		t.Errorf("room code missing: %q", out)
+	}
+}
+
+func TestAllTimeText(t *testing.T) {
+	rows := []storage.AllTimeStanding{
+		{Standing: storage.Standing{PlayerID: 1, Name: "mister", Points: 812, Wins: 41, Games: 96}, Titles: 2},
+		{Standing: storage.Standing{PlayerID: 2, Name: "<b>", Points: 9, Wins: 0, Games: 0}},
+	}
+	got := allTimeText(rows, 6, 214)
+	for _, want := range []string{
+		"За всё время</b> · 6 сезонов · 214 игр",
+		"1 mister 812 41 96  43% 👑2",
+		"2 &lt;b&gt;      9  0  0   0%</pre>",
+		"👑 выигранные сезоны",
+		"дуэли не входят",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("allTimeText missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(allTimeText(rows[1:], 1, 0), "👑") {
+		t.Errorf("no titles: crown legend must be absent")
 	}
 }

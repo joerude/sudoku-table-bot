@@ -19,11 +19,14 @@ func flatButtons(m *tele.ReplyMarkup) []tele.InlineButton {
 
 func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 	m := statsKeyboard("table", nil, 1)
-	if len(m.InlineKeyboard) != 4 || len(m.InlineKeyboard[0]) != 3 || len(m.InlineKeyboard[1]) != 3 || len(m.InlineKeyboard[2]) != 1 {
-		t.Fatalf("tab layout: want rows of 3, 3, 1 plus the chart row, got %d rows", len(m.InlineKeyboard))
+	if len(m.InlineKeyboard) != 5 || len(m.InlineKeyboard[0]) != 3 || len(m.InlineKeyboard[1]) != 3 || len(m.InlineKeyboard[2]) != 1 {
+		t.Fatalf("tab layout: want rows of 3, 3, 1 plus the chart and all-time rows, got %d rows", len(m.InlineKeyboard))
 	}
 	if pics := m.InlineKeyboard[3]; len(pics) != 2 || pics[0].Unique != cbRaceChart || pics[1].Unique != cbCalendar {
-		t.Errorf("table tab: last row must hold the race and calendar buttons, got %+v", pics)
+		t.Errorf("table tab: chart row must hold the race and calendar buttons, got %+v", pics)
+	}
+	if all := m.InlineKeyboard[4]; len(all) != 1 || all[0].Data != "table_all" {
+		t.Errorf("table tab: last row must be the all-time toggle, got %+v", all)
 	}
 	rating := statsKeyboard("rating", nil, 1)
 	if last := rating.InlineKeyboard[len(rating.InlineKeyboard)-1]; len(last) != 1 || last[0].Unique != cbRatingChart {
@@ -47,8 +50,8 @@ func TestStatsTabsLayoutAndEmoji(t *testing.T) {
 func TestRecentSeasonStripAndArchive(t *testing.T) {
 	// Six seasons: the last four plus «Архив».
 	m := statsKeyboard("table", []int{1, 2, 3, 4, 5}, 6)
-	if len(m.InlineKeyboard) != 6 {
-		t.Fatalf("want 3 tab rows + strip + archive row + chart row, got %d rows", len(m.InlineKeyboard))
+	if len(m.InlineKeyboard) != 7 {
+		t.Fatalf("want 3 tab rows + strip + archive row + chart row + all-time row, got %d rows", len(m.InlineKeyboard))
 	}
 	strip := m.InlineKeyboard[3]
 	var got []string
