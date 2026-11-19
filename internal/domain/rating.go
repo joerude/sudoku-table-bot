@@ -174,10 +174,15 @@ func ComputeRatingsActive(games []RatingGame, active map[int64]bool) Ratings {
 		}
 		crownBefore := crown
 
+		// K is split by everyone else in the room, the same divisor for both sides
+		// of a pair. Splitting by each player's own pair count would give a DNF
+		// (who skips the other DNFs) a bigger step than the finisher it lost to,
+		// and every multi-DNF game would drain rating out of the league.
+		split := float64(len(g.Participants) - 1)
 		delta := make(map[int64]float64, len(opp))
 		for _, pr := range pairs {
-			kW := kFactor(played[pr.win]) / float64(opp[pr.win])
-			kL := kFactor(played[pr.lose]) / float64(opp[pr.lose])
+			kW := kFactor(played[pr.win]) / split
+			kL := kFactor(played[pr.lose]) / split
 			eW := expectedScore(before[pr.win], before[pr.lose])
 			eL := expectedScore(before[pr.lose], before[pr.win])
 			delta[pr.win] += kW * (1 - eW)
