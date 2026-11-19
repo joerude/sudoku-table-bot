@@ -191,7 +191,9 @@ type ChallengeStat struct {
 
 // sqlChallenge: a duel challenge that was really made — anything except a
 // challenge its creator deleted before an answer (deleted without a decline).
-const sqlChallenge = `g.duel_target_id IS NOT NULL AND (g.deleted=0 OR g.declined_at IS NOT NULL)`
+// A series is one challenge: its later games (started by a button) don't count.
+const sqlChallenge = `g.duel_target_id IS NOT NULL AND (g.deleted=0 OR g.declined_at IS NOT NULL)
+	AND (g.series_id IS NULL OR g.id = (SELECT MIN(o.id) FROM games o WHERE o.series_id = g.series_id))`
 
 // ChallengeStats returns per-player challenge behaviour for a chat's active
 // players, most challenges issued first. Players with no counted challenge

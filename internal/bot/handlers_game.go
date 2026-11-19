@@ -233,6 +233,9 @@ func (b *Bot) resultKBBase(gameID int64) *tele.ReplyMarkup {
 	if _, isDuel, err := b.st.DuelTargetID(gameID); err != nil {
 		return resultKeyboard(gameID)
 	} else if isDuel {
+		if m := b.seriesResultKB(gameID); m != nil {
+			return m
+		}
 		rows, err := b.st.GameResults(gameID)
 		if err != nil {
 			return resultKeyboard(gameID)
@@ -787,8 +790,8 @@ func (b *Bot) resumeAfterDelete(c tele.Context, origin string) error {
 			return c.Edit(deletedNote)
 		}
 		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
-		return c.Edit(deletedNote+"\n\n⚔️ Кого вызываешь на дуэль?",
-			duelPickKeyboard(difficulty, others, me.ID))
+		return c.Edit(deletedNote+"\n\n"+duelPickPrompt,
+			duelPickKeyboardBo(difficulty, others, me.ID, parseBestOf(parts)))
 	case "game":
 		difficulty, mode := originArgs(parts)
 		_ = c.Respond(&tele.CallbackResponse{Text: "Удалено"})
@@ -982,12 +985,15 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 // and an upset line when the lower-rated player won.
 func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 	phrase := b.winnerPhrase(game.ChatID, rows)
+	upset := 0
+	if len(rows) >= 2 && rows[0].Rank == 1 {
+		upset = b.duelUpsetGain(game, rows[0].PlayerID, rows[1].PlayerID)
+	}
+	if text, ok := b.seriesResult(game, rows, upset, phrase); ok {
+		return text
+	}
 	if len(rows) < 2 {
 		return duelResultText(rows, 0, 0, false, 0, phrase)
-	}
-	upset := 0
-	if rows[0].Rank == 1 {
-		upset = b.duelUpsetGain(game, rows[0].PlayerID, rows[1].PlayerID)
 	}
 	wWins, lWins, err := b.st.HeadToHead(game.ChatID, rows[0].PlayerID, rows[1].PlayerID)
 	if err != nil {

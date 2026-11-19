@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 
@@ -20,12 +21,17 @@ func (b *Bot) onDuel(c tele.Context) error {
 		return nil
 	}
 	difficulty, _ := parseNewGameArgs(c.Args())
+	bestOf := parseBestOf(c.Args())
 	pending, err := b.st.ActivePendingGame(chatID)
 	if err != nil {
 		return b.fail(c, "onDuel.pending", err)
 	}
 	if pending != nil { // don't offer opponents for a challenge that can't start
-		return b.pendingConflict(c, pending, "duel:"+difficulty)
+		origin := "duel:" + difficulty
+		if bestOf > 0 {
+			origin += fmt.Sprintf(":bo%d", bestOf)
+		}
+		return b.pendingConflict(c, pending, origin)
 	}
 	me := realSender(c)
 	if me == nil {
@@ -45,11 +51,11 @@ func (b *Bot) onDuel(c tele.Context) error {
 	if len(others) == 0 {
 		return b.ephemeral(c, "Нет соперников. Пусть кто-то ещё сделает /join.")
 	}
-	kb := duelPickKeyboard(difficulty, others, me.ID)
+	kb := duelPickKeyboardBo(difficulty, others, me.ID, bestOf)
 	if c.Callback() != nil { // from the /play hub: turn the hub into the picker
-		return c.Edit("⚔️ Кого вызываешь на дуэль?", kb)
+		return c.Edit(duelPickPrompt, kb)
 	}
-	return c.Send("⚔️ Кого вызываешь на дуэль?", kb)
+	return c.Send(duelPickPrompt, kb)
 }
 
 // opponents lists the chat's active players except the caller.
@@ -74,8 +80,10 @@ const duelChallengeTTLMinutes = 20
 // closedChallengeToast answers a press on a challenge that was already settled.
 const closedChallengeToast = "Вызов уже закрыт"
 
-// onDuelPick issues the challenge: creates the room, tags the target, posts
-// Accept/Decline. Only the target may answer.
+// onDuelPick handles the opponent picker and the format step after it: a pick
+// without a format turns the picker into the format step; one with a format
+// issues the challenge (creates the room, tags the target, posts
+// Accept/Decline). Only the target may answer.
 func (b *Bot) onDuelPick(c tele.Context) error {
 	difficulty, targetID, ownerTg := parseDuelPick(c.Data())
 	if difficulty == "" || targetID == 0 {
@@ -105,9 +113,17 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 	if target == nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Игрок не найден"})
 	}
+	bestOf := duelPickBestOf(c.Data())
+	if bestOf == 0 {
+		if ownerTg == 0 {
+			ownerTg = me.ID
+		}
+		_ = c.Respond()
+		return c.Edit(duelFormatText(target.Name), duelFormatKeyboard(difficulty, target.ID, ownerTg))
+	}
 	// The picker is the «Создаю комнату…» notice and ends as a confirmation; the
 	// challenge itself goes out as a NEW message (an edit would not notify the target).
-	_, err = b.issueDuel(c, caller, target, difficulty, placeAuto)
+	_, err = b.issueDuel(c, caller, target, difficulty, bestOf, placeAuto)
 	return err
 }
 
@@ -118,7 +134,9 @@ func (b *Bot) onDuelPick(c tele.Context) error {
 // right below already says it. A button whose message must survive
 // (a result post) passes placeNew. posted=false with a nil error means a guard
 // already replied (e.g. a game is pending).
-func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficulty string, place placement) (posted bool, err error) {
+//
+// bestOf 3 or 5 makes the challenge a series: the game is its first one.
+func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficulty string, bestOf int, place placement) (posted bool, err error) {
 	room, err := b.createGameRoomAt(c, difficulty, "hardcore", "duel:"+difficulty, place)
 	if err != nil {
 		return false, b.fail(c, "issueDuel.room", err)
@@ -130,6 +148,16 @@ func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficul
 	if err := b.st.SetDuelTarget(room.gameID, target.ID); err != nil {
 		return false, b.fail(c, "issueDuel.settarget", err)
 	}
+	if bestOf > 1 {
+		sid, serr := b.st.CreateSeries(c.Chat().ID, caller.ID, target.ID, bestOf, difficulty)
+		if serr == nil {
+			serr = b.st.SetGameSeries(room.gameID, sid)
+		}
+		if serr != nil {
+			log.Printf("issueDuel.series: %v", serr) // falls back to a single duel
+			bestOf = 1
+		}
+	}
 	nickWarn := !caller.UsdokuNick.Valid || caller.UsdokuNick.String == "" ||
 		!target.UsdokuNick.Valid || target.UsdokuNick.String == ""
 	ratC, ratT, gainC, gainT, serr := b.duelStakes(c.Chat().ID, caller.ID, target.ID)
@@ -139,7 +167,7 @@ func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficul
 	}
 	_ = c.Respond()
 	chatID := c.Chat().ID
-	sent, err := b.tb.Send(c.Chat(), duelChallengeText(caller.Name, *target, difficulty, room.code, nickWarn,
+	sent, err := b.tb.Send(c.Chat(), duelChallengeText(caller.Name, *target, difficulty, room.code, bestOf, nickWarn,
 		ratC, ratT, gainC, gainT), duelKeyboard(room.gameID))
 	if err != nil {
 		return false, b.fail(c, "issueDuel.send", err)
@@ -162,7 +190,8 @@ func (b *Bot) issueDuel(c tele.Context, caller, target *storage.Player, difficul
 }
 
 // onRematch challenges the other duelist again, straight from a duel result
-// post. Payload: "<difficulty>:<playerAID>:<playerBID>"; only those two may press.
+// post. Payload: "<difficulty>:<playerAID>:<playerBID>[:<bestOf>]"; only those
+// two may press. A series rematch is a series of the same format.
 func (b *Bot) onRematch(c tele.Context) error {
 	difficulty, aID, bID := parseRematch(c.Data())
 	if difficulty == "" {
@@ -192,7 +221,7 @@ func (b *Bot) onRematch(c tele.Context) error {
 	}
 	b.logTap(c, tapRematch, 0)
 	// The result post stays as it is: the rematch notice and challenge are new messages.
-	_, err = b.issueDuel(c, caller, target, difficulty, placeNew)
+	_, err = b.issueDuel(c, caller, target, difficulty, rematchBestOf(c.Data()), placeNew)
 	return err
 }
 
@@ -246,7 +275,7 @@ func (b *Bot) onAccept(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
 	_ = c.Respond()
-	text := duelAcceptText(*target, game.UsdokuCode.String)
+	text := duelAcceptText(*target, game.UsdokuCode.String) + b.seriesAcceptLine(gameID)
 	kb := recordKeyboard(gameID)
 	err = c.Edit(text, kb)
 	if err == nil && game.UsdokuCode.String != "" {
@@ -280,6 +309,7 @@ func (b *Bot) onRevoke(c tele.Context) error {
 	if !won { // answered or expired a moment ago
 		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
+	b.cancelSeries(gameID)
 	_ = c.Respond(&tele.CallbackResponse{Text: "Вызов отозван"})
 	return c.Edit(duelRevokedText, closedDuelKeyboard(gameID, duelRevokedText))
 }
@@ -299,6 +329,7 @@ func (b *Bot) expireStaleDuels() {
 		log.Printf("expireStaleDuels: %v", err)
 	}
 	for _, d := range expired {
+		b.cancelSeries(d.GameID)
 		challenger, target := "?", "?"
 		if d.CreatedBy.Valid {
 			if p, perr := b.st.PlayerByTg(d.ChatID, d.CreatedBy.Int64); perr == nil && p != nil {
@@ -374,6 +405,7 @@ func (b *Bot) onDecline(c tele.Context) error {
 	if !won { // accepted, revoked or expired a moment ago
 		return c.Respond(&tele.CallbackResponse{Text: closedChallengeToast})
 	}
+	b.cancelSeries(gameID)
 	_ = c.Respond()
 	err = c.Edit(duelDeclineText(*target))
 	b.replyToChallenger(c, game, duelDeclineReplyText)
@@ -429,11 +461,18 @@ func (b *Bot) autoAcceptDuel(gameID, targetID int64) {
 	if err != nil || perr != nil || game == nil || target == nil || !game.PostMsgID.Valid {
 		return
 	}
-	text := duelAcceptText(*target, game.UsdokuCode.String)
+	text := duelAcceptText(*target, game.UsdokuCode.String) + b.seriesAcceptLine(gameID)
 	if err := b.editPost(game.ChatID, game.PostMsgID.Int64, text, recordKeyboard(gameID)); err != nil {
 		log.Printf("autoAcceptDuel.edit %d: %v", gameID, err)
 		return
 	}
 	b.saveCard(gameID, game.ChatID, game.PostMsgID.Int64, text, "")
 	log.Printf("duel %d accepted by joining the room", gameID)
+}
+
+// cancelSeries closes the series of a challenge that was never played.
+func (b *Bot) cancelSeries(gameID int64) {
+	if err := b.st.CancelSeriesOfGame(gameID); err != nil {
+		log.Printf("cancelSeries %d: %v", gameID, err)
+	}
 }

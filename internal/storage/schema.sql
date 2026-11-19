@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS games (
     post_msg_id  INTEGER,                              -- the game's chat card message
     post_text    TEXT,                                 -- card base text (live lines append to it)
     post_kind    TEXT,                                 -- '' | invite
-    puzzle       TEXT                                  -- starting grid, 81 digits row by row, 0 = empty
+    puzzle       TEXT,                                 -- starting grid, 81 digits row by row, 0 = empty
+    series_id    INTEGER                               -- duel_series.id for a game of a best-of duel
 );
 
 CREATE TABLE IF NOT EXISTS game_results (
@@ -99,3 +100,17 @@ CREATE TABLE IF NOT EXISTS bot_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_chat_kind ON bot_events(chat_id, kind);
+
+-- A best-of duel (bo3/bo5): its games are ordinary duel games pointing here
+-- through games.series_id.
+CREATE TABLE IF NOT EXISTS duel_series (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id    INTEGER NOT NULL,
+    a_id       INTEGER NOT NULL,                       -- challenger player id
+    b_id       INTEGER NOT NULL,                       -- target player id
+    best_of    INTEGER NOT NULL,
+    difficulty TEXT    NOT NULL,
+    status     TEXT    NOT NULL DEFAULT 'active',      -- active | done | abandoned | cancelled
+    winner_id  INTEGER,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);

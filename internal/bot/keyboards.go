@@ -37,11 +37,11 @@ const (
 	cbQMe     = "qme" // legacy: old welcome messages still carry it
 	cbQHelp   = "qhelp"
 
-	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>:<ownerTgID>"
+	cbDuelPick   = "duelpick"   // payload: "<difficulty>:<targetPlayerID>:<ownerTgID>[:<bestOf>]"
 	cbDuelCancel = "duelcancel" // payload: "<ownerTgID>", dismiss the opponent picker
 	cbAccept     = "accept"     // payload: "<gameID>"
 	cbDecline    = "decline"    // payload: "<gameID>"
-	cbRematch    = "rematch"    // payload: "<difficulty>:<playerAID>:<playerBID>", rematch from a duel result
+	cbRematch    = "rematch"    // payload: "<difficulty>:<playerAID>:<playerBID>[:<bestOf>]", rematch from a duel result
 	cbRevoke     = "revoke"     // payload: "<gameID>", challenger withdraws an unanswered challenge
 
 	cbJoinIn = "joinin" // payload: "<gameID>"
@@ -282,10 +282,24 @@ func notCountedKeyboard(gameID int64) *tele.ReplyMarkup {
 // ownerTg (the opener's Telegram id) rides in every payload so only the opener
 // can use or dismiss the picker.
 func duelPickKeyboard(difficulty string, players []storage.Player, ownerTg int64) *tele.ReplyMarkup {
+	return duelPickKeyboardBo(difficulty, players, ownerTg, 0)
+}
+
+// duelPickPrompt heads the opponent picker.
+const duelPickPrompt = "⚔️ Кого вызываешь на дуэль?"
+
+// duelPickKeyboardBo is duelPickKeyboard with the format already chosen
+// (/duel bo3): bestOf > 0 rides in the payload and the pick issues the
+// challenge at once; 0 asks for the format after the pick.
+func duelPickKeyboardBo(difficulty string, players []storage.Player, ownerTg int64, bestOf int) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	var btns []tele.Btn
 	for _, p := range players {
-		btns = append(btns, m.Data(p.Name, cbDuelPick, fmt.Sprintf("%s:%d:%d", difficulty, p.ID, ownerTg)))
+		data := fmt.Sprintf("%s:%d:%d", difficulty, p.ID, ownerTg)
+		if bestOf > 0 {
+			data += fmt.Sprintf(":%d", bestOf)
+		}
+		btns = append(btns, m.Data(p.Name, cbDuelPick, data))
 	}
 	var rows []tele.Row
 	for i := 0; i < len(btns); i += 2 {
@@ -327,13 +341,27 @@ func closedDuelKeyboard(gameID int64, label string) *tele.ReplyMarkup {
 // rematchButton is the «Реванш» button for a finished duel between players a and
 // b (internal player ids). Either duelist may press it; the other becomes the target.
 func rematchButton(difficulty string, aID, bID int64) tele.Btn {
-	m := &tele.ReplyMarkup{}
-	return styled(m.Data("🔁 Реванш", cbRematch, fmt.Sprintf("%s:%d:%d", difficulty, aID, bID)), stylePrimary)
+	return rematchButtonBo(difficulty, aID, bID, 1)
 }
 
-// parseRematch splits a cbRematch payload "<difficulty>:<playerAID>:<playerBID>".
+// rematchButtonBo is rematchButton for a series: bestOf 3 or 5 rides as a 4th
+// payload part, so the rematch is a series of the same format.
+func rematchButtonBo(difficulty string, aID, bID int64, bestOf int) tele.Btn {
+	m := &tele.ReplyMarkup{}
+	data := fmt.Sprintf("%s:%d:%d", difficulty, aID, bID)
+	if bestOf == 3 || bestOf == 5 {
+		data += fmt.Sprintf(":%d", bestOf)
+	}
+	return styled(m.Data("🔁 Реванш", cbRematch, data), stylePrimary)
+}
+
+// parseRematch splits a cbRematch payload "<difficulty>:<playerAID>:<playerBID>[:<bestOf>]"
+// (bestOf 3 or 5; read it with rematchBestOf).
 func parseRematch(s string) (difficulty string, aID, bID int64) {
 	parts := strings.Split(s, ":")
+	if len(parts) == 4 && (parts[3] == "3" || parts[3] == "5") {
+		parts = parts[:3]
+	}
 	if len(parts) != 3 || !validDifficulty[parts[0]] {
 		return "", 0, 0
 	}

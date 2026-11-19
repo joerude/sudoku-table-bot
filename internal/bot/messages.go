@@ -32,6 +32,7 @@ const helpText = `🧩 <b>Sudoku League</b> - учёт ваших игр в су
 /result - записать результат вручную, если авто-учёт не сработал
 /code &lt;КОД&gt; - привязать вручную созданную usdoku-комнату к игре
 /newgame, /duel, /invite - то же, что /play, но командой
+/duel bo3, /duel bo5 - серия до 2 или до 3 побед
 /status, /me, /speed, /duels, /history - то же, что вкладки /stats
 /season [N] - сводка сезона, в том числе архивного
 /board [КОД] - стартовая доска последней игры или комнаты по коду
@@ -867,32 +868,10 @@ func duelDetailLines(sp *storage.SpeedStat, s domain.Streak) string {
 func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, upsetGain int, phrase string) string {
 	var b strings.Builder
 	b.WriteString("⚔️ <b>Дуэль</b>\n")
-	if len(rows) == 0 {
-		b.WriteString("Никто не дошел до финиша.")
+	if !writeDuelGame(&b, rows) {
 		return b.String()
 	}
 	w := rows[0]
-	if w.Rank == 0 {
-		b.WriteString("Никто не дошел до финиша.")
-		return b.String()
-	}
-	fmt.Fprintf(&b, "🏆 Победа: <b>%s</b>", esc(w.Name))
-	if len(rows) >= 2 {
-		if rows[1].Rank == 0 {
-			fmt.Fprintf(&b, "\n▫️ %s · без финиша", esc(rows[1].Name))
-		}
-	}
-	if w.Duration > 0 {
-		fmt.Fprintf(&b, "\n⏱ %s", fmtDuration(w.Duration))
-		if len(rows) >= 2 && rows[1].Rank != 0 && rows[1].Duration > 0 {
-			delta := rows[1].Duration - w.Duration
-			sign := "+"
-			if delta < 0 {
-				sign, delta = "-", -delta
-			}
-			fmt.Fprintf(&b, " против %s (%s%s)", fmtDuration(rows[1].Duration), sign, fmtDuration(delta))
-		}
-	}
 	if phrase != "" {
 		b.WriteString("\n\n" + phraseLine(phrase))
 	}
@@ -906,12 +885,40 @@ func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h boo
 	return b.String()
 }
 
+// writeDuelGame writes a finished duel game: the winner, a DNF loser and the
+// times. false (after «Никто не дошел до финиша.») when nobody finished.
+func writeDuelGame(b *strings.Builder, rows []storage.ResultRow) bool {
+	if len(rows) == 0 || rows[0].Rank == 0 {
+		b.WriteString("Никто не дошел до финиша.")
+		return false
+	}
+	w := rows[0]
+	fmt.Fprintf(b, "🏆 Победа: <b>%s</b>", esc(w.Name))
+	if len(rows) >= 2 {
+		if rows[1].Rank == 0 {
+			fmt.Fprintf(b, "\n▫️ %s · без финиша", esc(rows[1].Name))
+		}
+	}
+	if w.Duration > 0 {
+		fmt.Fprintf(b, "\n⏱ %s", fmtDuration(w.Duration))
+		if len(rows) >= 2 && rows[1].Rank != 0 && rows[1].Duration > 0 {
+			delta := rows[1].Duration - w.Duration
+			sign := "+"
+			if delta < 0 {
+				sign, delta = "-", -delta
+			}
+			fmt.Fprintf(b, " против %s (%s%s)", fmtDuration(rows[1].Duration), sign, fmtDuration(delta))
+		}
+	}
+	return true
+}
+
 // duelsText renders the /duels leaderboard (all-time duel records) with per-pair
 // head-to-head, duel solve-time, current win-streak markers, challenge
 // behaviour, and the recent log. streaks is keyed by player id.
 func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []storage.SpeedRow,
 	streaks map[int64]domain.Streak, recent []storage.DuelMatch,
-	challenges []storage.ChallengeStat, tz string) string {
+	challenges []storage.ChallengeStat, series []storage.H2HPair, tz string) string {
 	if len(rows) == 0 && len(challenges) == 0 {
 		return "⚔️ <b>Дуэли</b>\nЕщё не было дуэлей. Вызови кого-нибудь: /duel"
 	}
@@ -937,6 +944,12 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 	if len(h2h) > 0 {
 		b.WriteString("\n<b>Личные встречи</b>\n")
 		for _, p := range h2h {
+			fmt.Fprintf(&b, "%s <b>%d:%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
+		}
+	}
+	if len(series) > 0 {
+		b.WriteString("\n<b>Серии</b>\n")
+		for _, p := range series {
 			fmt.Fprintf(&b, "%s <b>%d:%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
 		}
 	}
@@ -1201,10 +1214,15 @@ func parseDuelPick(s string) (difficulty string, targetID, ownerTg int64) {
 // nickWarn appends a note when a participant has no usdoku nick (no auto-record).
 // ratC/ratT are the players' current ratings and gainC/gainT what a win would
 // pay each; ratC <= 0 hides the stakes line.
-func duelChallengeText(challenger string, target storage.Player, difficulty, code string, nickWarn bool, ratC, ratT, gainC, gainT int) string {
+func duelChallengeText(challenger string, target storage.Player, difficulty, code string, bestOf int, nickWarn bool, ratC, ratT, gainC, gainT int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "⚔️ <b>Вызов на дуэль</b> · %s\n%s → %s\n",
-		titleCase(difficulty), esc(challenger), mention(target))
+	title, per := "Вызов на дуэль", "за победу"
+	if bestOf > 1 {
+		title = "Вызов на серию " + seriesFormat(bestOf)
+		per = "за партию"
+	}
+	fmt.Fprintf(&b, "⚔️ <b>%s</b> · %s\n%s → %s\n",
+		title, titleCase(difficulty), esc(challenger), mention(target))
 	if code != "" {
 		fmt.Fprintf(&b, "Комната: https://www.usdoku.com/%s\n", code)
 	} else {
@@ -1212,8 +1230,8 @@ func duelChallengeText(challenger string, target storage.Player, difficulty, cod
 			"и пришлите код: <code>/code LOVI</code>\n", usdokuCreateURL)
 	}
 	if ratC > 0 {
-		fmt.Fprintf(&b, "\n📈 %s %d, за победу +%d\n📈 %s %d, за победу +%d\n",
-			esc(challenger), ratC, gainC, esc(target.Name), ratT, gainT)
+		fmt.Fprintf(&b, "\n📈 %s %d, %s +%d\n📈 %s %d, %s +%d\n",
+			esc(challenger), ratC, per, gainC, esc(target.Name), ratT, per, gainT)
 	}
 	fmt.Fprintf(&b, "\n⏳ Вызов сгорит через %d мин", duelChallengeTTLMinutes)
 	if nickWarn {

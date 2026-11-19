@@ -187,6 +187,8 @@ func (b *Bot) routes() {
 	b.tb.Handle("/duel", b.onDuel)
 	b.tb.Handle(&tele.Btn{Unique: cbDuelPick}, b.onDuelPick)
 	b.tb.Handle(&tele.Btn{Unique: cbDuelCancel}, b.onDuelCancel)
+	b.tb.Handle(&tele.Btn{Unique: cbDuelBack}, b.onDuelBack)
+	b.tb.Handle(&tele.Btn{Unique: cbSeriesNext}, b.onSeriesNext)
 	b.tb.Handle(&tele.Btn{Unique: cbAccept}, b.onAccept)
 	b.tb.Handle(&tele.Btn{Unique: cbDecline}, b.onDecline)
 	b.tb.Handle(&tele.Btn{Unique: cbRevoke}, b.onRevoke)

@@ -112,6 +112,8 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE players ADD COLUMN phrase TEXT`,
 		// /phrase gif: Telegram file_id of the GIF the bot sends after a win.
 		`ALTER TABLE players ADD COLUMN phrase_gif TEXT`,
+		// Best-of duels: the series a duel game belongs to (NULL = single duel).
+		`ALTER TABLE games ADD COLUMN series_id INTEGER`,
 	} {
 		_, _ = db.Exec(stmt)
 	}

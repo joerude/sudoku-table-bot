@@ -31,6 +31,8 @@ func (b *Bot) runReminders() {
 		{"remindWeekly", b.remindWeekly},
 		{"closeExpiredSeasons", b.closeExpiredSeasons},
 		{"expireStaleDuels", b.expireStaleDuels},
+		{"expireStaleSeriesGames", b.expireStaleSeriesGames},
+		{"abandonStaleSeries", b.abandonStaleSeries},
 		{"remindMeets", b.remindMeets},
 	}
 	for range ticker.C {

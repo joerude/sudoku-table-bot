@@ -337,8 +337,11 @@ func (s *Store) ReopenGame(gameID int64) error {
 // SoftDeleteGame marks a game as deleted so it stops counting toward standings,
 // but keeps the row and its results so it can be restored.
 func (s *Store) SoftDeleteGame(gameID int64) error {
-	_, err := s.db.Exec(`UPDATE games SET deleted=1 WHERE id=?`, gameID)
-	return err
+	if _, err := s.db.Exec(`UPDATE games SET deleted=1 WHERE id=?`, gameID); err != nil {
+		return err
+	}
+	s.settleSeriesOf(gameID)
+	return nil
 }
 
 // RestoreGame un-deletes a previously soft-deleted game; a game that is not
@@ -347,6 +350,11 @@ func (s *Store) SoftDeleteGame(gameID int64) error {
 // (the league holds one at a time): restored=false then, and nothing changes.
 // Checked in the same statement, so two restores cannot both win.
 func (s *Store) RestoreGame(gameID int64) (restored bool, err error) {
+	defer func() {
+		if restored {
+			s.settleSeriesOf(gameID)
+		}
+	}()
 	return s.execOne(
 		`UPDATE games SET deleted=0
 		 WHERE id=? AND deleted=1 AND (status<>'pending' OR NOT EXISTS (
