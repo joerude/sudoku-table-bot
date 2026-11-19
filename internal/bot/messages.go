@@ -861,13 +861,29 @@ func duelDetailLines(sp *storage.SpeedStat, s domain.Streak) string {
 	return b.String()
 }
 
+// duelNo is a duel's number: All among the chat's duels of all time, Season
+// among those of season SeasonNumber. Zero All = unknown, no number shown.
+type duelNo struct{ All, Season, SeasonNumber int }
+
+// seasonPart is " · сезон 6: №12", "" without a season number.
+func (n duelNo) seasonPart() string {
+	if n.Season == 0 || n.SeasonNumber == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" · сезон %d: №%d", n.SeasonNumber, n.Season)
+}
+
 // duelResultText renders a finished duel. rows are rank-ordered (winner first);
 // winnerWins/loserWins are the pair's head-to-head tally, shown only when h2h.
 // upsetGain > 0 means the winner entered the duel rated below the loser and the
 // win paid that many rating points; it adds the upset line.
-func duelResultText(rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, upsetGain int, phrase string) string {
+func duelResultText(no duelNo, rows []storage.ResultRow, winnerWins, loserWins int, h2h bool, upsetGain int, phrase string) string {
 	var b strings.Builder
-	b.WriteString("⚔️ <b>Дуэль</b>\n")
+	if no.All > 0 {
+		fmt.Fprintf(&b, "⚔️ <b>Дуэль №%d</b>%s\n", no.All, no.seasonPart())
+	} else {
+		b.WriteString("⚔️ <b>Дуэль</b>\n")
+	}
 	if !writeDuelGame(&b, rows) {
 		return b.String()
 	}

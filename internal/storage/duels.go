@@ -435,3 +435,17 @@ func (s *Store) HeadToHead(chatID, aID, bID int64) (aWins, bWins int, err error)
 		aID, bID, chatID, aID, bID).Scan(&aWins, &bWins)
 	return aWins, bWins, err
 }
+
+// DuelNumber numbers a completed duel: its place among the chat's completed
+// duels of all time and among those of seasonID. Duels are ordered by id, not
+// completed_at, so reopening a result for editing keeps its number. Zeros when
+// gameID is not a completed duel of the chat.
+func (s *Store) DuelNumber(chatID, seasonID, gameID int64) (all, season int, err error) {
+	err = s.db.QueryRow(
+		`SELECT COUNT(*), COALESCE(SUM(g.season_id = ?), 0) FROM games g
+		 WHERE g.chat_id = ? AND g.id <= ? AND `+sqlDuelGames+`
+		   AND EXISTS (SELECT 1 FROM games t WHERE t.id = ? AND t.chat_id = g.chat_id
+		               AND t.status = 'completed' AND t.deleted = 0 AND t.duel_target_id IS NOT NULL)`,
+		seasonID, chatID, gameID, gameID).Scan(&all, &season)
+	return all, season, err
+}

@@ -91,3 +91,12 @@ func TestSeriesResultText(t *testing.T) {
 		t.Errorf("void game line missing\ngot: %s", void)
 	}
 }
+
+func TestSeriesResultTextDuelNumber(t *testing.T) {
+	rows := []storage.ResultRow{{Rank: 1, Name: "Арсен"}, {Rank: 2, Name: "Тимур"}}
+	out := seriesResultText(rows, seriesView{BestOf: 3, GameNo: 2, AName: "Арсен", BName: "Тимур", AWins: 2,
+		No: duelNo{All: 48, Season: 13, SeasonNumber: 6}}, 0, "")
+	if !strings.Contains(out, "· партия 2\nДуэль №48 · сезон 6: №13\n🏆 Победа") {
+		t.Errorf("duel number line missing\ngot: %s", out)
+	}
+}

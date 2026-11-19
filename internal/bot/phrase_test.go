@@ -44,7 +44,7 @@ func TestResultTextPhrase(t *testing.T) {
 
 func TestDuelResultTextPhrase(t *testing.T) {
 	rows := []storage.ResultRow{{Rank: 1, Name: "Вова", Duration: 300}, {Rank: 2, Name: "Дима"}}
-	out := duelResultText(rows, 3, 1, true, 0, "Нагнул тебя брат")
+	out := duelResultText(duelNo{}, rows, 3, 1, true, 0, "Нагнул тебя брат")
 	phrase := strings.Index(out, "💬 <b>«Нагнул тебя брат»</b>")
 	if phrase < 0 || phrase > strings.Index(out, "Личный счёт") {
 		t.Errorf("want the phrase above the head-to-head line\ngot: %s", out)

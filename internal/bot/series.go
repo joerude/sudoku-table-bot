@@ -113,6 +113,7 @@ type seriesView struct {
 	Done         bool     // this game decided the series
 	H2H          bool     // HA/HB are set: finished series between the two, a's side first
 	HA, HB       int
+	No           duelNo // this game's duel number
 }
 
 // seriesScoreLine: leader first and bold, "A 1:1 B" plain while level.
@@ -131,6 +132,9 @@ func seriesScoreLine(aName, bName string, aWins, bWins int) string {
 func seriesResultText(rows []storage.ResultRow, v seriesView, upsetGain int, phrase string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "⚔️ <b>%s</b> · партия %d\n", seriesTitle(v.BestOf), v.GameNo)
+	if v.No.All > 0 {
+		fmt.Fprintf(&b, "Дуэль №%d%s\n", v.No.All, v.No.seasonPart())
+	}
 	if writeDuelGame(&b, rows) {
 		if phrase != "" {
 			b.WriteString("\n\n" + phraseLine(phrase))
@@ -202,7 +206,7 @@ func (b *Bot) seriesAcceptLine(gameID int64) string {
 
 // seriesResult renders a series game's result; false for a single duel, a
 // series that was abandoned or cancelled, or a game no longer in it.
-func (b *Bot) seriesResult(game *storage.Game, rows []storage.ResultRow, upset int, phrase string) (string, bool) {
+func (b *Bot) seriesResult(game *storage.Game, rows []storage.ResultRow, no duelNo, upset int, phrase string) (string, bool) {
 	se, err := b.st.SeriesOfGame(game.ID)
 	if err != nil || se == nil {
 		if err != nil {
@@ -226,6 +230,7 @@ func (b *Bot) seriesResult(game *storage.Game, rows []storage.ResultRow, upset i
 	if !ok {
 		return "", false
 	}
+	v.No = no
 	if v.Done {
 		winner, loser := se.AID, se.BID
 		if v.BWins > v.AWins {

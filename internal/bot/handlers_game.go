@@ -989,18 +989,36 @@ func (b *Bot) duelResult(game *storage.Game, rows []storage.ResultRow) string {
 	if len(rows) >= 2 && rows[0].Rank == 1 {
 		upset = b.duelUpsetGain(game, rows[0].PlayerID, rows[1].PlayerID)
 	}
-	if text, ok := b.seriesResult(game, rows, upset, phrase); ok {
+	no := b.duelNumber(game)
+	if text, ok := b.seriesResult(game, rows, no, upset, phrase); ok {
 		return text
 	}
 	if len(rows) < 2 {
-		return duelResultText(rows, 0, 0, false, 0, phrase)
+		return duelResultText(no, rows, 0, 0, false, 0, phrase)
 	}
 	wWins, lWins, err := b.st.HeadToHead(game.ChatID, rows[0].PlayerID, rows[1].PlayerID)
 	if err != nil {
 		log.Printf("duelResult.h2h: %v", err)
-		return duelResultText(rows, 0, 0, false, upset, phrase)
+		return duelResultText(no, rows, 0, 0, false, upset, phrase)
 	}
-	return duelResultText(rows, wWins, lWins, true, upset, phrase)
+	return duelResultText(no, rows, wWins, lWins, true, upset, phrase)
+}
+
+// duelNumber numbers a finished duel for its result post; zero on error, so
+// the post goes out without a number rather than not at all.
+func (b *Bot) duelNumber(game *storage.Game) duelNo {
+	all, inSeason, err := b.st.DuelNumber(game.ChatID, game.SeasonID, game.ID)
+	if err != nil {
+		log.Printf("duelNumber: %v", err)
+		return duelNo{}
+	}
+	no := duelNo{All: all, Season: inSeason}
+	if se, err := b.st.SeasonByID(game.SeasonID); err != nil {
+		log.Printf("duelNumber.season: %v", err)
+	} else if se != nil {
+		no.SeasonNumber = se.Number
+	}
+	return no
 }
 
 // onDoneDNF finalises the game, recording every remaining active player as a

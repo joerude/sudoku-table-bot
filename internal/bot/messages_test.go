@@ -104,7 +104,7 @@ func TestDuelResultText(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 252},
 		{Rank: 2, Name: "Petya"},
 	}
-	out := duelResultText(rows, 4, 2, true, 0, "")
+	out := duelResultText(duelNo{}, rows, 4, 2, true, 0, "")
 	for _, want := range []string{"Победа: <b>Vasya</b>", "Petya", "4:12", "Личный счёт", "<b>Vasya</b> 4:2 <b>Petya</b>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText: want %q in output\ngot: %s", want, out)
@@ -117,7 +117,7 @@ func TestDuelResultTextShowsLoserTime(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 264}, // 4:24
 		{Rank: 2, Name: "Petya", Duration: 279}, // 4:39
 	}
-	out := duelResultText(rows, 0, 0, false, 0, "")
+	out := duelResultText(duelNo{}, rows, 0, 0, false, 0, "")
 	for _, want := range []string{"4:24", "против 4:39", "+0:15"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText loser time: want %q in output\ngot: %s", want, out)
@@ -130,7 +130,7 @@ func TestDuelResultTextHidesLoserTimeWhenUnknown(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 264},
 		{Rank: 2, Name: "Petya"}, // Duration 0: manual entry, no solve time
 	}
-	out := duelResultText(rows, 0, 0, false, 0, "")
+	out := duelResultText(duelNo{}, rows, 0, 0, false, 0, "")
 	if strings.Contains(out, "против") {
 		t.Errorf("duelResultText: loser has no duration, must not show 'против'\ngot: %s", out)
 	}
@@ -141,7 +141,7 @@ func TestDuelResultTextUpset(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Duration: 252},
 		{Rank: 2, Name: "Petya"},
 	}
-	out := duelResultText(rows, 1, 0, true, 35, "")
+	out := duelResultText(duelNo{}, rows, 1, 0, true, 35, "")
 	for _, want := range []string{"😮 Победа над фаворитом", "<b>Vasya</b> +35"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelResultText upset: want %q in output\ngot: %s", want, out)
@@ -150,13 +150,13 @@ func TestDuelResultTextUpset(t *testing.T) {
 	if strings.Contains(out, "Рейтинг") || strings.Contains(out, "обыграл фаворита") {
 		t.Errorf("duelResultText: no own rating line / masculine wording\ngot: %s", out)
 	}
-	if plain := duelResultText(rows, 1, 0, true, 0, ""); strings.Contains(plain, "Победа над фаворитом") {
+	if plain := duelResultText(duelNo{}, rows, 1, 0, true, 0, ""); strings.Contains(plain, "Победа над фаворитом") {
 		t.Errorf("duelResultText upset=0: should NOT contain 'Победа над фаворитом'\ngot: %s", plain)
 	}
 }
 
 func TestDuelResultTextEmpty(t *testing.T) {
-	out := duelResultText(nil, 0, 0, false, 0, "")
+	out := duelResultText(duelNo{}, nil, 0, 0, false, 0, "")
 	if !strings.Contains(out, "Никто не дошел до финиша") {
 		t.Errorf("duelResultText empty: want 'Никто не дошел до финиша' in output\ngot: %s", out)
 	}
@@ -423,7 +423,7 @@ func TestDuelResultTextAllDNF(t *testing.T) {
 		{Rank: 0, Name: "Vasya"},
 		{Rank: 0, Name: "Petya"},
 	}
-	out := duelResultText(rows, 0, 0, false, 0, "")
+	out := duelResultText(duelNo{}, rows, 0, 0, false, 0, "")
 	if !strings.Contains(out, "Никто не дошел до финиша") {
 		t.Errorf("duelResultText all-DNF: want 'Никто не дошел до финиша' in output\ngot: %s", out)
 	}
@@ -437,7 +437,7 @@ func TestDuelResultTextWithDNF(t *testing.T) {
 		{Rank: 1, Name: "Vasya", Points: 3, Duration: 180},
 		{Rank: 0, Name: "Petya"},
 	}
-	out := duelResultText(rows, 0, 0, false, 0, "")
+	out := duelResultText(duelNo{}, rows, 0, 0, false, 0, "")
 	if !strings.Contains(out, "Победа: <b>Vasya</b>") {
 		t.Errorf("duelResultText DNF: want winner info\ngot: %s", out)
 	}
@@ -1456,5 +1456,16 @@ func TestSeasonTableBlock(t *testing.T) {
 	}
 	if got := seasonTableBlock([]storage.Standing{{Name: "Аня"}}, 100); got != "" {
 		t.Errorf("seasonTableBlock with no points = %q, want empty", got)
+	}
+}
+
+func TestDuelResultTextNumber(t *testing.T) {
+	rows := []storage.ResultRow{{Rank: 1, Name: "Vasya"}, {Rank: 2, Name: "Petya"}}
+	out := duelResultText(duelNo{All: 47, Season: 12, SeasonNumber: 6}, rows, 0, 0, false, 0, "")
+	if !strings.HasPrefix(out, "⚔️ <b>Дуэль №47</b> · сезон 6: №12\n") {
+		t.Errorf("numbered header missing\ngot: %s", out)
+	}
+	if plain := duelResultText(duelNo{}, rows, 0, 0, false, 0, ""); !strings.HasPrefix(plain, "⚔️ <b>Дуэль</b>\n") {
+		t.Errorf("unknown number must keep the plain header\ngot: %s", plain)
 	}
 }
