@@ -32,6 +32,7 @@ var features = []feature{
 	{Key: featSeasonPic, Label: "Картинка гонки к постам о конце сезона"},
 	{Key: featPhrase, Label: "Фраза победителя под результатом"},
 	{Key: featCoop, Label: "Общая цель сезона со звёздами"},
+	{Key: featLobby, Label: "Кого ждём в комнате до старта"},
 }
 
 // featureByKey finds a registered mechanic by its /settings key.
