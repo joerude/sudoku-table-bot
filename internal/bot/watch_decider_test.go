@@ -121,3 +121,18 @@ func TestRacing(t *testing.T) {
 		t.Errorf("racing: lobby %v, live %v, over %v; want false, true, false", racing(lobby), racing(live), racing(over))
 	}
 }
+
+func TestDuelistFinished(t *testing.T) {
+	ids := map[string]int64{"ann": 1, "bob": 2, "guest": 9}
+	idOf := func(n string) int64 { return ids[n] }
+	pair := []int64{1, 2}
+	if !duelistFinished([]string{"bob"}, pair, idOf) {
+		t.Fatal("a duelist finished → the duel is decided")
+	}
+	if duelistFinished([]string{"guest", "nobody"}, pair, idOf) {
+		t.Fatal("only a guest and an unknown nick finished → keep waiting")
+	}
+	if duelistFinished([]string{"ann"}, nil, idOf) {
+		t.Fatal("not a duel → never decided here")
+	}
+}

@@ -80,7 +80,8 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 				go b.postBoard(g)
 			}
 			status = info.Info.Status
-			if state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished()) {
+			settled := state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished())
+			if settled || b.duelDecided(g, info) {
 				if b.autoRecord(g, info) {
 					return
 				}
@@ -108,6 +109,46 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 		}
 		time.Sleep(interval)
 	}
+}
+
+// duelDecided reports whether one of the two duelists has finished: a duel has
+// one winner, so there is nobody left to wait for (the other one is the loser
+// either way, and latefinish still tells the chat if they solve it later).
+func (b *Bot) duelDecided(g *storage.Game, info *usdoku.GameInfo) bool {
+	order := info.FinishOrder()
+	if len(order) == 0 {
+		return false
+	}
+	pair, err := b.st.DuelPlayerIDs(g.ID)
+	if err != nil {
+		log.Printf("duelDecided.pair: %v", err)
+		return false
+	}
+	nicks := make([]string, len(order))
+	for i, p := range order {
+		nicks[i] = p.Name
+	}
+	return duelistFinished(nicks, pair, func(nick string) int64 {
+		pl, _ := b.st.PlayerByNick(g.ChatID, nick)
+		if pl == nil {
+			return 0
+		}
+		return pl.ID
+	})
+}
+
+// duelistFinished reports whether any finisher is one of the duel pair; a
+// guest finishing in a duel room does not decide anything.
+func duelistFinished(finishers []string, pair []int64, idOf func(nick string) int64) bool {
+	if len(pair) != 2 {
+		return false
+	}
+	for _, nick := range finishers {
+		if id := idOf(nick); id != 0 && (id == pair[0] || id == pair[1]) {
+			return true
+		}
+	}
+	return false
 }
 
 // racing reports whether a round is under way with somebody still solving:
