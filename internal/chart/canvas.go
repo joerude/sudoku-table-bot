@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -190,6 +192,19 @@ func (c *canvas) png() ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// drawable keeps the runes of s that f has a glyph for (gofont has no emoji)
+// and squeezes the gaps left behind into single spaces.
+func drawable(f *opentype.Font, s string) string {
+	var buf sfnt.Buffer
+	out := strings.Map(func(r rune) rune {
+		if i, err := f.GlyphIndex(&buf, r); err != nil || i == 0 {
+			return -1
+		}
+		return r
+	}, s)
+	return strings.Join(strings.Fields(out), " ")
 }
 
 // clip cuts s to at most n runes, marking a cut with "…".

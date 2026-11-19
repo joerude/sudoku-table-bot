@@ -245,6 +245,7 @@ func (b *Bot) routes() {
 	b.tb.Handle(tele.OnAddedToGroup, b.onAddedToGroup)
 	b.tb.Handle(tele.OnText, b.onText)
 	b.tb.Handle(tele.OnDocument, b.onDocument)
+	b.tb.Handle(tele.OnAnimation, b.onAnimation)
 }
 
 // ensure guarantees a chat row + active season exist, returning the season. A

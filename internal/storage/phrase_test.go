@@ -23,3 +23,24 @@ func TestSetPhrase(t *testing.T) {
 		t.Errorf("Phrase = %q after clear, want empty", got)
 	}
 }
+
+func TestSetPhraseGifKeepsPhrase(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-312)
+	st.EnsureChat(chat, 1)
+	p, _, _ := st.RegisterPlayer(chat, 1, "Вова")
+	_ = st.SetPhrase(p.ID, "Нагнул тебя брат")
+	if err := st.SetPhraseGif(p.ID, "CgACAgIAAxkB"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.PhraseGif(p.ID); got != "CgACAgIAAxkB" {
+		t.Errorf("PhraseGif = %q after set", got)
+	}
+	_ = st.SetPhraseGif(p.ID, "")
+	if got, _ := st.PhraseGif(p.ID); got != "" {
+		t.Errorf("PhraseGif = %q after clear, want empty", got)
+	}
+	if got, _ := st.Phrase(p.ID); got != "Нагнул тебя брат" {
+		t.Errorf("Phrase = %q, the GIF must not touch it", got)
+	}
+}

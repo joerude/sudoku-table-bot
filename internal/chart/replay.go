@@ -9,7 +9,12 @@ type Replay struct {
 	Open   int    // cells to solve: the finish line
 	Step   int    // seconds per x unit, a divisor of 60
 	Series []Series
+	Quote  string // the winner's /phrase, drawn under the title ("" = none)
+	By     string // the winner's name, after the quote
 }
+
+// quoteRunes caps the quote line: the /phrase limit plus room for the name.
+const quoteRunes = 80
 
 // RenderReplay draws r as a PNG.
 func RenderReplay(r Replay) ([]byte, error) {
@@ -29,8 +34,17 @@ func RenderReplay(r Replay) ([]byte, error) {
 	if r.Tag != "" {
 		c.textRight(fs.regular(22), raceW-40, 50, inkMuted, r.Tag)
 	}
-	drawLegend(c, fs, 40, 102, r.Series)
-	drawLines(c, fs, box{l: 76, t: 156, r: raceW - 230, b: raceH - 72}, lineSpec{
+	top := 0.0
+	if q := drawable(fontBd, r.Quote); q != "" {
+		q = "«" + q + "»"
+		if by := drawable(fontRegular, r.By); by != "" {
+			q += " · " + by
+		}
+		c.text(fs.regular(24), 40, 92, inkMuted, clip(q, quoteRunes))
+		top = 36
+	}
+	drawLegend(c, fs, 40, 102+top, r.Series)
+	drawLines(c, fs, box{l: 76, t: 156 + top, r: raceW - 230, b: raceH - 72}, lineSpec{
 		series:   r.Series,
 		xMax:     xMax,
 		goal:     r.Open,
