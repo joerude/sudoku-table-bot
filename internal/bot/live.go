@@ -214,6 +214,9 @@ func (b *Bot) liveUpdate(gameID int64, info *usdoku.GameInfo, prog *usdoku.Progr
 	if len(snap.Finishers) > 0 && len(snap.Solving) > 0 { // the only state that shows the line
 		snap.Coop = b.coopLive(game)
 	}
+	if info.Info.Status == "pending" && len(snap.Joined) > 0 && b.featureOn(game.ChatID, featLobby) {
+		snap.Waiting = lobbyWaitLine(snap.Joined, b.lobbyExpected(game))
+	}
 	offer, meetLine := b.meetView(game, info.Info.Status, len(info.Players))
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
