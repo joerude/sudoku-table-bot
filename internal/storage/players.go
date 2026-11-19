@@ -239,3 +239,20 @@ func (s *Store) PlayerNames(chatID int64) (map[int64]string, error) {
 func nullInt(v int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: v, Valid: true}
 }
+
+// SetPhraseGif stores the file_id of a player's /phrase gif; "" clears it.
+func (s *Store) SetPhraseGif(playerID int64, fileID string) error {
+	_, err := s.db.Exec(`UPDATE players SET phrase_gif=? WHERE id=?`, nullStr(fileID), playerID)
+	return err
+}
+
+// PhraseGif reads a player's /phrase gif file_id ("" when none is set or the
+// player is gone).
+func (s *Store) PhraseGif(playerID int64) (string, error) {
+	var id sql.NullString
+	err := s.db.QueryRow(`SELECT phrase_gif FROM players WHERE id=?`, playerID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id.String, err
+}

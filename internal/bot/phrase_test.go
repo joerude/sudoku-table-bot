@@ -50,3 +50,36 @@ func TestDuelResultTextPhrase(t *testing.T) {
 		t.Errorf("want the phrase above the head-to-head line\ngot: %s", out)
 	}
 }
+
+func TestPhraseGifArg(t *testing.T) {
+	for _, tc := range []struct {
+		arg       string
+		clear, ok bool
+	}{
+		{"gif", false, true},
+		{"GIF", false, true},
+		{"gif -", true, true},
+		{"gif party", false, false}, // a text phrase that starts with "gif"
+		{"Нагнул тебя брат", false, false},
+		{"", false, false},
+	} {
+		clear, ok := phraseGifArg(tc.arg)
+		if clear != tc.clear || ok != tc.ok {
+			t.Errorf("phraseGifArg(%q) = (%v, %v), want (%v, %v)", tc.arg, clear, ok, tc.clear, tc.ok)
+		}
+	}
+}
+
+func TestIsPhraseGifCaption(t *testing.T) {
+	for caption, want := range map[string]bool{
+		"/phrase gif":            true,
+		"/phrase@sudoku_bot gif": true,
+		"/phrase":                false,
+		"/phrase gif -":          false,
+		"смотри gif":             false,
+	} {
+		if got := isPhraseGifCaption(caption); got != want {
+			t.Errorf("isPhraseGifCaption(%q) = %v, want %v", caption, got, want)
+		}
+	}
+}

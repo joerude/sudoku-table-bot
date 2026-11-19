@@ -146,6 +146,24 @@ func TestRenderReplay(t *testing.T) {
 		}
 	}
 	save(t, "replay", b)
+
+	r.Quote, r.By = "Нагнул тебя брат 🔥", "mister"
+	if b, err = RenderReplay(r); err != nil {
+		t.Fatal(err)
+	}
+	save(t, "replay-quote", b)
+}
+
+func TestDrawable(t *testing.T) {
+	if err := loadFonts(); err != nil {
+		t.Fatal(err)
+	}
+	if got := drawable(fontBd, "Нагнул 🔥 тебя брат 💪"); got != "Нагнул тебя брат" {
+		t.Errorf("drawable = %q, want the emoji gone and the gaps squeezed", got)
+	}
+	if got := drawable(fontBd, "🔥🔥"); got != "" {
+		t.Errorf("drawable of emoji only = %q, want empty", got)
+	}
 }
 
 func TestRenderRaceNoGames(t *testing.T) {

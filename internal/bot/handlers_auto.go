@@ -311,6 +311,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 		posted = nil
 	}
 	b.closeCard(game.ID)
+	b.postWinnerGif(game, posted)
 	go b.postReplay(game, info, posted, takeReplay(game.ID))
 	go b.watchLateFinish(game, info, posted)
 	if seasonEnd != "" {

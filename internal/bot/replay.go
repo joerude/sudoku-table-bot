@@ -204,6 +204,9 @@ func (b *Bot) postReplay(game *storage.Game, info *usdoku.GameInfo, result *tele
 	if !ok {
 		return
 	}
+	if phrase := b.winnerPhrase(game.ChatID, rows); phrase != "" {
+		replay.Quote, replay.By = phrase, rows[0].Name
+	}
 	png, err := chart.RenderReplay(replay)
 	if err != nil {
 		log.Printf("postReplay.render %d: %v", game.ID, err)
