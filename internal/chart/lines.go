@@ -15,7 +15,8 @@ type Series struct {
 	Offset int
 	Base   int
 	Points []int
-	Label  string // end label; "" = "<Name> <last value>"
+	Label  string  // end label; "" = "<Name> <last value>"
+	Last   float64 // >0: x of the final point past Offset, off the unit grid (a finish time)
 }
 
 func (s Series) last() int {
@@ -40,24 +41,28 @@ type lineSpec struct {
 	xFmt     func(int) string // tick label for an x value; nil prints the value
 	labels   bool             // end labels right of the plot
 	small    bool             // inset (poster): smaller text and lines
+	large    bool             // bigger tick labels
+	capGoal  bool             // y ends at the goal, labelled on the axis (fromZero)
 }
 
 // drawLines draws grid, axes, the goal line and every series into p.
 func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
-	tick, label := fs.regular(20), fs.bold(22)
+	tick, label := fs.regular(tickSize(sp)), fs.bold(22)
 	lw, dot := 5.0, 7.0
 	if sp.xMax > 120 {
 		lw = 3.5
 	}
 	if sp.small {
-		tick, label = fs.regular(18), fs.bold(20)
+		label = fs.bold(20)
 		lw, dot = 4, 6
 	}
 
 	lo, hi := yRange(sp)
 	step := niceStep(hi-lo, 6)
 	lo = floorTo(lo, step)
-	hi = ceilTo(hi, step)
+	if !sp.capGoal || sp.goal <= 0 {
+		hi = ceilTo(hi, step)
+	}
 	if hi == lo {
 		hi = lo + step
 	}
@@ -69,9 +74,13 @@ func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
 	}
 	yOf := func(v int) float64 { return p.b - (p.b-p.t)*float64(v-lo)/float64(hi-lo) }
 
+	capped := sp.capGoal && sp.goal > 0 && hi == sp.goal
 	for v := lo; v <= hi; v += step {
 		y := yOf(v)
 		c.hline(p.l, p.r, y, 1.5, gridColor)
+		if capped && yOf(v)-yOf(sp.goal) < 30 {
+			continue // the goal's own label sits there
+		}
 		c.textRight(tick, p.l-12, y+7, inkMuted, fmt.Sprint(v))
 	}
 	xStep := sp.xStep
@@ -91,7 +100,11 @@ func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
 	if sp.goal > 0 && sp.goal >= lo && sp.goal <= hi {
 		y := yOf(sp.goal)
 		c.dashed(p.l, p.r, y, 2, goalColor)
-		c.textRight(tick, p.r-4, y-10, inkMuted, sp.goalLbl)
+		if capped {
+			c.textRight(fs.bold(tickSize(sp)), p.l-12, y+7, inkMain, fmt.Sprint(sp.goal))
+		} else {
+			c.textRight(tick, p.r-4, y-10, inkMuted, sp.goalLbl)
+		}
 	}
 
 	type end struct {
@@ -105,6 +118,9 @@ func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
 		px, py := xOf(s.Offset), yOf(s.Base)
 		for j, v := range s.Points {
 			x, y := xOf(s.Offset+j+1), yOf(v)
+			if j == len(s.Points)-1 && s.Last > 0 {
+				x = p.l + (p.r-p.l)*(float64(s.Offset)+s.Last)/float64(max(sp.xMax, 1))
+			}
 			c.line(px, py, x, y, lw, col)
 			px, py = x, y
 		}
@@ -142,6 +158,17 @@ func drawLines(c *canvas, fs *faces, p box, sp lineSpec) {
 		}
 		c.text(label, p.r+24, e.labelY+8, inkMain, e.lbl)
 	}
+}
+
+// tickSize is the tick label size in final pixels.
+func tickSize(sp lineSpec) int {
+	switch {
+	case sp.small:
+		return 18
+	case sp.large:
+		return 24
+	}
+	return 20
 }
 
 // yRange is the data's value range, widened by the goal line for fromZero.

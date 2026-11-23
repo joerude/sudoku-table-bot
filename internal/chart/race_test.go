@@ -122,7 +122,7 @@ func TestRenderRaceWeekWindow(t *testing.T) {
 }
 
 func TestRenderReplay(t *testing.T) {
-	// 10 s a point: mister finishes at 6:40, Nur at 7:50, Joe stops at 48 of 54.
+	// 10 s a point: mister finishes at 6:35, Nur at 7:50, Joe stops at 48 of 54.
 	grow := func(n, to int) []int {
 		out := make([]int, n)
 		for i := range out {
@@ -130,16 +130,21 @@ func TestRenderReplay(t *testing.T) {
 		}
 		return out
 	}
-	r := Replay{Title: "Ход игры · QWER", Tag: "Medium · Hardcore", Open: 54, Step: 10, Series: []Series{
-		{Name: "mister", Points: grow(40, 54), Label: "mister 6:40"},
-		{Name: "Nur", Points: grow(47, 54), Label: "Nur 7:50"},
-		{Name: "Joe Rude", Points: grow(52, 48), Label: "Joe Rude 48/54"},
-	}}
+	r := Replay{Title: "Ход игры · QWER", Tag: "Medium · Hardcore", Meta: "Пн, 23 ноября · 09:13 · 8 мин 40 с",
+		Open: 54, Step: 10, Series: []Series{
+			{Name: "mister", Points: grow(40, 54), Last: 39.5},
+			{Name: "Nur", Points: grow(47, 54)},
+			{Name: "Joe Rude", Points: grow(52, 48)},
+		}, Rows: []ReplayRow{
+			{Slot: 0, Place: 1, Name: "mister", Value: "6:35"},
+			{Slot: 1, Place: 2, Name: "Nur", Value: "7:50"},
+			{Slot: 2, Name: "Joe Rude", Value: "48/54", Note: "с 22-й минуты"},
+		}}
 	b, err := RenderReplay(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	img := decode(t, b)
+	img := decodeSize(t, b, replayW, replayH)
 	for i := range r.Series {
 		if !has(img, slots[i]) {
 			t.Errorf("series %d colour %v not drawn", i, slots[i])
