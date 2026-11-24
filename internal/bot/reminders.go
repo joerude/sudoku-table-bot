@@ -29,6 +29,7 @@ func (b *Bot) runReminders() {
 		{"remindStalePending", b.remindStalePending},
 		{"remindDaily", b.remindDaily},
 		{"remindWeekly", b.remindWeekly},
+		{"remindBackup", b.remindBackup},
 		{"closeExpiredSeasons", b.closeExpiredSeasons},
 		{"expireStaleDuels", b.expireStaleDuels},
 		{"expireStaleSeriesGames", b.expireStaleSeriesGames},

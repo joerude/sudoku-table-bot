@@ -114,3 +114,10 @@ CREATE TABLE IF NOT EXISTS duel_series (
     winner_id  INTEGER,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Bot-wide markers that belong to no chat (for example the week of the last
+-- automatic backup to the owner).
+CREATE TABLE IF NOT EXISTS bot_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
