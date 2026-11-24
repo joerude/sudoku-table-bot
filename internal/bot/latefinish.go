@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -100,8 +101,13 @@ func (b *Bot) unfinished(game *storage.Game, info *usdoku.GameInfo) map[string]i
 // It stops as soon as the record is touched (reopened for an edit, deleted):
 // the line describes the record as it was posted. Read-only towards the
 // league: nothing but the event log is written.
+// While it watches, the result's shared-goal line says the board is open
+// until the window's end (lateWatched). There is no redraw when the window
+// closes: "open until 21:40" stays true afterwards, and a redraw would lose
+// the table moves of the original post.
 func (b *Bot) watchLateFinish(game *storage.Game, info *usdoku.GameInfo, result *tele.Message) {
 	code := game.UsdokuCode.String
+	defer lateWatchDone(game.ID)
 	if b.tb == nil || b.ud == nil || code == "" || !b.featureOn(game.ChatID, featLateFinish) {
 		return
 	}
@@ -124,6 +130,75 @@ func (b *Bot) watchLateFinish(game *storage.Game, info *usdoku.GameInfo, result 
 			b.postLateFinish(game, lf, result)
 		}
 	}
+}
+
+var (
+	lateMu      sync.Mutex
+	lateWatched = map[int64]bool{} // games whose room watchLateFinish is (about to be) watching
+)
+
+// lateWatchArm marks a game as watched for a late finish. autoRecord arms it
+// before rendering the result, so the first render already shows the open
+// board; watchLateFinish clears it when it ends. A manual record or a bot
+// restart never arms it: nobody would credit the board, so no line promises it.
+func lateWatchArm(gameID int64) { lateMu.Lock(); lateWatched[gameID] = true; lateMu.Unlock() }
+
+func lateWatchDone(gameID int64) { lateMu.Lock(); delete(lateWatched, gameID); lateMu.Unlock() }
+
+func lateWatching(gameID int64) bool {
+	lateMu.Lock()
+	defer lateMu.Unlock()
+	return lateWatched[gameID]
+}
+
+// boardOpen says whether a recorded game's board still waits for a late
+// finish at now: someone was left a non-finisher, a late finish can count
+// here (a season game of the running season, countable) and lateFinishWatch
+// has not run out since completedAt (UTC, as stored). until is when the window
+// closes, zero when the game does not qualify at all, so a caller can tell a
+// window that is over from one that never opened.
+func boardOpen(now time.Time, completedAt string, hasDNF, countable bool) (until time.Time, open bool) {
+	if !hasDNF || !countable {
+		return time.Time{}, false
+	}
+	at, err := parseDBTime(completedAt)
+	if err != nil {
+		return time.Time{}, false
+	}
+	until = at.Add(lateFinishWatch)
+	return until, now.Before(until)
+}
+
+// boardState reads what boardOpen needs from the database: the completion
+// stamp, whether a non-finisher is left, and whether a late finish can count
+// (the mechanics are on, the record stands, a season game of the active
+// season). Anything unreadable counts as not countable: the line stays out.
+func (b *Bot) boardState(game *storage.Game) (completedAt string, hasDNF, countable bool) {
+	if !lateWatching(game.ID) || !b.featureOn(game.ChatID, featLateFinish) || !b.featureOn(game.ChatID, featCoop) {
+		return "", false, false
+	}
+	g, err := b.st.GameByID(game.ID)
+	if err != nil || g == nil || g.Deleted || g.Status != "completed" || !g.CompletedAt.Valid {
+		return "", false, false
+	}
+	if _, isDuel, err := b.st.DuelTargetID(g.ID); err != nil || isDuel {
+		return "", false, false
+	}
+	if season, err := b.st.SeasonByID(g.SeasonID); err != nil || season == nil || season.Status != "active" {
+		return "", false, false
+	}
+	rows, err := b.st.GameResults(g.ID)
+	if err != nil {
+		log.Printf("boardState.results %d: %v", g.ID, err)
+		return "", false, false
+	}
+	for _, r := range rows {
+		if r.Rank == 0 {
+			hasDNF = true
+			break
+		}
+	}
+	return g.CompletedAt.String, hasDNF, true
 }
 
 // postLateFinish posts one late finish, unless the record no longer lists the

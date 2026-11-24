@@ -134,11 +134,93 @@ func TestCoopFooter(t *testing.T) {
 	if got := b.coopFooter(clean); !strings.HasPrefix(got, "\n\n🌟 Общая цель: ") {
 		t.Errorf("a second clean board: got %q", got)
 	}
-	if got := b.coopFooter(coopGame(t, st, chat, se.ID, se.PointsTable, a.ID, p2.ID, true)); got != "" {
-		t.Errorf("a game with a quitter gets no line, got %q", got)
+	quit := coopGame(t, st, chat, se.ID, se.PointsTable, a.ID, p2.ID, true)
+	if got := b.coopFooterAt(quit, time.Now().Add(lateFinishWatch+time.Minute)); got != "" {
+		t.Errorf("a game with a quitter gets no line once its window is over, got %q", got)
 	}
 	st.SetFeature(chat, featCoop, false)
 	if got := b.coopFooter(clean); got != "" {
 		t.Errorf("switched off: got %q", got)
+	}
+}
+
+func TestCoopOpenLine(t *testing.T) {
+	loc := time.FixedZone("UTC+6", 6*3600)
+	until := time.Date(2026, 11, 24, 15, 40, 0, 0, time.UTC) // 21:40 at UTC+6
+	const head = "🌟 Доска открыта до 21:40: доиграют все, и она пойдёт в общую цель · "
+	cases := []struct {
+		n    int
+		want string
+	}{
+		{12, head + "12/13"},
+		{14, head + "14/23 ⭐"},
+		{35, head + "35 досок ⭐⭐⭐"},
+	}
+	for _, c := range cases {
+		got := coopOpenLine(until, loc, c.n, coopTiers66)
+		if got != c.want {
+			t.Errorf("n=%d:\n got %q\nwant %q", c.n, got, c.want)
+		}
+		if strings.ContainsAny(got, "—–!") {
+			t.Errorf("no dashes or exclamation marks in bot texts: %q", got)
+		}
+	}
+	if got := coopOpenLine(until, loc, 3, nil); got != "" {
+		t.Errorf("without tiers the line is empty, got %q", got)
+	}
+}
+
+func TestCoopFooterOpenBoard(t *testing.T) {
+	const chat = int64(-7602)
+	st := openTempStore(t)
+	if err := st.EnsureChat(chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se, _ := st.ActiveSeason(chat)
+	a, _, _ := st.RegisterPlayer(chat, 1, "Alice")
+	p2, _, _ := st.RegisterPlayer(chat, 2, "Bob")
+	b := &Bot{st: st}
+
+	quit := coopGame(t, st, chat, se.ID, se.PointsTable, a.ID, p2.ID, true)
+	done, err := parseDBTime(quit.CompletedAt.String)
+	if err != nil {
+		t.Fatal(err)
+	}
+	until := done.Add(lateFinishWatch)
+	want := "\n\n" + coopOpenLine(until, loadLoc(b.chatTZ(chat)), 0, coopTiers66)
+	if got := b.coopFooterAt(quit, done.Add(5*time.Minute)); got != "" {
+		t.Errorf("no late-finish watch (manual record, restart): got %q", got)
+	}
+	lateWatchArm(quit.ID)
+	defer lateWatchDone(quit.ID)
+	if got := b.coopFooterAt(quit, done.Add(5*time.Minute)); got != want || !strings.Contains(got, "Доска открыта до ") {
+		t.Errorf("inside the window: got %q, want %q", got, want)
+	}
+	if got := b.coopFooterAt(quit, until); got != "" {
+		t.Errorf("window over: a game with a quitter gets no line, got %q", got)
+	}
+	st.SetFeature(chat, featLateFinish, false)
+	if got := b.coopFooterAt(quit, done.Add(5*time.Minute)); got != "" {
+		t.Errorf("late finish off, nobody will credit the board: got %q", got)
+	}
+	st.SetFeature(chat, featLateFinish, true)
+
+	// The quitter solves the board in time: the board is clean and counts.
+	if ok, err := st.CreditLateFinish(quit.ID, p2.ID, 600, se.PointsTable); err != nil || !ok {
+		t.Fatalf("CreditLateFinish: ok=%v err=%v", ok, err)
+	}
+	if got := b.coopFooterAt(quit, done.Add(5*time.Minute)); got != "\n\n🌟 Общая цель: 1/13" {
+		t.Errorf("credited: got %q", got)
+	}
+
+	// A closed season takes no late finish, so its board is never open.
+	old := coopGame(t, st, chat, se.ID, se.PointsTable, a.ID, p2.ID, true)
+	lateWatchArm(old.ID)
+	defer lateWatchDone(old.ID)
+	if _, err := st.CloseSeason(se, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.coopFooterAt(old, done.Add(5*time.Minute)); got != "" {
+		t.Errorf("archived season: got %q", got)
 	}
 }

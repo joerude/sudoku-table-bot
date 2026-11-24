@@ -344,6 +344,7 @@ func (b *Bot) autoRecord(game *storage.Game, info *usdoku.GameInfo) (handled boo
 			recordKeyboard(game.ID))
 		return true
 	}
+	lateWatchArm(game.ID) // watchLateFinish below takes over and clears it
 	result += b.resultFooters(game)
 	// The result is a NEW message (an edit would not notify anyone); the card
 	// is retired to a one-liner pointing at it.

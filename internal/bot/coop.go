@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/domain"
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
@@ -48,15 +49,32 @@ func coopResultLine(n int, tiers []int) string {
 				coopOrdinal(coopOrdinals, k), coopStarsText(k+1), coopBoards(n))
 		}
 	}
+	return "🌟 Общая цель: " + coopTally(n, tiers)
+}
+
+// coopTally is the goal's count: the way to the next star, or the total once
+// every star is earned.
+func coopTally(n int, tiers []int) string {
 	stars := domain.CoopStars(n, tiers)
 	if stars == len(tiers) {
-		return fmt.Sprintf("🌟 Общая цель: %s %s", coopBoards(n), coopStarsText(stars))
+		return coopBoards(n) + " " + coopStarsText(stars)
 	}
-	line := fmt.Sprintf("🌟 Общая цель: %d/%d", n, tiers[stars])
+	line := fmt.Sprintf("%d/%d", n, tiers[stars])
 	if stars > 0 {
 		line += " " + coopStarsText(stars)
 	}
 	return line
+}
+
+// coopOpenLine is the result line of a game whose late-finish window is still
+// open: the board may yet become clean, so the line says until when and shows
+// the count without it. n counts the clean boards.
+func coopOpenLine(until time.Time, loc *time.Location, n int, tiers []int) string {
+	if len(tiers) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("🌟 Доска открыта до %s: доиграют все, и она пойдёт в общую цель · %s",
+		until.In(loc).Format("15:04"), coopTally(n, tiers))
 }
 
 // coopLiveLine is the card's promise while a game is still being solved; n
@@ -93,13 +111,10 @@ func coopNudgeLine(n int, tiers []int) string {
 	if len(tiers) == 0 {
 		return ""
 	}
+	line := "🌟 Общая цель: " + coopTally(n, tiers)
 	stars := domain.CoopStars(n, tiers)
 	if stars == len(tiers) {
-		return fmt.Sprintf("🌟 Общая цель: %s %s", coopBoards(n), coopStarsText(stars))
-	}
-	line := fmt.Sprintf("🌟 Общая цель: %d/%d", n, tiers[stars])
-	if stars > 0 {
-		line += " " + coopStarsText(stars)
+		return line
 	}
 	gap := tiers[stars] - n
 	return fmt.Sprintf("%s · до %s звезды %s", line, coopOrdinal(coopOrdinalsGen, stars), coopBoards(gap))
@@ -175,6 +190,12 @@ func (b *Bot) coopClean(season *storage.Season, until string) (int, bool) {
 // game's own completion time, so redrawing an old result after an edit shows
 // the count as it stood then.
 func (b *Bot) coopFooter(game *storage.Game) string {
+	return b.coopFooterAt(game, time.Now())
+}
+
+// coopFooterAt is coopFooter at a given time: a game with a non-finisher shows
+// the "board is open" line while its late-finish window runs (coopOpenFooter).
+func (b *Bot) coopFooterAt(game *storage.Game, now time.Time) string {
 	if !b.featureOn(game.ChatID, featCoop) {
 		return ""
 	}
@@ -197,7 +218,7 @@ func (b *Bot) coopFooter(game *storage.Game) string {
 	}
 	for _, r := range rows {
 		if r.Rank == 0 {
-			return ""
+			return b.coopOpenFooter(game, season, tiers, now)
 		}
 	}
 	until := ""
@@ -210,6 +231,23 @@ func (b *Bot) coopFooter(game *storage.Game) string {
 		return ""
 	}
 	return "\n\n" + coopResultLine(n, tiers)
+}
+
+// coopOpenFooter is the line of a game with a non-finisher: while the
+// late-finish window is open that player may still solve the board, so the
+// line says the board is open. After the window the game shows no line, as any
+// game with a quitter. Counted as it stood at the game's completion.
+func (b *Bot) coopOpenFooter(game *storage.Game, season *storage.Season, tiers []int, now time.Time) string {
+	completedAt, hasDNF, countable := b.boardState(game)
+	until, open := boardOpen(now, completedAt, hasDNF, countable)
+	if !open {
+		return ""
+	}
+	n, ok := b.coopClean(season, completedAt)
+	if !ok {
+		return ""
+	}
+	return "\n\n" + coopOpenLine(until, loadLoc(b.chatTZ(game.ChatID)), n, tiers)
 }
 
 // coopLive is the live card's line for a game still being solved: "" for duels,

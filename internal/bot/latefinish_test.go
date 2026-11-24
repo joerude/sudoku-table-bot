@@ -3,6 +3,7 @@ package bot
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/joerude/sudoku-bot-telegram/internal/usdoku"
 )
@@ -39,5 +40,35 @@ func TestLateFinishes(t *testing.T) {
 	}
 	if strings.ContainsAny(text+credited, "—–!") {
 		t.Errorf("no long dashes or exclamation marks in bot texts: %q", text)
+	}
+}
+
+func TestBoardOpen(t *testing.T) {
+	const recorded = "2026-11-24 15:40:00"
+	at := time.Date(2026, 11, 24, 15, 40, 0, 0, time.UTC)
+	cases := []struct {
+		name      string
+		now       time.Time
+		hasDNF    bool
+		countable bool
+		open      bool
+		qualifies bool
+	}{
+		{"inside the window", at.Add(5 * time.Minute), true, true, true, true},
+		{"after the window", at.Add(lateFinishWatch), true, true, false, true},
+		{"nobody left a non-finisher", at.Add(time.Minute), false, true, false, false},
+		{"a duel or an archived season", at.Add(time.Minute), true, false, false, false},
+	}
+	for _, c := range cases {
+		until, open := boardOpen(c.now, recorded, c.hasDNF, c.countable)
+		if open != c.open || !until.IsZero() != c.qualifies {
+			t.Errorf("%s: open=%v until=%v, want open=%v qualifies=%v", c.name, open, until, c.open, c.qualifies)
+		}
+		if c.qualifies && !until.Equal(at.Add(lateFinishWatch)) {
+			t.Errorf("%s: until = %v, want %v", c.name, until, at.Add(lateFinishWatch))
+		}
+	}
+	if until, open := boardOpen(at, "", true, true); open || !until.IsZero() {
+		t.Errorf("no completion stamp: open=%v until=%v", open, until)
 	}
 }

@@ -1110,7 +1110,13 @@ func (b *Bot) backfillUsdokuTimes(game *storage.Game) []string {
 // grading, the shared goal, and the hook line last, right above the «Ещё одну»
 // button.
 func (b *Bot) resultFooters(game *storage.Game) string {
-	return b.ratingFooter(game) + b.boardFooter(game) + b.coopFooter(game) + b.hookFooter(game)
+	return b.resultFootersAt(game, time.Now())
+}
+
+// resultFootersAt is resultFooters as of now (the shared-goal line depends on
+// the clock while the late-finish window runs).
+func (b *Bot) resultFootersAt(game *storage.Game, now time.Time) string {
+	return b.ratingFooter(game) + b.boardFooter(game) + b.coopFooterAt(game, now) + b.hookFooter(game)
 }
 
 // ratingFooter computes the rating impact of the just-recorded game and renders
