@@ -135,4 +135,8 @@ func TestProgressCountsCorrectCellsPerMode(t *testing.T) {
 	if p.Solved["Alpha"] != 3 || p.Solved["Bravo"] != 1 {
 		t.Errorf("solved = %v, want Alpha 3, Bravo 1", p.Solved)
 	}
+	// Only Bravo holds a wrong digit (the 3 in 1,3); a cleared cell is not one.
+	if p.Wrong["Bravo"] != 1 || p.Wrong["Alpha"] != 0 || len(p.Wrong) != 1 {
+		t.Errorf("wrong = %v, want only Bravo 1", p.Wrong)
+	}
 }

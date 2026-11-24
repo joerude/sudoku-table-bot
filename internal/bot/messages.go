@@ -277,7 +277,7 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, standings []s
 		if r.Rank == 0 {
 			note := "без финиша"
 			if p := left[r.PlayerID]; p.worthShowing() {
-				note += fmt.Sprintf(" · %d из %d", p.Solved, p.Open)
+				note += " · " + p.note()
 			}
 			fmt.Fprintf(&b, "▫️ %s · <i>%s</i>\n", esc(r.Name), note)
 			continue

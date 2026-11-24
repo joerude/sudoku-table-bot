@@ -48,6 +48,10 @@ type cell struct {
 type Progress struct {
 	Open   int            // cells to solve
 	Solved map[string]int // usdoku nick → cells filled in correctly
+	// Wrong is the cells a player currently holds a wrong digit in. Only the
+	// result post's DNF line may show it: on the live card it would tell a
+	// solver mid-game that their board has errors.
+	Wrong map[string]int
 }
 
 // Cells is every player's right cells summed; 0 for no fetch yet.
@@ -62,10 +66,10 @@ func (p *Progress) Cells() int {
 	return n
 }
 
-// progressFrom counts each player's correct open cells. Only counts leave
-// here: the solution itself never does.
+// progressFrom counts each player's correct and wrong open cells. Only counts
+// leave here: neither the solution nor a guessed digit does.
 func progressFrom(cells []cell) Progress {
-	p := Progress{Solved: map[string]int{}}
+	p := Progress{Solved: map[string]int{}, Wrong: map[string]int{}}
 	for _, c := range cells {
 		if c.Type != "open" {
 			continue
@@ -82,6 +86,14 @@ func progressFrom(cells []cell) Progress {
 		}
 		for n := range seen {
 			p.Solved[n]++
+		}
+		// A wrong entry in a cell the player also got right does not count.
+		wrong := map[string]bool{}
+		for _, g := range c.Guesses {
+			if g.Value != nil && *g.Value != c.Value && !seen[g.Name] && !wrong[g.Name] {
+				wrong[g.Name] = true
+				p.Wrong[g.Name]++
+			}
 		}
 	}
 	return p

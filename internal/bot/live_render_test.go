@@ -193,7 +193,8 @@ func TestBuildLiveSnapshotBarsForSolvingOnly(t *testing.T) {
 		{Name: "bob"},
 		{Name: "cat"},
 	}}
-	prog := &usdoku.Progress{Open: 50, Solved: map[string]int{"ann": 50, "bob": 12, "cat": 30}}
+	// Wrong cells stay off the card: it would tell a solver mid-game about errors.
+	prog := &usdoku.Progress{Open: 50, Solved: map[string]int{"ann": 50, "bob": 12, "cat": 30}, Wrong: map[string]int{"bob": 5}}
 	snap := buildLiveSnapshot(info, func(n string) string { return n }, prog)
 	if len(snap.Bars) != 2 || snap.Bars[0] != (liveBar{"cat", 30}) || snap.Bars[1] != (liveBar{"bob", 12}) {
 		t.Errorf("bars = %+v, want cat 30 then bob 12 (finisher ann left out)", snap.Bars)

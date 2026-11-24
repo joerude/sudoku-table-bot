@@ -34,11 +34,12 @@ const (
 )
 
 // progSample is one board fetch: when, and how many cells each usdoku nick
-// had right.
+// had right (and, for the DNF line only, wrong).
 type progSample struct {
 	at     time.Time
 	open   int
 	solved map[string]int
+	wrong  map[string]int
 }
 
 var (
@@ -53,7 +54,7 @@ func addReplaySample(gameID int64, p usdoku.Progress, at time.Time) {
 	if len(replaySamples[gameID]) >= replayMaxSamples {
 		return
 	}
-	replaySamples[gameID] = append(replaySamples[gameID], progSample{at: at, open: p.Open, solved: p.Solved})
+	replaySamples[gameID] = append(replaySamples[gameID], progSample{at: at, open: p.Open, solved: p.Solved, wrong: p.Wrong})
 }
 
 // takeReplay hands over a game's samples and forgets them.
