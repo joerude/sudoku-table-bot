@@ -88,20 +88,32 @@ type replayPlayer struct {
 	Finish int    // solve time in seconds from the round start; 0 = unknown or did not finish
 }
 
-// roundStart puts usdoku's startedAt (seconds or milliseconds, the unit is not
-// documented) on the bot's clock. When it is missing or implausible the round
-// is taken to have begun one fetch before the first sample.
-func roundStart(startedAt int64, first time.Time) time.Time {
+// roundWindow puts usdoku's startedAt (seconds or milliseconds, the unit is
+// not documented) on the bot's clock and keeps the samples of that round.
+// usdoku can restart a round in the same room: startedAt then moves past the
+// first samples, which belong to the round before and are dropped (keeping
+// them stretched the axis and pushed everybody onto a late start). When
+// startedAt is missing or implausible the round is taken to have begun one
+// fetch before the first sample.
+func roundWindow(startedAt int64, samples []progSample) (time.Time, []progSample) {
+	if len(samples) == 0 {
+		return time.Time{}, nil
+	}
+	first, last := samples[0].at, samples[len(samples)-1].at
 	if startedAt > 0 {
 		t := time.Unix(startedAt, 0)
 		if startedAt > 1e11 {
 			t = time.UnixMilli(startedAt)
 		}
 		if d := first.Sub(t); d >= 0 && d < 6*time.Hour {
-			return t
+			return t, samples
+		}
+		if t.After(first) && t.Before(last) {
+			i := sort.Search(len(samples), func(i int) bool { return !samples[i].at.Before(t) })
+			return t, samples[i:]
 		}
 	}
-	return first.Add(-progressEvery)
+	return first.Add(-progressEvery), samples
 }
 
 // ownStart is when p began, in seconds from the round start. usdoku keeps no
@@ -259,8 +271,8 @@ func (b *Bot) postReplay(game *storage.Game, info *usdoku.GameInfo, result *tele
 			Rank: row.Rank, Finish: row.Duration})
 	}
 	code := game.UsdokuCode.String
-	replay, ok := replayData(roundStart(info.Info.StartedAt, samples[0].at),
-		loadLoc(b.chatTZ(game.ChatID)), samples, players)
+	start, samples := roundWindow(info.Info.StartedAt, samples)
+	replay, ok := replayData(start, loadLoc(b.chatTZ(game.ChatID)), samples, players)
 	if !ok {
 		return
 	}

@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -15,10 +16,11 @@ import (
 
 // featLateFinish credits a board solved after the result was recorded. The
 // auto-record stops waiting a few minutes after the last finish (settleQuiet),
-// and with the usual points table the last place scores what a non-finish
-// does, so finishing late changed nothing and nobody saw it. Now the bot keeps
-// an eye on the room for a while and says so under the result. It only says
-// it: ranks, points and ratings stay as recorded.
+// so a slow solver was left a non-finisher. Now the bot keeps an eye on the
+// room for a while: in a season game of the running season the solver becomes
+// the next place (points, table and rating follow) and the result post is
+// rewritten in place; elsewhere (a duel, where a non-finish already is the
+// loss, or a closed season) it only says so under the result.
 const featLateFinish = "latefinish"
 
 // evLateFinish logs a late finish; player_id = who, detail = solve seconds.
@@ -48,15 +50,23 @@ func lateFinishes(info *usdoku.GameInfo, waiting map[string]int64) []lateFinish 
 	return out
 }
 
-// lateFinishText is the quiet line under the result. The name stays in the
-// nominative and the verb belongs to the board: the bot knows neither the
-// player's case nor gender.
-func lateFinishText(name string, secs int64) string {
+// lateFinishText is the quiet line under the result. place > 0: the finish
+// counted and the result above shows it. The name stays in the nominative and
+// the verb belongs to the board: the bot knows neither the player's case nor
+// gender.
+func lateFinishText(name string, secs int64, place, points int) string {
 	solved := "доска решена"
 	if secs > 0 {
 		solved += " за " + fmtDuration(int(secs))
 	}
-	return fmt.Sprintf("🧱 <b>%s</b>: %s, уже после записи\n<i>Очки и места не меняются</i>", esc(name), solved)
+	note := "Очки и места не меняются"
+	if place > 0 {
+		note = fmt.Sprintf("Засчитано: %d-е место", place)
+		if points > 0 {
+			note += fmt.Sprintf(" · +%d", points)
+		}
+	}
+	return fmt.Sprintf("⏱ <b>%s</b>: %s, уже после записи\n<i>%s</i>", esc(name), solved, note)
 }
 
 // unfinished maps the usdoku nicks of the game's recorded non-finishers to
@@ -117,8 +127,10 @@ func (b *Bot) watchLateFinish(game *storage.Game, info *usdoku.GameInfo, result 
 }
 
 // postLateFinish posts one late finish, unless the record no longer lists the
-// player as a non-finisher (corrected by hand meanwhile).
+// player as a non-finisher (corrected by hand meanwhile). It holds
+// recordingGames, so an edit tap cannot interleave with the credit.
 func (b *Bot) postLateFinish(game *storage.Game, lf lateFinish, result *tele.Message) {
+	defer recordingGames.Lock(game.ID)()
 	rows, err := b.st.GameResults(game.ID)
 	if err != nil {
 		log.Printf("postLateFinish.results %d: %v", game.ID, err)
@@ -128,7 +140,9 @@ func (b *Bot) postLateFinish(game *storage.Game, lf lateFinish, result *tele.Mes
 		if r.PlayerID != lf.PlayerID || r.Rank != 0 {
 			continue
 		}
-		if _, err := b.tb.Send(tele.ChatID(game.ChatID), lateFinishText(r.Name, lf.Secs), quietReply(result)); err != nil {
+		place, points := b.creditLateFinish(game, lf, result)
+		if _, err := b.tb.Send(tele.ChatID(game.ChatID), lateFinishText(r.Name, lf.Secs, place, points),
+			quietReply(result)); err != nil {
 			log.Printf("postLateFinish.send %d: %v", game.ID, err)
 			return
 		}
@@ -136,4 +150,51 @@ func (b *Bot) postLateFinish(game *storage.Game, lf lateFinish, result *tele.Mes
 			Kind: evLateFinish, Detail: strconv.FormatInt(lf.Secs, 10)})
 		return
 	}
+}
+
+// errNotCredited: the game or the row no longer qualifies, nothing was written.
+var errNotCredited = errors.New("late finish not credited")
+
+// creditLateFinish makes the late solver the next place of a season game of
+// the running season and rewrites the result post. Returns the new place and
+// points; 0, 0 when the finish was not credited (a duel, a closed season, no
+// post to rewrite, or an error).
+func (b *Bot) creditLateFinish(game *storage.Game, lf lateFinish, result *tele.Message) (place, points int) {
+	if result == nil {
+		return 0, 0
+	}
+	if season, err := b.st.SeasonByID(game.SeasonID); err != nil || season == nil || season.Status != "active" {
+		return 0, 0
+	}
+	text, seasonEnd, err := b.rescore(game, func(s *storage.Season) error {
+		ok, err := b.st.CreditLateFinish(game.ID, lf.PlayerID, lf.Secs, s.PointsTable)
+		if err == nil && !ok {
+			err = errNotCredited
+		}
+		return err
+	})
+	if err != nil {
+		if !errors.Is(err, errNotCredited) {
+			log.Printf("creditLateFinish %d: %v", game.ID, err)
+		}
+		return 0, 0
+	}
+	log.Printf("⏱ game %d: late finish of player %d credited", game.ID, lf.PlayerID)
+	if _, err := b.tb.Edit(result, autoResultHeader()+text+b.resultFooters(game), b.resultKB(game.ID)); err != nil {
+		log.Printf("creditLateFinish.edit %d: %v", game.ID, err)
+	}
+	if seasonEnd != "" {
+		_, _ = b.tb.Send(tele.ChatID(game.ChatID), seasonEnd)
+		b.postSeasonPoster(game.ChatID, game.SeasonID)
+	}
+	rows, err := b.st.GameResults(game.ID)
+	if err != nil {
+		return 0, 0
+	}
+	for _, r := range rows {
+		if r.PlayerID == lf.PlayerID {
+			return r.Rank, r.Points
+		}
+	}
+	return 0, 0
 }

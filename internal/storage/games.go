@@ -277,6 +277,14 @@ func (s *Store) FinalizeGame(gameID int64, table []int) error {
 		return ErrGameNotPending
 	}
 
+	if err := scoreRows(tx, gameID, table); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// scoreRows sets every result row of the game to the points of its rank.
+func scoreRows(tx *sql.Tx, gameID int64, table []int) error {
 	rows, err := tx.Query(`SELECT id, rank FROM game_results WHERE game_id=?`, gameID)
 	if err != nil {
 		return err
@@ -295,14 +303,47 @@ func (s *Store) FinalizeGame(gameID int64, table []int) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-
 	for _, r := range all {
 		pts := domain.PointsForRank(table, int(r.rank))
 		if _, err := tx.Exec(`UPDATE game_results SET points=? WHERE id=?`, pts, r.id); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
+}
+
+// CreditLateFinish turns a recorded non-finisher (rank 0) of a completed
+// season game into the next finisher, with the solve time, and re-scores the
+// game. The game keeps its completed_at, so its place in history and the
+// events of the record stay put. False (nothing changed) when the game is not
+// a completed, live season game or the player is not its non-finisher.
+func (s *Store) CreditLateFinish(gameID, playerID, durationSecs int64, table []int) (bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var dur any
+	if durationSecs > 0 {
+		dur = durationSecs
+	}
+	res, err := tx.Exec(
+		`UPDATE game_results
+		    SET rank=(SELECT MAX(rank) FROM game_results WHERE game_id=?)+1, duration_secs=?
+		  WHERE game_id=? AND player_id=? AND rank=0
+		    AND game_id IN (SELECT id FROM games WHERE id=? AND status='completed'
+		                      AND deleted=0 AND duel_target_id IS NULL)`,
+		gameID, dur, gameID, playerID, gameID)
+	if err != nil {
+		return false, err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return false, err
+	}
+	if err := scoreRows(tx, gameID, table); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 // ReopenGame moves a completed game back to pending and clears its picks. The

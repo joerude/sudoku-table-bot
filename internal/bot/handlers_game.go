@@ -909,6 +909,13 @@ func (b *Bot) gameView(gameID int64) (string, *tele.ReplyMarkup, error) {
 // target was reached. Returns the result text and (if any) a season-end message.
 // It does no Telegram I/O, so both the manual and auto-record paths can use it.
 func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err error) {
+	return b.rescore(game, func(s *storage.Season) error { return b.st.FinalizeGame(game.ID, s.PointsTable) })
+}
+
+// rescore is scoreAndCheck with the scoring step passed in: apply writes the
+// points (finalize a pending game, or credit a late finish on a recorded one),
+// everything around it (table moves, celebrations, the season roll) is shared.
+func (b *Bot) rescore(game *storage.Game, apply func(*storage.Season) error) (result, seasonEnd string, err error) {
 	season, err := b.st.SeasonByID(game.SeasonID)
 	if err != nil {
 		return "", "", err
@@ -926,7 +933,7 @@ func (b *Bot) scoreAndCheck(game *storage.Game) (result, seasonEnd string, err e
 		}
 	}
 
-	if err := b.st.FinalizeGame(game.ID, season.PointsTable); err != nil {
+	if err := apply(season); err != nil {
 		return "", "", err
 	}
 	rows, err := b.st.GameResults(game.ID)

@@ -22,14 +22,22 @@ func TestLateFinishes(t *testing.T) {
 		t.Fatalf("lateFinishes = %+v, want only slow (player 7) at 860 s", got)
 	}
 
-	text := lateFinishText("Bob <b>", 860)
+	text := lateFinishText("Bob <b>", 860, 0, 0)
 	if !strings.Contains(text, "<b>Bob &lt;b&gt;</b>: доска решена за 14:20, уже после записи") {
 		t.Errorf("text = %q", text)
 	}
-	if text := lateFinishText("Bob", 0); !strings.Contains(text, "доска решена, уже после записи") {
+	if text := lateFinishText("Bob", 0, 0, 0); !strings.Contains(text, "доска решена, уже после записи") {
 		t.Errorf("no solve time: %q", text)
 	}
-	if strings.ContainsAny(text, "—–!") {
+	if !strings.Contains(text, "Очки и места не меняются") {
+		t.Errorf("not credited: %q", text)
+	}
+	credited := lateFinishText("Bob", 684, 2, 1)
+	if !strings.Contains(credited, "доска решена за 11:24, уже после записи") ||
+		!strings.Contains(credited, "Засчитано: 2-е место · +1") {
+		t.Errorf("credited = %q", credited)
+	}
+	if strings.ContainsAny(text+credited, "—–!") {
 		t.Errorf("no long dashes or exclamation marks in bot texts: %q", text)
 	}
 }

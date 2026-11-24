@@ -92,20 +92,30 @@ func TestReplayDataLateStart(t *testing.T) {
 	}
 }
 
-func TestRoundStart(t *testing.T) {
+func TestRoundWindow(t *testing.T) {
 	first := time.Date(2026, 11, 16, 12, 0, 30, 0, time.UTC)
-	began := first.Add(-25 * time.Second)
-	if got := roundStart(began.Unix(), first); !got.Equal(began) {
-		t.Errorf("seconds: %v, want %v", got, began)
+	samples := make([]progSample, 90) // one every 20 s, 30 minutes
+	for i := range samples {
+		samples[i] = progSample{at: first.Add(time.Duration(i) * progressEvery)}
 	}
-	if got := roundStart(began.UnixMilli(), first); !got.Equal(began) {
-		t.Errorf("milliseconds: %v, want %v", got, began)
+	began := first.Add(-25 * time.Second)
+	for _, v := range []int64{began.Unix(), began.UnixMilli()} {
+		if got, s := roundWindow(v, samples); !got.Equal(began) || len(s) != len(samples) {
+			t.Errorf("roundWindow(%d) = %v with %d samples, want %v with all", v, got, len(s), began)
+		}
+	}
+	// The round restarted in the same room 23 minutes in: the earlier samples
+	// are the old round's and go.
+	restart := first.Add(23*time.Minute + 5*time.Second)
+	got, s := roundWindow(restart.Unix(), samples)
+	if !got.Equal(restart) || len(s) == 0 || s[0].at.Before(restart) || s[0].at.Sub(restart) > progressEvery {
+		t.Errorf("restart: start %v, first kept sample %v", got, s[0].at)
 	}
 	// No start, or one the bot's clock cannot agree with: one fetch before the first sample.
 	want := first.Add(-progressEvery)
 	for _, bad := range []int64{0, first.Add(time.Hour).Unix(), first.Add(-48 * time.Hour).Unix()} {
-		if got := roundStart(bad, first); !got.Equal(want) {
-			t.Errorf("roundStart(%d) = %v, want %v", bad, got, want)
+		if got, s := roundWindow(bad, samples); !got.Equal(want) || len(s) != len(samples) {
+			t.Errorf("roundWindow(%d) = %v, want %v", bad, got, want)
 		}
 	}
 }
