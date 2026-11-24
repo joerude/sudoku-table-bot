@@ -80,7 +80,8 @@ func (b *Bot) watchGame(gameID, chatID int64, code string) {
 				go b.postBoard(g)
 			}
 			status = info.Info.Status
-			settled := state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished())
+			settled := state.shouldRecord(time.Now(), len(info.FinishOrder()), len(info.Players), info.Finished(),
+				prog.Cells())
 			if settled || b.duelDecided(g, info) {
 				if b.autoRecord(g, info) {
 					return

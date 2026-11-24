@@ -50,6 +50,18 @@ type Progress struct {
 	Solved map[string]int // usdoku nick → cells filled in correctly
 }
 
+// Cells is every player's right cells summed; 0 for no fetch yet.
+func (p *Progress) Cells() int {
+	if p == nil {
+		return 0
+	}
+	n := 0
+	for _, v := range p.Solved {
+		n += v
+	}
+	return n
+}
+
 // progressFrom counts each player's correct open cells. Only counts leave
 // here: the solution itself never does.
 func progressFrom(cells []cell) Progress {
