@@ -273,24 +273,28 @@ func resultText(rows []storage.ResultRow, difficulty, mode string, standings []s
 	b.WriteString("\n")
 
 	b.WriteString("\n")
-	for _, r := range rows {
+	cells := make([][]string, len(rows))
+	for i, r := range rows {
+		cells[i] = []string{clipRunes(r.Name, raceNameMax)}
+		if r.Rank == 0 {
+			continue
+		}
+		cells[i] = append(cells[i], signedPts(r.Points))
+		if r.Duration > 0 {
+			cells[i] = append(cells[i], fmtDuration(r.Duration))
+		}
+	}
+	al := alignRows(cells, 1, 2)
+	for i, r := range rows {
 		if r.Rank == 0 {
 			note := "без финиша"
 			if p := left[r.PlayerID]; p.worthShowing() {
 				note += " · " + p.note()
 			}
-			fmt.Fprintf(&b, "▫️ %s · <i>%s</i>\n", esc(r.Name), note)
+			fmt.Fprintf(&b, "▫️ <code>%s ·</code> <i>%s</i>\n", al[i][0], note)
 			continue
 		}
-		name := esc(r.Name)
-		if r.Rank == 1 {
-			name = "<b>" + name + "</b>"
-		}
-		b.WriteString(fmt.Sprintf("%s %s · %s", medal(r.Rank), name, signedPts(r.Points)))
-		if r.Duration > 0 {
-			b.WriteString(" · ⏱ " + fmtDuration(r.Duration))
-		}
-		b.WriteString("\n")
+		b.WriteString(medal(r.Rank) + " " + codeRow(al[i]) + "\n")
 	}
 	if phrase != "" && len(rows) > 0 && rows[0].Rank == 1 {
 		b.WriteString("\n" + phraseLine(phrase))
@@ -569,21 +573,60 @@ func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow,
 	return b.String()
 }
 
+// alignRows pads every column to one width across the rows, so the rows
+// line up once wrapped in <code> (Telegram's monospace). Columns listed in
+// right align right (numbers); the last column is not padded unless it
+// aligns right. Cells come in raw and leave escaped; a short row pads only
+// the columns it has.
+func alignRows(rows [][]string, right ...int) [][]string {
+	isRight := map[int]bool{}
+	for _, c := range right {
+		isRight[c] = true
+	}
+	var width []int
+	for _, r := range rows {
+		for c, cell := range r {
+			if c == len(width) {
+				width = append(width, 0)
+			}
+			width[c] = max(width[c], utf8.RuneCountInString(cell))
+		}
+	}
+	out := make([][]string, len(rows))
+	for i, r := range rows {
+		out[i] = make([]string, len(r))
+		for c, cell := range r {
+			pad := strings.Repeat(" ", width[c]-utf8.RuneCountInString(cell))
+			switch {
+			case isRight[c]:
+				out[i][c] = pad + esc(cell)
+			case c == len(width)-1:
+				out[i][c] = esc(cell)
+			default:
+				out[i][c] = esc(cell) + pad
+			}
+		}
+	}
+	return out
+}
+
+// codeRow joins aligned cells with " · " into one monospace run.
+func codeRow(cells []string) string {
+	return "<code>" + strings.Join(cells, " · ") + "</code>"
+}
+
 // formBlock is the table's form lines. Name and wins sit in monospace, padded
 // like the race block, so "побед" and the medals start in one column; the
 // duelist's ⚔️ goes last, where it can't push the medals out of line.
 func formBlock(rows []storage.Standing, form map[int64][]int, duelist int64) string {
-	names := make([]string, len(rows))
-	nameW, winsW := 0, 0
+	cells := make([][]string, len(rows))
 	for i, r := range rows {
-		names[i] = clipRunes(r.Name, raceNameMax)
-		nameW = max(nameW, utf8.RuneCountInString(names[i]))
-		winsW = max(winsW, len(strconv.Itoa(r.Wins)))
+		cells[i] = []string{clipRunes(r.Name, raceNameMax), "побед", strconv.Itoa(r.Wins)}
 	}
+	al := alignRows(cells, 2)
 	var b strings.Builder
 	for i, r := range rows {
-		pad := strings.Repeat(" ", nameW-utf8.RuneCountInString(names[i]))
-		fmt.Fprintf(&b, "\n<code>%s%s · побед %*d</code>", esc(names[i]), pad, winsW, r.Wins)
+		fmt.Fprintf(&b, "\n<code>%s · %s %s</code>", al[i][0], al[i][1], al[i][2])
 		if f := formLine(form[r.PlayerID]); f != "" {
 			b.WriteString(" " + f)
 		}
@@ -961,44 +1004,51 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 	} else {
 		b.WriteString("⚔️ <b>Дуэли</b>\n")
 	}
+	cells := make([][]string, len(rows))
 	for i, r := range rows {
 		pct := 0
 		if total := r.Wins + r.Losses; total > 0 {
 			pct = r.Wins * 100 / total
 		}
-		fmt.Fprintf(&b, "%s <b>%s</b> · %d-%d <i>(%d%%)</i>",
-			medal(i+1), esc(r.Name), r.Wins, r.Losses, pct)
+		cells[i] = []string{clipRunes(r.Name, raceNameMax), fmt.Sprintf("%d-%d", r.Wins, r.Losses), fmt.Sprintf("%d%%", pct)}
+	}
+	al := alignRows(cells, 1, 2)
+	for i, r := range rows {
+		b.WriteString(medal(i+1) + " " + codeRow(al[i]))
 		if s := streaks[r.PlayerID]; s.Current >= 2 {
 			fmt.Fprintf(&b, " 🔥%d", s.Current)
 		}
 		b.WriteByte('\n')
 	}
 	if len(h2h) > 0 {
-		b.WriteString("\n<b>Личные встречи</b>\n")
-		for _, p := range h2h {
-			fmt.Fprintf(&b, "%s <b>%d:%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
-		}
+		b.WriteString("\n<b>Личные встречи</b>\n" + pairLines(h2h))
 	}
 	if len(series) > 0 {
-		b.WriteString("\n<b>Серии</b>\n")
-		for _, p := range series {
-			fmt.Fprintf(&b, "%s <b>%d:%d</b> %s\n", esc(p.AName), p.AWins, p.BWins, esc(p.BName))
-		}
+		b.WriteString("\n<b>Серии</b>\n" + pairLines(series))
 	}
 	if len(speed) > 0 {
 		b.WriteString("\n<b>⏱ Время в дуэлях</b>\n")
-		for _, r := range speed {
-			fmt.Fprintf(&b, "%s · <b>%s</b> <i>(лучшее %s, дуэлей %d)</i>\n",
-				esc(r.Name), fmtDuration(r.AvgSecs), fmtDuration(r.BestSecs), r.Games)
+		cells := make([][]string, len(speed))
+		for i, r := range speed {
+			cells[i] = []string{clipRunes(r.Name, raceNameMax), fmtDuration(r.AvgSecs)}
+		}
+		al := alignRows(cells, 1)
+		for i, r := range speed {
+			fmt.Fprintf(&b, "%s <i>(лучшее %s, дуэлей %d)</i>\n",
+				codeRow(al[i]), fmtDuration(r.BestSecs), r.Games)
 		}
 	}
 	if len(challenges) > 0 {
 		b.WriteString("\n<b>🤺 Вызовы</b>\n")
-		for _, c := range challenges {
-			fmt.Fprintf(&b, "%s · вызовов <b>%d</b>, получено <b>%d</b>",
-				esc(c.Name), c.Issued, c.Received)
+		cells := make([][]string, len(challenges))
+		for i, c := range challenges {
+			cells[i] = []string{clipRunes(c.Name, raceNameMax), strconv.Itoa(c.Issued), strconv.Itoa(c.Received)}
+		}
+		al := alignRows(cells, 1, 2)
+		for i, c := range challenges {
+			fmt.Fprintf(&b, "<code>%s · вызовов %s · получено %s</code>", al[i][0], al[i][1], al[i][2])
 			if c.Declined > 0 {
-				fmt.Fprintf(&b, " · отказов <b>%d</b>", c.Declined)
+				fmt.Fprintf(&b, " · отказов %d", c.Declined)
 			}
 			b.WriteByte('\n')
 		}
@@ -1013,6 +1063,20 @@ func duelsText(rows []storage.DuelStanding, h2h []storage.H2HPair, speed []stora
 				fmt.Fprintf(&b, "%s · <b>%s</b> (соперник без финиша)\n", when, esc(m.Winner))
 			}
 		}
+	}
+	return b.String()
+}
+
+// pairLines renders head-to-head scores, one pair a line, "Joe Rude 3:2 Nur",
+// with the left names and the scores in one column each.
+func pairLines(pairs []storage.H2HPair) string {
+	cells := make([][]string, len(pairs))
+	for i, p := range pairs {
+		cells[i] = []string{clipRunes(p.AName, raceNameMax), fmt.Sprintf("%d:%d", p.AWins, p.BWins), clipRunes(p.BName, raceNameMax)}
+	}
+	var b strings.Builder
+	for _, c := range alignRows(cells, 1) {
+		b.WriteString("<code>" + strings.Join(c, " ") + "</code>\n")
 	}
 	return b.String()
 }
@@ -1032,9 +1096,14 @@ func speedText(se *storage.Season, difficulty string, ranked, fewer []storage.Sp
 			"Создавай игры через /play и задай /setnick, тогда время подтянется само.",
 			minGames, titleCase(difficulty))
 	} else {
+		cells := make([][]string, len(ranked))
 		for i, r := range ranked {
-			fmt.Fprintf(&b, "%s <b>%s</b> · %s   <i>(%d %s, лучшее %s)</i>\n",
-				medal(i+1), esc(r.Name), fmtDuration(r.AvgSecs), r.Games, gamesWord(r.Games), fmtDuration(r.BestSecs))
+			cells[i] = []string{clipRunes(r.Name, raceNameMax), fmtDuration(r.AvgSecs)}
+		}
+		al := alignRows(cells, 1)
+		for i, r := range ranked {
+			fmt.Fprintf(&b, "%s %s <i>(%d %s, лучшее %s)</i>\n",
+				medal(i+1), codeRow(al[i]), r.Games, gamesWord(r.Games), fmtDuration(r.BestSecs))
 		}
 	}
 	if len(fewer) > 0 {
@@ -1097,14 +1166,19 @@ func seasonSummaryText(se *storage.Season, rows []storage.Standing, games int, f
 		fmt.Fprintf(&b, "\n👑 Победитель: <b>%s</b>", esc(winner))
 	}
 	b.WriteString("\n\n")
-	shown := 0
+	var played []storage.Standing
+	var cells [][]string
 	for _, r := range rows {
-		if r.Games == 0 {
-			continue
+		if r.Games > 0 {
+			played = append(played, r)
+			cells = append(cells, []string{clipRunes(r.Name, raceNameMax), strconv.Itoa(r.Points)})
 		}
-		shown++
-		b.WriteString(fmt.Sprintf("%s <b>%s</b> · <b>%d</b>   <i>(побед %d, %d %s)</i>\n",
-			medal(shown), esc(r.Name), r.Points, r.Wins, r.Games, gamesWord(r.Games)))
+	}
+	shown := len(played)
+	for i, al := range alignRows(cells, 1) {
+		r := played[i]
+		fmt.Fprintf(&b, "%s %s <i>(побед %d, %d %s)</i>\n",
+			medal(i+1), codeRow(al), r.Wins, r.Games, gamesWord(r.Games))
 	}
 	if shown == 0 {
 		b.WriteString("В этом сезоне не было игр.\n")
@@ -1199,17 +1273,30 @@ func seasonLastWeekText(number int, rows []storage.Standing, games, minGames int
 	return b.String()
 }
 
+// pointsList is a medal list of names and points, aligned; note, when set,
+// adds an italic aside in brackets after each row.
+func pointsList(rows []storage.Standing, note func(storage.Standing) string) string {
+	cells := make([][]string, len(rows))
+	for i, r := range rows {
+		cells[i] = []string{clipRunes(r.Name, raceNameMax), strconv.Itoa(r.Points)}
+	}
+	var b strings.Builder
+	for i, al := range alignRows(cells, 1) {
+		b.WriteString(medal(i+1) + " " + codeRow(al))
+		if note != nil {
+			b.WriteString(" <i>(" + note(rows[i]) + ")</i>")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 // seasonFinalDayText is the morning post on the deadline day with the current
 // top of the table (at most three rows).
 func seasonFinalDayText(number int, rows []storage.Standing) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "⏳ <b>Сегодня финал сезона %d</b>\n\n", number)
-	for i, r := range rows {
-		if i == 3 {
-			break
-		}
-		fmt.Fprintf(&b, "%s <b>%s</b>: <b>%d</b>\n", medal(i+1), esc(r.Name), r.Points)
-	}
+	b.WriteString(pointsList(rows[:min(len(rows), 3)], nil))
 	b.WriteString("\nИграть можно до полуночи: /play")
 	return b.String()
 }
@@ -1375,14 +1462,22 @@ func recordsText(rows []storage.RecordRow, titles []storage.TitleRow) string {
 			}
 			return ri < rj
 		})
-		for _, r := range sorted {
-			fmt.Fprintf(&b, "<b>%s</b> · %s · %s\n", titleCase(r.Difficulty), fmtDuration(r.Secs), esc(r.Name))
+		cells := make([][]string, len(sorted))
+		for i, r := range sorted {
+			cells[i] = []string{titleCase(r.Difficulty), fmtDuration(r.Secs), clipRunes(r.Name, raceNameMax)}
+		}
+		for _, al := range alignRows(cells, 1) {
+			b.WriteString(codeRow(al) + "\n")
 		}
 	}
 	if len(titles) > 0 {
 		b.WriteString("\n👑 <b>Титулы</b>\n")
-		for _, t := range titles {
-			fmt.Fprintf(&b, "%s ×%d\n", esc(t.Name), t.Count)
+		cells := make([][]string, len(titles))
+		for i, t := range titles {
+			cells[i] = []string{clipRunes(t.Name, raceNameMax), fmt.Sprintf("×%d", t.Count)}
+		}
+		for _, al := range alignRows(cells, 1) {
+			b.WriteString("<code>" + strings.Join(al, " ") + "</code>\n")
 		}
 	}
 	return b.String()
@@ -1473,9 +1568,7 @@ func fmtLocalDateTime(s string, loc *time.Location) string {
 func digestText(se *storage.Season, top []storage.Standing, fastest *storage.RecordRow, streakName string, streakLen, weekGames int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "📅 <b>Итоги недели</b> · Сезон %d\n\n", se.Number)
-	for i, s := range top {
-		fmt.Fprintf(&b, "%s <b>%s</b> · %d <i>(побед %d)</i>\n", medal(i+1), esc(s.Name), s.Points, s.Wins)
-	}
+	b.WriteString(pointsList(top, func(s storage.Standing) string { return fmt.Sprintf("побед %d", s.Wins) }))
 	fmt.Fprintf(&b, "\n🎮 Игр за неделю: <b>%d</b>", weekGames)
 	if fastest != nil {
 		diff := ""
@@ -1571,9 +1664,14 @@ func seasonRatingBlock(number int, rows []domain.SeasonRatingRow, names map[int6
 	}
 	var sb strings.Builder
 	sb.WriteString(head)
+	cells := make([][]string, len(rows))
 	for i, r := range rows {
-		fmt.Fprintf(&sb, "\n%d. <b>%s</b> · %d · победы %d/%d · доигрывает %d%%",
-			i+1, esc(names[r.PlayerID]), r.Score, r.SeasonWins, r.SeasonGames,
+		cells[i] = []string{fmt.Sprintf("%d.", i+1), clipRunes(names[r.PlayerID], raceNameMax), strconv.Itoa(r.Score)}
+	}
+	al := alignRows(cells, 0, 2)
+	for i, r := range rows {
+		fmt.Fprintf(&sb, "\n<code>%s %s · %s</code> · победы %d/%d · доигрывает %d%%",
+			al[i][0], al[i][1], al[i][2], r.SeasonWins, r.SeasonGames,
 			(100*r.Finished+r.Played/2)/r.Played)
 		if r.Duels > 0 {
 			fmt.Fprintf(&sb, " · дуэли %d:%d", r.DuelWins, r.Duels-r.DuelWins)
@@ -1595,6 +1693,12 @@ func ratingLadder(r domain.Ratings, names map[int64]string) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("📈 <b>Рейтинг за всё время</b>")
+	cells := make([][]string, len(r.Ladder))
+	for i, p := range r.Ladder {
+		cells[i] = []string{fmt.Sprintf("%d.", i+1), clipRunes(names[p.PlayerID], raceNameMax),
+			strconv.Itoa(p.Rating), strconv.Itoa(p.Peak)}
+	}
+	al := alignRows(cells, 0, 2, 3)
 	for i, p := range r.Ladder {
 		crown := ""
 		if p.PlayerID == r.Crown {
@@ -1604,8 +1708,8 @@ func ratingLadder(r domain.Ratings, names map[int64]string) string {
 		if p.Provisional {
 			prov = " <i>(калибровка)</i>"
 		}
-		sb.WriteString(fmt.Sprintf("\n%d. <b>%s</b> · %d (пик %d)%s%s",
-			i+1, esc(names[p.PlayerID]), p.Rating, p.Peak, crown, prov))
+		fmt.Fprintf(&sb, "\n<code>%s %s · %s · пик %s</code>%s%s",
+			al[i][0], al[i][1], al[i][2], al[i][3], crown, prov)
 	}
 	return sb.String()
 }
@@ -1663,9 +1767,14 @@ func activityText(rows []storage.InitiativeRow, now time.Time, loc *time.Locatio
 		b.WriteString("Пока нет игроков. /join")
 		return b.String()
 	}
+	cells := make([][]string, len(rows))
 	for i, r := range rows {
-		fmt.Fprintf(&b, "%s <b>%s</b>: <b>%d</b> %s · <b>%d</b> %s <i>за 30 дн</i>\n",
-			medal(i+1), esc(r.Name), r.Games30, gamesWord(r.Games30), r.Duels30, duelsWord(r.Duels30))
+		cells[i] = []string{clipRunes(r.Name, raceNameMax), strconv.Itoa(r.Games30), strconv.Itoa(r.Duels30)}
+	}
+	al := alignRows(cells, 1, 2)
+	for i, r := range rows {
+		fmt.Fprintf(&b, "%s <code>%s · игры %s · дуэли %s</code> <i>за 30 дн</i>\n",
+			medal(i+1), al[i][0], al[i][1], al[i][2])
 		fmt.Fprintf(&b, "   <i>всего: %d · %d · %s</i>\n",
 			r.GamesAll, r.DuelsAll, lastPlayedPhrase(r.LastPlayed, now, loc))
 	}

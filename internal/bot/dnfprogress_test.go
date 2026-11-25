@@ -42,19 +42,19 @@ func TestResultTextShowsDNFProgress(t *testing.T) {
 		{PlayerID: 6, Rank: 0, Name: "Eve"},
 	}
 	out := resultText(rows, "medium", "hardcore", nil, 0, 0, 0, left, "")
-	if !strings.Contains(out, "▫️ Bob · <i>без финиша · 48 из 54</i>") {
+	if !strings.Contains(out, "▫️ <code>Bob   ·</code> <i>без финиша · 48 из 54</i>") {
 		t.Errorf("most of the board solved must show:\n%s", out)
 	}
 	// Under half of the board the number would only read as a reproach.
-	if !strings.Contains(out, "▫️ Kate · <i>без финиша</i>") {
+	if !strings.Contains(out, "▫️ <code>Kate  ·</code> <i>без финиша</i>") {
 		t.Errorf("a board barely started keeps the plain row:\n%s", out)
 	}
 
 	// Errors ride along only where the progress is shown; a full board says so.
-	if !strings.Contains(out, "▫️ Dan · <i>без финиша · 45 из 54, 3 с ошибкой</i>") {
+	if !strings.Contains(out, "▫️ <code>Dan   ·</code> <i>без финиша · 45 из 54, 3 с ошибкой</i>") {
 		t.Errorf("wrong cells must follow the progress:\n%s", out)
 	}
-	if !strings.Contains(out, "▫️ Eve · <i>без финиша · все клетки заняты, 4 с ошибкой</i>") {
+	if !strings.Contains(out, "▫️ <code>Eve   ·</code> <i>без финиша · все клетки заняты, 4 с ошибкой</i>") {
 		t.Errorf("a full board with errors must say so:\n%s", out)
 	}
 

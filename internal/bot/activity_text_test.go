@@ -37,7 +37,7 @@ func TestActivityTextLeadsWithRecentWindow(t *testing.T) {
 	}
 	got := activityText(rows, time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC), time.UTC)
 	for _, want := range []string{
-		"📣", "<b>1</b> игра · <b>0</b> дуэлей <i>за 30 дн</i>",
+		"📣", "🥇 <code>Bob   · игры 1 · дуэли 0</code> <i>за 30 дн</i>",
 		"всего: 21 · 2", "/result",
 	} {
 		if !strings.Contains(got, want) {

@@ -2,6 +2,7 @@ package bot
 
 import (
 	"database/sql"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -168,7 +169,7 @@ func TestDuelsText(t *testing.T) {
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, nil, nil, "Asia/Bishkek")
-	for _, want := range []string{"🥇", "Vasya", "8-2", "(80%)", "Masha", "(50%)"} {
+	for _, want := range []string{"🥇 <code>Vasya · 8-2 · 80%</code>", "🥈 <code>Masha · 5-5 · 50%</code>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText: want %q in output\ngot: %s", want, out)
 		}
@@ -224,8 +225,8 @@ func TestDuelsTextChallenges(t *testing.T) {
 		{PlayerID: 2, Name: "Masha", Issued: 3, Received: 7, Declined: 4},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, ch, nil, "Asia/Bishkek")
-	for _, want := range []string{"Вызовы", "вызовов <b>7</b>", "получено <b>3</b>",
-		"отказов <b>4</b>"} {
+	for _, want := range []string{"Вызовы", "<code>Vasya · вызовов 7 · получено 3</code>\n",
+		"<code>Masha · вызовов 3 · получено 7</code> · отказов 4"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText challenges: want %q in output\ngot: %s", want, out)
 		}
@@ -882,8 +883,8 @@ func TestSeasonRatingBlock(t *testing.T) {
 	got := seasonRatingBlock(7, rows, names)
 	for _, want := range []string{
 		"🏅 <b>Рейтинг сезона 7</b>\n",
-		"1. <b>Ann</b> · 58 · победы 5/12 · доигрывает 93% · дуэли 3:1\n",
-		"2. <b>A&amp;B</b> · 41 · победы 2/10 · доигрывает 80%\n",
+		"<code>1. Ann · 58</code> · победы 5/12 · доигрывает 93% · дуэли 3:1\n",
+		"<code>2. A&amp;B · 41</code> · победы 2/10 · доигрывает 80%\n",
 		"<i>победы 50%, доигрывание 25%, дуэли 25%, считается заново каждый сезон</i>",
 	} {
 		if !strings.Contains(got, want) {
@@ -951,7 +952,7 @@ func TestDuelsTextShowsScore(t *testing.T) {
 		{Name: "Masha", Wins: 5, Losses: 5},
 	}
 	out := duelsText(rows, nil, nil, nil, nil, nil, nil, "Asia/Bishkek")
-	for _, want := range []string{"Дуэли</b> · счёт", "8-2", "(80%)"} {
+	for _, want := range []string{"Дуэли</b> · счёт", "8-2", "80%"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("duelsText score: want %q in output\ngot: %s", want, out)
 		}
@@ -1467,5 +1468,30 @@ func TestDuelResultTextNumber(t *testing.T) {
 	}
 	if plain := duelResultText(duelNo{}, rows, 0, 0, false, 0, ""); !strings.HasPrefix(plain, "⚔️ <b>Дуэль</b>\n") {
 		t.Errorf("unknown number must keep the plain header\ngot: %s", plain)
+	}
+}
+
+func TestAlignRows(t *testing.T) {
+	got := alignRows([][]string{{"Joe Rude", "7", "3:05"}, {"A&B", "12"}, {"Nur", "0", "12:40"}}, 1, 2)
+	want := [][]string{{"Joe Rude", " 7", " 3:05"}, {"A&amp;B     ", "12"}, {"Nur     ", " 0", "12:40"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("alignRows = %q, want %q", got, want)
+	}
+}
+
+// Result rows line up in monospace: points and times in one column, the
+// non-finisher's note starting where the points do.
+func TestResultTextAligned(t *testing.T) {
+	rows := []storage.ResultRow{
+		{PlayerID: 1, Rank: 1, Name: "Joe Rude", Points: 3, Duration: 185},
+		{PlayerID: 2, Rank: 2, Name: "Nur", Points: 1, Duration: 760},
+		{PlayerID: 3, Rank: 0, Name: "mister"},
+	}
+	out := resultText(rows, "medium", "hardcore", nil, 0, 0, 0, nil, "")
+	want := "🥇 <code>Joe Rude · +3 ·  3:05</code>\n" +
+		"🥈 <code>Nur      · +1 · 12:40</code>\n" +
+		"▫️ <code>mister   ·</code> <i>без финиша</i>\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("resultText rows:\n%s\nwant:\n%s", out, want)
 	}
 }
