@@ -565,14 +565,30 @@ func standingsText(se *storage.Season, rows []storage.Standing, race raceWindow,
 		return b.String()
 	}
 	b.WriteString("\n\n<b>Форма</b> <i>(последние игры, новые справа)</i>")
-	for _, r := range rows {
-		mark := ""
-		if duelist != 0 && r.PlayerID == duelist {
-			mark = " ⚔️"
-		}
-		fmt.Fprintf(&b, "\n<b>%s</b>%s · побед %d", esc(r.Name), mark, r.Wins)
+	b.WriteString(formBlock(rows, form, duelist))
+	return b.String()
+}
+
+// formBlock is the table's form lines. Name and wins sit in monospace, padded
+// like the race block, so "побед" and the medals start in one column; the
+// duelist's ⚔️ goes last, where it can't push the medals out of line.
+func formBlock(rows []storage.Standing, form map[int64][]int, duelist int64) string {
+	names := make([]string, len(rows))
+	nameW, winsW := 0, 0
+	for i, r := range rows {
+		names[i] = clipRunes(r.Name, raceNameMax)
+		nameW = max(nameW, utf8.RuneCountInString(names[i]))
+		winsW = max(winsW, len(strconv.Itoa(r.Wins)))
+	}
+	var b strings.Builder
+	for i, r := range rows {
+		pad := strings.Repeat(" ", nameW-utf8.RuneCountInString(names[i]))
+		fmt.Fprintf(&b, "\n<code>%s%s · побед %*d</code>", esc(names[i]), pad, winsW, r.Wins)
 		if f := formLine(form[r.PlayerID]); f != "" {
-			b.WriteString(" · " + f)
+			b.WriteString(" " + f)
+		}
+		if duelist != 0 && r.PlayerID == duelist {
+			b.WriteString(" ⚔️")
 		}
 	}
 	return b.String()

@@ -21,7 +21,6 @@ type ReplayRow struct {
 	Place int    // 1-based finish place; 0 = did not finish
 	Name  string // player name
 	Value string // "2:59" or "18/51"
-	Note  string // a muted second line, e.g. "с 22-й минуты"; "" = none
 }
 
 const (
@@ -79,9 +78,9 @@ func RenderReplay(r Replay) ([]byte, error) {
 }
 
 // drawStanding lists the rows from (x, y) to right: place, colour dot, name
-// and value, with an optional muted note under the name.
+// and value.
 func drawStanding(c *canvas, fs *faces, x, y, right float64, rows []ReplayRow) {
-	place, name, value, note := fs.bold(26), fs.bold(26), fs.regular(26), fs.regular(20)
+	place, name, value := fs.bold(26), fs.bold(26), fs.regular(26)
 	for _, row := range rows {
 		if row.Place > 0 {
 			c.textRight(place, x+20, y, inkMuted, itoa(row.Place))
@@ -95,9 +94,5 @@ func drawStanding(c *canvas, fs *faces, x, y, right float64, rows []ReplayRow) {
 		}
 		c.text(name, x+58, y, inkMain, n)
 		y += 48
-		if row.Note != "" {
-			c.text(note, x+58, y-18, inkMuted, row.Note)
-			y += 18
-		}
 	}
 }

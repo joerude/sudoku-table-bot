@@ -54,40 +54,47 @@ func TestReplayData(t *testing.T) {
 	}
 }
 
-// A player with no cell for minutes came late: their line starts at 0 from
-// their own start, so the round's idle stretch does not squeeze the others.
-func TestReplayDataLateStart(t *testing.T) {
-	start := time.Date(2026, 11, 23, 3, 0, 0, 0, time.UTC)
+// OLXR: the room sat with an empty board for 22 minutes (but for one stray
+// cell), then both played. The idle stretch is cut for everybody alike, and
+// the winner's finish comes from usdoku's completion moment, because the
+// recorded time counts from his own join.
+func TestReplayDataIdleStart(t *testing.T) {
+	start := time.Date(2026, 11, 24, 17, 1, 0, 0, time.UTC) // 23:01 in Bishkek
 	var samples []progSample
-	for s := 20; s <= 1680; s += 20 {
-		joe := 0
-		if s > 1320 {
-			joe = (s - 1320) / 20
+	for s := 20; s <= 1520; s += 20 {
+		nur, joe := 0, 0
+		if s >= 40 && s <= 100 {
+			nur = 1
 		}
-		samples = append(samples, progSample{at: start.Add(time.Duration(s) * time.Second), open: 51,
-			solved: map[string]int{"nur": min(s/7, 51), "joe": joe}})
+		if s > 1360 {
+			nur, joe = (s-1360)/7, (s-1360)/4
+		}
+		samples = append(samples, progSample{at: start.Add(time.Duration(s) * time.Second), open: 52,
+			solved: map[string]int{"nur": nur, "joe": joe}})
 	}
 	players := []replayPlayer{
-		{ID: 1, Name: "Joe", Nick: "joe"},
-		{ID: 2, Name: "Nur", Nick: "nur", Rank: 1, Finish: 352},
+		{ID: 1, Name: "Joe", Nick: "joe", Rank: 1, Finish: 170, Done: start.Add(1530 * time.Second)},
+		{ID: 2, Name: "Nur", Nick: "nur"},
 	}
 	r, ok := replayData(start, time.FixedZone("BISH", 6*3600), samples, players)
 	if !ok {
 		t.Fatal("no replay")
 	}
-	joe := r.Series[0]
-	// Joe's line runs from his last empty fetch (22:00) to the last one (28:00).
-	if len(joe.Points) != 36 || joe.Points[1] != 1 || joe.Points[35] != 18 {
-		t.Errorf("late line = %d points, %v", len(joe.Points), joe.Points)
+	joe, nur := r.Series[0], r.Series[1]
+	if len(joe.Points) != 17 || joe.Points[1] != 5 || joe.Points[16] != 52 || joe.Last != 17 {
+		t.Errorf("winner line = %d points, last %v: %v", len(joe.Points), joe.Last, joe.Points)
+	}
+	if len(nur.Points) != 16 || nur.Points[1] != 2 || nur.Points[15] != 22 {
+		t.Errorf("other line = %d points: %v", len(nur.Points), nur.Points)
 	}
 	want := []chart.ReplayRow{
-		{Slot: 1, Place: 1, Name: "Nur", Value: "5:52"},
-		{Slot: 0, Name: "Joe", Value: "18/51", Note: "с 22-й минуты"},
+		{Slot: 0, Place: 1, Name: "Joe", Value: "2:50"},
+		{Slot: 1, Name: "Nur", Value: "22/52"},
 	}
 	if !reflect.DeepEqual(r.Rows, want) {
 		t.Errorf("rows = %+v, want %+v", r.Rows, want)
 	}
-	if r.Meta != "Пн, 23 ноября · 09:00 · 28 мин" {
+	if r.Meta != "Вт, 24 ноября · 23:23 · 2 мин 50 с" {
 		t.Errorf("meta = %q", r.Meta)
 	}
 }

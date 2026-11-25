@@ -920,10 +920,10 @@ func TestStandingsTextDuelistMark(t *testing.T) {
 	}
 	form := map[int64][]int{1: {1, 2}, 2: {2, 1}}
 	out := standingsText(se, rows, raceWindow{Days: 7}, form, 2)
-	if !strings.Contains(out, "<b>Nur</b> ⚔️ · побед 5") {
-		t.Errorf("duelist must carry the mark after the name\ngot: %s", out)
+	if !strings.Contains(out, "<code>Nur    · побед 5</code> 🥈🥇 ⚔️") {
+		t.Errorf("duelist must carry the mark at the end of the line\ngot: %s", out)
 	}
-	if strings.Contains(out, "<b>mister</b> ⚔️") || strings.Count(out, "⚔️") != 1 {
+	if strings.Count(out, "⚔️") != 1 {
 		t.Errorf("only the duelist is marked\ngot: %s", out)
 	}
 	if none := standingsText(se, rows, raceWindow{Days: 7}, form, 0); strings.Contains(none, "⚔️") {
@@ -1348,8 +1348,8 @@ func TestStandingsTextRaceTable(t *testing.T) {
 		"2 Nur    18 ▰▱▱▱▱▱ +1 ↘1\n",
 		"3 Max    15 ▰▱▱▱▱▱ +0</pre>",
 		"за 7 дней · 4 игры",
-		"<b>mister</b> · побед 6 · 🥈🥉🥇🥇➖",
-		"<b>Max</b> · побед 4",
+		"<code>mister · побед 6</code> 🥈🥉🥇🥇➖\n",
+		"<code>Max    · побед 4</code>",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("standingsText missing %q\ngot: %s", want, out)

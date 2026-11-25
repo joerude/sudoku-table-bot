@@ -26,11 +26,13 @@ const featReplay = "replay"
 const evReplayShown = "replay_shown"
 
 const (
-	replayStep       = 10  // seconds per chart point (a divisor of 60)
-	replayMinSamples = 4   // fewer fetches: too little to draw
-	replayMaxSamples = 720 // a stuck room must not grow the slice forever
-	replayNameRunes  = 12
-	replayLateAfter  = 180 // seconds with no cell: the player began later than the round
+	replayStep        = 10  // seconds per chart point (a divisor of 60)
+	replayMinSamples  = 4   // fewer fetches: too little to draw
+	replayMaxSamples  = 720 // a stuck room must not grow the slice forever
+	replayNameRunes   = 12
+	replayIdleAfter   = 180 // an empty board this long at the start is cut off the chart
+	replayIdleCells   = 2   // cells on the whole board that still count as nobody playing
+	replayFinishSlack = 120 // a finish this far past the last fetch is still believed
 )
 
 // progSample is one board fetch: when, and how many cells each usdoku nick
@@ -84,9 +86,10 @@ func dropReplay(gameID int64) { takeReplay(gameID) }
 type replayPlayer struct {
 	ID     int64
 	Name   string
-	Nick   string // usdoku nick, the key of progSample.solved
-	Rank   int    // recorded place; 0 = did not finish
-	Finish int    // solve time in seconds from the round start; 0 = unknown or did not finish
+	Nick   string    // usdoku nick, the key of progSample.solved
+	Rank   int       // recorded place; 0 = did not finish
+	Finish int       // recorded solve time in seconds, as in the result post; 0 = unknown or did not finish
+	Done   time.Time // when usdoku saw the board solved; zero = unknown
 }
 
 // roundWindow puts usdoku's startedAt (seconds or milliseconds, the unit is
@@ -102,10 +105,7 @@ func roundWindow(startedAt int64, samples []progSample) (time.Time, []progSample
 	}
 	first, last := samples[0].at, samples[len(samples)-1].at
 	if startedAt > 0 {
-		t := time.Unix(startedAt, 0)
-		if startedAt > 1e11 {
-			t = time.UnixMilli(startedAt)
-		}
+		t := usdokuTime(startedAt)
 		if d := first.Sub(t); d >= 0 && d < 6*time.Hour {
 			return t, samples
 		}
@@ -117,29 +117,64 @@ func roundWindow(startedAt int64, samples []progSample) (time.Time, []progSample
 	return first.Add(-progressEvery), samples
 }
 
-// ownStart is when p began, in seconds from the round start. usdoku keeps no
-// join time, so a player who had no cell for replayLateAfter or longer (came
-// late, or was away) is taken to begin at the last fetch that still showed
-// none; everybody else began with the round.
-func ownStart(nick string, start time.Time, samples []progSample) int {
-	from := 0
+// usdokuTime reads a usdoku timestamp, seconds or milliseconds (the unit is
+// not documented).
+func usdokuTime(v int64) time.Time {
+	if v > 1e11 {
+		return time.UnixMilli(v)
+	}
+	return time.Unix(v, 0)
+}
+
+// idleLead is how much of the round's start to cut off: the room can sit
+// with an empty board for long minutes before anybody plays. It is the last
+// fetch of that empty stretch (a stray cell or two still counts as empty),
+// or 0 when the stretch is shorter than replayIdleAfter. Everybody keeps one
+// clock: shifting a single player's line made a race that never happened.
+func idleLead(start time.Time, samples []progSample) int {
+	lead := 0
 	for _, s := range samples {
-		if s.solved[nick] > 0 {
-			if from >= replayLateAfter {
-				return from
-			}
-			return 0
+		total := 0
+		for _, n := range s.solved {
+			total += n
 		}
-		from = int(s.at.Sub(start).Seconds())
+		if total > replayIdleCells {
+			break
+		}
+		lead = int(s.at.Sub(start).Seconds())
+	}
+	if lead < replayIdleAfter {
+		return 0
+	}
+	return lead
+}
+
+// finishAt puts p's finish on the chart's clock (seconds after start), or 0
+// when it can't be placed. usdoku's completion moment comes first: the
+// recorded time can be counted from the player's own join, not from the
+// round, and then it lands far from the line. lead is what idleLead cut off.
+func finishAt(p replayPlayer, start time.Time, lead, end int) int {
+	if p.Rank <= 0 {
+		return 0
+	}
+	fits := func(f int) bool { return f > 0 && f <= end+replayFinishSlack }
+	if !p.Done.IsZero() {
+		if f := int(p.Done.Sub(start).Seconds()); fits(f) {
+			return f
+		}
+	}
+	if f := p.Finish - lead; p.Finish > 0 && fits(f) {
+		return f
 	}
 	return 0
 }
 
 // replayData turns the samples into chart lines, one per player in id order
-// (the same colours as the season charts), each on the player's own clock (see
-// ownStart). A finisher's line ends on the finish line at their solve time;
-// everybody else's runs to the last sample. The standing beside it goes by
-// place, then by cells. False when there is too little to draw.
+// (the same colours as the season charts), all on one clock that starts when
+// the board stops being empty (see idleLead). A finisher's line ends on the
+// finish line at their finish; everybody else's runs to the last sample. The
+// standing beside it goes by place, then by cells. False when there is too
+// little to draw.
 func replayData(start time.Time, loc *time.Location, samples []progSample, players []replayPlayer) (chart.Replay, bool) {
 	if len(samples) < replayMinSamples || len(players) < 2 {
 		return chart.Replay{}, false
@@ -152,6 +187,11 @@ func replayData(start time.Time, loc *time.Location, samples []progSample, playe
 	if open <= 0 || end < replayStep {
 		return chart.Replay{}, false
 	}
+	lead := idleLead(start, samples)
+	if lead > 0 {
+		start = start.Add(time.Duration(lead) * time.Second)
+		end -= lead
+	}
 	ps := make([]replayPlayer, len(players))
 	copy(ps, players)
 	sort.Slice(ps, func(i, j int) bool { return ps[i].ID < ps[j].ID })
@@ -160,28 +200,27 @@ func replayData(start time.Time, loc *time.Location, samples []progSample, playe
 	cells := make([]int, len(ps))
 	span := 0
 	for i, p := range ps {
-		from := ownStart(p.Nick, start, samples)
-		timed := p.Rank > 0 && p.Finish > from
+		fin := finishAt(p, start, lead, end)
 		ts, vs := []int{0}, []int{0}
 		for _, s := range samples {
 			t := int(s.at.Sub(start).Seconds())
-			if t-from <= ts[len(ts)-1] || (timed && t >= p.Finish) {
+			if t <= ts[len(ts)-1] || (fin > 0 && t >= fin) {
 				continue
 			}
-			ts, vs = append(ts, t-from), append(vs, min(s.solved[p.Nick], open))
+			ts, vs = append(ts, t), append(vs, min(s.solved[p.Nick], open))
 		}
-		until := end - from
-		if timed {
-			until = p.Finish - from
+		until := end
+		if fin > 0 {
+			until = fin
 			ts, vs = append(ts, until), append(vs, open)
 		}
-		span = max(span, from+until)
+		span = max(span, until)
 		line := make([]int, (until+replayStep-1)/replayStep)
 		for k := range line {
 			line[k] = interpolate(ts, vs, (k+1)*replayStep)
 		}
 		s := chart.Series{Name: p.Name, Points: line}
-		if timed {
+		if fin > 0 {
 			s.Last = float64(until) / replayStep
 		}
 		r.Series = append(r.Series, s)
@@ -190,13 +229,10 @@ func replayData(start time.Time, loc *time.Location, samples []progSample, playe
 		row := chart.ReplayRow{Slot: i, Place: p.Rank, Name: clipRunes(p.Name, replayNameRunes),
 			Value: fmt.Sprintf("%d/%d", cells[i], open)}
 		switch {
-		case timed:
+		case p.Rank > 0 && p.Finish > 0:
 			row.Value = fmtDuration(p.Finish) // the recorded time, as in the result post
 		case p.Rank > 0:
 			row.Value = "финиш" // finished, the time is unknown
-		}
-		if from > 0 {
-			row.Note = fmt.Sprintf("с %d-й минуты", (from+30)/60)
 		}
 		r.Rows = append(r.Rows, row)
 	}
@@ -268,8 +304,11 @@ func (b *Bot) postReplay(game *storage.Game, info *usdoku.GameInfo, result *tele
 		if !ok {
 			continue // a guest in a duel room, or not part of the record
 		}
-		players = append(players, replayPlayer{ID: pl.ID, Name: pl.Name, Nick: p.Name,
-			Rank: row.Rank, Finish: row.Duration})
+		rp := replayPlayer{ID: pl.ID, Name: pl.Name, Nick: p.Name, Rank: row.Rank, Finish: row.Duration}
+		if p.CompletedAt != nil && *p.CompletedAt > 0 {
+			rp.Done = usdokuTime(*p.CompletedAt)
+		}
+		players = append(players, rp)
 	}
 	code := game.UsdokuCode.String
 	start, samples := roundWindow(info.Info.StartedAt, samples)

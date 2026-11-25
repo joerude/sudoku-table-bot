@@ -138,7 +138,7 @@ func TestRenderReplay(t *testing.T) {
 		}, Rows: []ReplayRow{
 			{Slot: 0, Place: 1, Name: "mister", Value: "6:35"},
 			{Slot: 1, Place: 2, Name: "Nur", Value: "7:50"},
-			{Slot: 2, Name: "Joe Rude", Value: "48/54", Note: "с 22-й минуты"},
+			{Slot: 2, Name: "Joe Rude", Value: "48/54"},
 		}}
 	b, err := RenderReplay(r)
 	if err != nil {
