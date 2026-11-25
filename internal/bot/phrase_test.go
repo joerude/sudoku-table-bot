@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tele "gopkg.in/telebot.v3"
+
 	"github.com/joerude/sudoku-bot-telegram/internal/storage"
 )
 
@@ -63,9 +65,9 @@ func TestPhraseGifArg(t *testing.T) {
 		{"Нагнул тебя брат", false, false},
 		{"", false, false},
 	} {
-		clear, ok := phraseGifArg(tc.arg)
+		clear, ok := phraseSubArg(tc.arg, phraseGifWord)
 		if clear != tc.clear || ok != tc.ok {
-			t.Errorf("phraseGifArg(%q) = (%v, %v), want (%v, %v)", tc.arg, clear, ok, tc.clear, tc.ok)
+			t.Errorf("phraseSubArg(%q) = (%v, %v), want (%v, %v)", tc.arg, clear, ok, tc.clear, tc.ok)
 		}
 	}
 }
@@ -78,8 +80,47 @@ func TestIsPhraseGifCaption(t *testing.T) {
 		"/phrase gif -":          false,
 		"смотри gif":             false,
 	} {
-		if got := isPhraseGifCaption(caption); got != want {
-			t.Errorf("isPhraseGifCaption(%q) = %v, want %v", caption, got, want)
+		if got := isPhraseCaption(caption, phraseGifWord); got != want {
+			t.Errorf("isPhraseCaption(%q) = %v, want %v", caption, got, want)
+		}
+	}
+}
+
+func TestPhraseAudioRef(t *testing.T) {
+	voice := &tele.Message{Voice: &tele.Voice{File: tele.File{FileID: "AwAC"}}}
+	mp3 := &tele.Message{Audio: &tele.Audio{File: tele.File{FileID: "CQAC"}}}
+	for name, tc := range map[string]struct {
+		m    *tele.Message
+		want string
+	}{
+		"voice itself":       {voice, "voice:AwAC"},
+		"reply to an mp3":    {&tele.Message{ReplyTo: mp3}, "audio:CQAC"},
+		"reply to text":      {&tele.Message{ReplyTo: &tele.Message{Text: "hi"}}, ""},
+		"no reply, no sound": {&tele.Message{Text: "/phrase audio"}, ""},
+	} {
+		got := phraseAudioFile(tc.m)
+		if got != tc.want {
+			t.Errorf("%s: phraseAudioFile = %q, want %q", name, got, tc.want)
+		}
+		if tc.want == "" {
+			continue
+		}
+		switch s := phraseAudioSendable(got).(type) {
+		case *tele.Voice:
+			if !strings.HasPrefix(got, "voice:") || s.FileID != "AwAC" {
+				t.Errorf("%s: sendable %T %q", name, s, s.FileID)
+			}
+		case *tele.Audio:
+			if !strings.HasPrefix(got, "audio:") || s.FileID != "CQAC" {
+				t.Errorf("%s: sendable %T %q", name, s, s.FileID)
+			}
+		default:
+			t.Errorf("%s: sendable %T", name, s)
+		}
+	}
+	for _, bad := range []string{"", "voice:", "video:x", "nocolon"} {
+		if s := phraseAudioSendable(bad); s != nil {
+			t.Errorf("phraseAudioSendable(%q) = %T, want nil", bad, s)
 		}
 	}
 }

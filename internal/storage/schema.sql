@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS players (
     usdoku_nick TEXT,                          -- nickname used on usdoku (for auto-record)
     phrase      TEXT,                          -- /phrase: shown in bold under the player's wins
     phrase_gif  TEXT,                          -- /phrase gif: file_id of the GIF sent after a win
+    phrase_audio TEXT,                         -- /phrase audio: kind:file_id of the sound sent after a win
     active      INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(chat_id, tg_id)

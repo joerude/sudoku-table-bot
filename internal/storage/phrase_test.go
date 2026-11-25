@@ -44,3 +44,24 @@ func TestSetPhraseGifKeepsPhrase(t *testing.T) {
 		t.Errorf("Phrase = %q, the GIF must not touch it", got)
 	}
 }
+
+func TestSetPhraseAudioKeepsGif(t *testing.T) {
+	st := openTemp(t)
+	const chat = int64(-313)
+	st.EnsureChat(chat, 1)
+	p, _, _ := st.RegisterPlayer(chat, 1, "Вова")
+	_ = st.SetPhraseGif(p.ID, "CgACAgIAAxkB")
+	if err := st.SetPhraseAudio(p.ID, "voice:AwACAgIAAxkB"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.PhraseAudio(p.ID); got != "voice:AwACAgIAAxkB" {
+		t.Errorf("PhraseAudio = %q after set", got)
+	}
+	_ = st.SetPhraseAudio(p.ID, "")
+	if got, _ := st.PhraseAudio(p.ID); got != "" {
+		t.Errorf("PhraseAudio = %q after clear, want empty", got)
+	}
+	if got, _ := st.PhraseGif(p.ID); got != "CgACAgIAAxkB" {
+		t.Errorf("PhraseGif = %q, the audio must not touch it", got)
+	}
+}

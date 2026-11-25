@@ -18,8 +18,12 @@ const featPhrase = "phrase"
 // phraseMaxRunes keeps the phrase on one line of a phone screen.
 const phraseMaxRunes = 60
 
-// evPhraseGif marks a game whose winner already got the /phrase gif.
-const evPhraseGif = "phrase_gif"
+// evPhraseGif and evPhraseAudio mark a game whose winner already got the
+// /phrase gif or the /phrase audio.
+const (
+	evPhraseGif   = "phrase_gif"
+	evPhraseAudio = "phrase_audio"
+)
 
 // phraseClear is the /phrase argument that removes the phrase.
 const phraseClear = "-"
@@ -78,46 +82,67 @@ func (b *Bot) winnerPhrase(chatID int64, rows []storage.ResultRow) string {
 	return phrase
 }
 
-// postWinnerGif answers a recorded result with the winner's /phrase gif,
-// silently. An edit re-records through the same path, so the evPhraseGif event
-// keeps it to one GIF per game and winner. Best-effort, a failure only logs.
-func (b *Bot) postWinnerGif(game *storage.Game, result *tele.Message) {
+// postWinnerMedia answers a recorded result with the winner's /phrase gif,
+// then the /phrase audio, silently. An edit re-records through the same path,
+// so the events keep it to one of each per game and winner. Best-effort, a
+// failure only logs.
+func (b *Bot) postWinnerMedia(game *storage.Game, result *tele.Message) {
 	if b.tb == nil || result == nil || result.ID == 0 {
 		return
 	}
 	rows, err := b.st.GameResults(game.ID)
 	if err != nil {
-		log.Printf("postWinnerGif.results %d: %v", game.ID, err)
+		log.Printf("postWinnerMedia.results %d: %v", game.ID, err)
 		return
 	}
 	w, ok := b.phraseWinner(game.ChatID, rows)
 	if !ok {
 		return
 	}
-	if b.phraseGifShown(game, w.PlayerID) {
-		return
-	}
-	fileID, err := b.st.PhraseGif(w.PlayerID)
-	if err != nil || fileID == "" {
-		if err != nil {
-			log.Printf("postWinnerGif.read %d: %v", game.ID, err)
+	b.postWinnerOne(game, result, w.PlayerID, evPhraseGif, func() (tele.Sendable, error) {
+		id, err := b.st.PhraseGif(w.PlayerID)
+		if id == "" || err != nil {
+			return nil, err
 		}
-		return
-	}
-	gif := &tele.Animation{File: tele.File{FileID: fileID}}
-	if _, err := b.tb.Send(tele.ChatID(game.ChatID), gif, quietReply(result)); err != nil {
-		log.Printf("postWinnerGif.send %d: %v", game.ID, err)
-		return
-	}
-	b.logEvent(storage.Event{ChatID: game.ChatID, GameID: game.ID, PlayerID: w.PlayerID, Kind: evPhraseGif})
+		return &tele.Animation{File: tele.File{FileID: id}}, nil
+	})
+	b.postWinnerOne(game, result, w.PlayerID, evPhraseAudio, func() (tele.Sendable, error) {
+		ref, err := b.st.PhraseAudio(w.PlayerID)
+		if err != nil {
+			return nil, err
+		}
+		return phraseAudioSendable(ref), nil
+	})
 }
 
-// phraseGifShown is true when this winner already got the GIF for this game.
-// A read error counts as shown: a glitch makes the bot quieter, not louder.
-func (b *Bot) phraseGifShown(game *storage.Game, playerID int64) bool {
-	events, err := b.st.GameEvents(game.ChatID, game.ID, evPhraseGif)
+// postWinnerOne sends one piece of the winner's media unless this game
+// already got it; load returns nil when the player has none.
+func (b *Bot) postWinnerOne(game *storage.Game, result *tele.Message, playerID int64, kind string, load func() (tele.Sendable, error)) {
+	if b.phraseMediaShown(game, playerID, kind) {
+		return
+	}
+	what, err := load()
 	if err != nil {
-		log.Printf("phraseGifShown %d: %v", game.ID, err)
+		log.Printf("postWinnerMedia.read %s %d: %v", kind, game.ID, err)
+		return
+	}
+	if what == nil {
+		return
+	}
+	if _, err := b.tb.Send(tele.ChatID(game.ChatID), what, quietReply(result)); err != nil {
+		log.Printf("postWinnerMedia.send %s %d: %v", kind, game.ID, err)
+		return
+	}
+	b.logEvent(storage.Event{ChatID: game.ChatID, GameID: game.ID, PlayerID: playerID, Kind: kind})
+}
+
+// phraseMediaShown is true when this winner already got this kind of media
+// for this game. A read error counts as shown: a glitch makes the bot
+// quieter, not louder.
+func (b *Bot) phraseMediaShown(game *storage.Game, playerID int64, kind string) bool {
+	events, err := b.st.GameEvents(game.ChatID, game.ID, kind)
+	if err != nil {
+		log.Printf("phraseMediaShown %s %d: %v", kind, game.ID, err)
 		return true
 	}
 	for _, e := range events {
@@ -147,8 +172,11 @@ func (b *Bot) onPhrase(c tele.Context) error {
 		return b.ephemeral(c, "Сначала зарегистрируйся: /setnick &lt;ник на usdoku&gt;")
 	}
 	arg := strings.TrimSpace(c.Message().Payload)
-	if clear, ok := phraseGifArg(arg); ok {
+	if clear, ok := phraseSubArg(arg, phraseGifWord); ok {
 		return b.setPhraseGif(c, player.ID, clear)
+	}
+	if clear, ok := phraseSubArg(arg, phraseAudioWord); ok {
+		return b.setPhraseAudio(c, player.ID, clear)
 	}
 	var text string
 	switch arg {
@@ -184,14 +212,19 @@ func (b *Bot) onPhrase(c tele.Context) error {
 	return b.quiet(c, text)
 }
 
-// phraseGifWord is the /phrase sub-command for the GIF.
-const phraseGifWord = "gif"
+// phraseGifWord and phraseAudioWord are the /phrase sub-commands for the
+// GIF and the sound.
+const (
+	phraseGifWord   = "gif"
+	phraseAudioWord = "audio"
+)
 
-// phraseGifArg tells a /phrase gif payload ("gif" or "gif -") from a text
-// phrase; clear is true for "gif -". Anything longer is a text phrase.
-func phraseGifArg(arg string) (clear, ok bool) {
+// phraseSubArg tells a /phrase <word> payload ("<word>" or "<word> -") from
+// a text phrase; clear is true for "<word> -". Anything longer is a text
+// phrase.
+func phraseSubArg(arg, word string) (clear, ok bool) {
 	f := strings.Fields(arg)
-	if len(f) == 0 || !strings.EqualFold(f[0], phraseGifWord) {
+	if len(f) == 0 || !strings.EqualFold(f[0], word) {
 		return false, false
 	}
 	switch {
@@ -203,15 +236,15 @@ func phraseGifArg(arg string) (clear, ok bool) {
 	return false, false
 }
 
-// isPhraseGifCaption is true for a GIF sent with the caption "/phrase gif"
-// (or "/phrase@bot gif").
-func isPhraseGifCaption(caption string) bool {
+// isPhraseCaption is true for media sent with the caption "/phrase <word>"
+// (or "/phrase@bot <word>").
+func isPhraseCaption(caption, word string) bool {
 	f := strings.Fields(caption)
 	if len(f) != 2 {
 		return false
 	}
 	cmd, _, _ := strings.Cut(f[0], "@")
-	return cmd == "/phrase" && strings.EqualFold(f[1], phraseGifWord)
+	return cmd == "/phrase" && strings.EqualFold(f[1], word)
 }
 
 // setPhraseGif handles /phrase gif: the GIF comes from the message it replies
@@ -265,7 +298,7 @@ func phraseGifFile(m *tele.Message) string {
 // onAnimation catches a GIF captioned /phrase gif; any other GIF is ignored.
 func (b *Bot) onAnimation(c tele.Context) error {
 	m := c.Message()
-	if m == nil || m.Animation == nil || !isPhraseGifCaption(m.Caption) {
+	if m == nil || m.Animation == nil || !isPhraseCaption(m.Caption, phraseGifWord) {
 		return nil
 	}
 	if isPrivate(c) {
@@ -288,6 +321,123 @@ func (b *Bot) onAnimation(c tele.Context) error {
 	return b.setPhraseGif(c, player.ID, false)
 }
 
+// Kinds of /phrase audio: an mp3 or other music file, or a voice note. The
+// stored value is "<kind>:<file_id>", since Telegram sends each with its own
+// method.
+const (
+	phraseAudioMusic = "audio"
+	phraseAudioVoice = "voice"
+)
+
+// phraseAudioFile is the "<kind>:<file_id>" of the sound a /phrase audio
+// message carries or replies to ("" when neither has one).
+func phraseAudioFile(m *tele.Message) string {
+	if m == nil {
+		return ""
+	}
+	if ref := audioRef(m); ref != "" {
+		return ref
+	}
+	if m.ReplyTo != nil {
+		return audioRef(m.ReplyTo)
+	}
+	return ""
+}
+
+func audioRef(m *tele.Message) string {
+	switch {
+	case m.Audio != nil:
+		return phraseAudioMusic + ":" + m.Audio.FileID
+	case m.Voice != nil:
+		return phraseAudioVoice + ":" + m.Voice.FileID
+	}
+	return ""
+}
+
+// phraseAudioSendable turns a stored /phrase audio back into what to send
+// (nil for "" or a value it does not know).
+func phraseAudioSendable(ref string) tele.Sendable {
+	kind, id, ok := strings.Cut(ref, ":")
+	if !ok || id == "" {
+		return nil
+	}
+	switch kind {
+	case phraseAudioMusic:
+		return &tele.Audio{File: tele.File{FileID: id}}
+	case phraseAudioVoice:
+		return &tele.Voice{File: tele.File{FileID: id}}
+	}
+	return nil
+}
+
+// setPhraseAudio handles /phrase audio, like setPhraseGif for the sound.
+func (b *Bot) setPhraseAudio(c tele.Context, playerID int64, clear bool) error {
+	chatID := c.Chat().ID
+	var text string
+	switch ref := phraseAudioFile(c.Message()); {
+	case clear:
+		if err := b.st.SetPhraseAudio(playerID, ""); err != nil {
+			return b.fail(c, "phraseAudio.clear", err)
+		}
+		text = "💬 Звук убран"
+	case ref == "":
+		current, err := b.st.PhraseAudio(playerID)
+		if err != nil {
+			return b.fail(c, "phraseAudio.read", err)
+		}
+		text = phraseAudioUsageText(current != "")
+	default:
+		if err := b.st.SetPhraseAudio(playerID, ref); err != nil {
+			return b.fail(c, "phraseAudio.set", err)
+		}
+		b.logEvent(storage.Event{ChatID: chatID, PlayerID: playerID, Kind: "phrase_audio_set"})
+		text = "💬 Звук сохранён. Выйдет после твоей победы."
+		if !b.featureOn(chatID, featPhrase) {
+			text += "\n<i>Сейчас выключено в чате: /settings phrase on</i>"
+		}
+	}
+	if b.privately(c, text, nil) {
+		return nil
+	}
+	return b.quiet(c, text)
+}
+
+// onPhraseAudio catches an mp3 or a voice note captioned /phrase audio; any
+// other sound is ignored.
+func (b *Bot) onPhraseAudio(c tele.Context) error {
+	m := c.Message()
+	if m == nil || audioRef(m) == "" || !isPhraseCaption(m.Caption, phraseAudioWord) {
+		return nil
+	}
+	if isPrivate(c) {
+		return b.ephemeral(c, privateDeniedText)
+	}
+	if _, err := b.ensure(c); err != nil {
+		return b.fail(c, "onPhraseAudio.ensure", err)
+	}
+	sender := realSender(c)
+	if sender == nil {
+		return b.ephemeral(c, anonMsg)
+	}
+	player, err := b.st.PlayerByTg(c.Chat().ID, sender.ID)
+	if err != nil {
+		return b.fail(c, "onPhraseAudio.player", err)
+	}
+	if player == nil {
+		return b.ephemeral(c, "Сначала зарегистрируйся: /setnick &lt;ник на usdoku&gt;")
+	}
+	return b.setPhraseAudio(c, player.ID, false)
+}
+
+// phraseAudioUsageText explains how to set the sound.
+func phraseAudioUsageText(set bool) string {
+	text := "💬 Звук выходит после твоей победы, сразу под результатом (после гифки, если она есть).\n"
+	if set {
+		text += "Сейчас: стоит\n"
+	}
+	return text + "\nОтветь <code>/phrase audio</code> на mp3 или голосовое, или пришли его с такой подписью.\n/phrase audio " + phraseClear + " · убрать"
+}
+
 // phraseGifUsageText explains how to set the GIF.
 func phraseGifUsageText(set bool) string {
 	text := "💬 Гифка выходит после твоей победы, сразу под результатом.\n"
@@ -306,6 +456,7 @@ func phraseUsageText(current string) string {
 	}
 	fmt.Fprintf(&b, "\n/phrase &lt;текст&gt; · поставить, до %d символов\n/phrase %s · убрать", phraseMaxRunes, phraseClear)
 	b.WriteString("\n/phrase gif · гифка после победы (ответом на гифку)")
+	b.WriteString("\n/phrase audio · звук после победы (ответом на mp3 или голосовое)")
 	return b.String()
 }
 

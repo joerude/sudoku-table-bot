@@ -1189,7 +1189,7 @@ func (b *Bot) finalize(c tele.Context, game *storage.Game) error {
 		log.Printf("finalize.edit: %v", err)
 	}
 	b.retireOtherCard(c, game.ID, cardClosedText) // the result landed in the picker, not on the card
-	b.postWinnerGif(game, c.Message())
+	b.postWinnerMedia(game, c.Message())
 	if seasonEnd != "" {
 		err := c.Send(seasonEnd)
 		b.postSeasonPoster(game.ChatID, game.SeasonID)

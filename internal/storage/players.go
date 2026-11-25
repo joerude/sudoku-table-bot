@@ -256,3 +256,21 @@ func (s *Store) PhraseGif(playerID int64) (string, error) {
 	}
 	return id.String, err
 }
+
+// SetPhraseAudio stores a player's /phrase audio (an opaque "kind:file_id"
+// the bot layer builds); "" clears it.
+func (s *Store) SetPhraseAudio(playerID int64, ref string) error {
+	_, err := s.db.Exec(`UPDATE players SET phrase_audio=? WHERE id=?`, nullStr(ref), playerID)
+	return err
+}
+
+// PhraseAudio reads a player's /phrase audio ("" when none is set or the
+// player is gone).
+func (s *Store) PhraseAudio(playerID int64) (string, error) {
+	var ref sql.NullString
+	err := s.db.QueryRow(`SELECT phrase_audio FROM players WHERE id=?`, playerID).Scan(&ref)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return ref.String, err
+}
